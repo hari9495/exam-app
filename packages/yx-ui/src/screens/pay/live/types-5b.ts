@@ -81,6 +81,8 @@ export interface PayGroup {
   dayBasis: 'calendar' | '30' | '26';
   cutOffDay: number;
   payDay: number;
+  /** Enterprise E5 (O17): payslips are shown this many days after the period ends (0: when published). */
+  releaseDay?: number;
   bankFormat: string | null;
   status: string;
   version: number;
@@ -98,6 +100,9 @@ export interface PayCalendarMonth {
   periodStart: string;
   periodEnd: string;
   cutOff: string;
+  /** Enterprise E5 (O17): the payslip release date (null: when published) and the month's own dates, if changed. */
+  release?: string | null;
+  changed?: { reason: string; changedAt: string; version: number } | null;
   payDate: string;
 }
 

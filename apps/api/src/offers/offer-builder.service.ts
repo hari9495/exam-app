@@ -380,7 +380,7 @@ export class OfferBuilderService implements OnModuleInit {
       const position = (cur?.bandPosition ?? 'none') as BandPosition;
       if (bandAddsStep(position)) {
         const b = await this.bandApprovers(tx, c, o.pipelineEntry.job, userId);
-        steps.push({ name: b.label, approvers: [{ kind: 'users', userIds: b.ids }], mode: 'any', selfApproval: 'never' });
+        steps.push({ name: b.label, approvers: [{ kind: 'users', userIds: b.ids }], mode: 'any', selfApproval: 'never', required: true });
       }
       if (!steps.length) {
         await tx.offer.update({ where: { id: offerId }, data: { status: 'approved' } });

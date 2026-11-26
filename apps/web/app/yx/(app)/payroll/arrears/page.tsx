@@ -35,7 +35,7 @@ export default function YxPayArrearsPage() {
         me: me.data?.id ?? null,
         can: { approve: perms.has('payroll.arrears.approve'), writeOff: perms.has('payroll.writeoff.approve') },
         onApprove: (w, runId) => write(`/arrears-worksheets/${encodeURIComponent(w.id)}/approve`, runId ? { runId } : {}),
-        onCancel: (w) => write(`/arrears-worksheets/${encodeURIComponent(w.id)}/cancel`),
+        onCancel: (w, reason) => write(`/arrears-worksheets/${encodeURIComponent(w.id)}/cancel`, { reason }),
         onConfirmBase: (w, period, lines, reason) => write(`/arrears-worksheets/${encodeURIComponent(w.id)}/confirm-base`, { period, lines, reason }),
         onWriteOff: (r, reason) => write(`/overpayments/${encodeURIComponent(r.id)}/write-off`, { reason }),
         // PAY-19: court orders and overpayments as tabs (builder 1's designed screen).

@@ -229,7 +229,7 @@ describe('Payroll batch 5b', () => {
     const members = (await api('payAdmin', 'get', `/payroll/pay-groups/${g.id}/members`).expect(200)).body;
     expect(members.map((m: { employeeCode: string }) => m.employeeCode)).toEqual(['P5B-001']);
     const cal = (await api('payAdmin', 'get', `/payroll/pay-groups/${g.id}/calendar?year=2026`).expect(200)).body;
-    expect(cal[1]).toEqual({ month: '2026-02', periodStart: '2026-02-01', periodEnd: '2026-02-28', cutOff: '2026-02-25', payDate: '2026-03-01' });
+    expect(cal[1]).toEqual({ month: '2026-02', periodStart: '2026-02-01', periodEnd: '2026-02-28', cutOff: '2026-02-25', release: null, changed: null, payDate: '2026-03-01' });
     await api('payAdmin', 'patch', `/payroll/pay-groups/${g.id}`).send({ legalEntityId: ids.entityA, name: 'Monthly staff', cutOffDay: 20, payDay: 1, version: 99 }).expect(409);
   });
 

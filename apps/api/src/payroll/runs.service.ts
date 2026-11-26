@@ -27,6 +27,7 @@ import { dayKinds } from './payslip-days';
 import { buildTaxInputs } from './tax.service';
 import { taxYearOf } from './tax';
 import { waitingForIfsc } from './payout.service';
+import { periodDates } from './pay-dates';
 import { RETRENCHMENT_CODES, retrenchmentPermission } from './fnf.service';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, publishesAlone, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
 
@@ -183,7 +184,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private view(r: Run) {
-    return { id: r.id, reference: r.reference, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), subPeriod: r.subPeriod || null, range: r.rangeStart ? { from: dateOf(r.rangeStart), to: dateOf(r.periodEnd) } : null, runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
+    return { id: r.id, reference: r.reference, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), subPeriod: r.subPeriod || null, range: r.rangeStart ? { from: dateOf(r.rangeStart), to: dateOf(r.periodEnd) } : null, runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, releaseAt: r.releaseAt, releaseReason: r.releaseReason, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
   }
 
   async list(ctx: TenantContext, user: ScopeUser, month?: string, entityId?: string | null) {
@@ -564,6 +565,25 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The readiness screen: people, attendance feed state, and the checks as they stand now (refreshed). */
+  /**
+   * Enterprise E5 (O17, PAY-02): the run's input cut-off and payslip release dates (its pay group's, or the month's own),
+   * whether this person may change them, and the one-time items that came after a cut-off: rolled into this run, or
+   * asked for this month and rolled on.
+   */
+  private async datesAndLate(tx: Tx, c: CompanyContext, v: Viewer, run: Prisma.PayrollRunGetPayload<object>, members: { employmentId: string; employeeId: string }[]) {
+    const org = c.organizationId;
+    const g = run.runType === 'regular' ? await tx.payGroup.findFirst({ where: { organizationId: org, id: run.payGroupId } }) : null;
+    const month = dateOf(run.periodStart).slice(0, 7);
+    const dates = g && g.frequency === 'monthly' ? { payGroup: { id: g.id, name: g.name }, ...(await periodDates(tx, org, g, month)), canChange: (await entitiesFor(tx, c, v, 'payroll.setup.manage')).includes(run.legalEntityId) && !v.actingForOther } : null;
+    if (!dates) return { dates: null, late: [] };
+    const ids = members.map((m) => m.employmentId);
+    const rows = await tx.oneTimePay.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: { in: ['approved', 'pending'] }, OR: [{ periodStart: run.periodStart, rolledFrom: { not: null } }, { rolledFrom: run.periodStart }] }, orderBy: { createdAt: 'asc' }, take: 500 });
+    const names = new Map((await tx.employee.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.employeeId) } }, select: { id: true, givenName: true, familyName: true, preferredName: true } })).map((p) => [p.id, [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ')]));
+    const comps = new Map((await tx.payComponent.findMany({ where: { organizationId: org, code: { in: [...new Set(rows.map((r) => r.componentCode))] } }, select: { code: true, name: true } })).map((x) => [x.code, x.name]));
+    const late = rows.map((r) => ({ id: r.id, employeeId: r.employeeId, name: names.get(r.employeeId) ?? '', component: comps.get(r.componentCode) ?? r.componentCode, amount: r.amount.toFixed(2), from: dateOf(r.rolledFrom!).slice(0, 7), to: dateOf(r.periodStart).slice(0, 7), direction: dateOf(r.periodStart) === dateOf(run.periodStart) ? ('in' as const) : ('out' as const) }));
+    return { dates, late };
+  }
+
   async readiness(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -576,7 +596,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const period = await tx.payPeriod.findFirst({ where: { organizationId: c.organizationId, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
       const checks = await this.current(tx, c.organizationId, run);
       const groups = run.runType === 'regular' ? await this.attendanceGroups(tx, c, run, members) : [];
-      return { run: this.view(run), people: members.length, period: period?.stage ?? 'open', groups, checks: checks.map((x) => ({ id: x.id, employeeId: x.employeeId, checkKey: x.checkKey, severity: x.severity, blocks: x.blocks, waivable: x.waivable, message: x.message, waived: !!x.waivedBy, waiverReason: x.waiverReason })) };
+      return { run: this.view(run), people: members.length, period: period?.stage ?? 'open', groups, ...(await this.datesAndLate(tx, c, v, run, members)), checks: checks.map((x) => ({ id: x.id, employeeId: x.employeeId, checkKey: x.checkKey, severity: x.severity, blocks: x.blocks, waivable: x.waivable, message: x.message, waived: !!x.waivedBy, waiverReason: x.waiverReason })) };
     }, RUN_TX);
   }
 
@@ -816,7 +836,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
           const slip = await tx.payslip.create({
             data: { organizationId: job.org, legalEntityId: r.legalEntityId, runId: r.id, runType: r.runType, employmentId, employeeId: re.employeeId, periodStart: r.periodStart, subPeriod: r.subPeriod, calcVersion: job.version, version: await this.nextVersion(tx, job.org, employmentId, r), gross: result.gross, deductions: result.deductions, net: result.net, employerCost: result.employerCost, ruleVersions: result.ruleVersions, snapshotHash: hashOf(snap), resultHash: result.resultHash, verify: result.verify, held: snap.held },
           });
-          await tx.payslipLine.createMany({ data: result.lines.map((l, i) => ({ organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, payslipId: slip.id, position: i, componentCode: l.code, name: l.name.slice(0, 80), kind: l.kind, segmentNo: l.segmentNo, amount: l.amount, quantity: l.quantity ?? null, rate: l.rate ?? null, explanation: l.explanation.slice(0, 1000), rule: l.rule ? (l.rule as unknown as Prisma.InputJsonValue) : Prisma.DbNull, verify: !!l.verify, sourceRef: l.sourceRef ?? null })) });
+          await tx.payslipLine.createMany({ data: result.lines.map((l, i) => ({ organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, payslipId: slip.id, position: i, componentCode: l.code, name: l.name.slice(0, 80), kind: l.kind, segmentNo: l.segmentNo, amount: l.amount, quantity: l.quantity ?? null, rate: l.rate ?? null, explanation: l.explanation.slice(0, 1000), rule: l.rule ? (l.rule as unknown as Prisma.InputJsonValue) : Prisma.DbNull, verify: !!l.verify, sourceRef: l.sourceRef ?? null, separate: !!l.separate })) });
           await tx.payslipSnapshot.create({ data: { payslipId: slip.id, organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, inputs: snap as unknown as Prisma.InputJsonValue, ruleVersions: result.ruleVersions, engineVersion: ENGINE_VERSION, inputsHash: hashOf(snap) } });
           if (result.tax) await tx.tdsProjection.create({ data: { payslipId: slip.id, organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, employmentId, taxYear: result.tax.taxYear, lawVersion: result.tax.lawVersion, regime: result.tax.regime, calcVersion: result.tax.calcVersion, monthTds: result.tax.monthTds, annualTax: result.tax.tax.total, inputs: snap.tax as unknown as Prisma.InputJsonValue, result: result.tax as unknown as Prisma.InputJsonValue } });
           await tx.runEmployee.update({ where: { id: re.id }, data: { state: 'ok', failure: Prisma.DbNull, updatedAt: new Date() } });
@@ -998,6 +1018,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         }),
       ),
     );
+    // E3 review item 8: arrears from a worksheet (not a correction) already carry their statutory differences.
+    const sheetRefs = oneTime.filter((o) => o.source === 'arrears' && /^[0-9a-f-]{36}$/i.test(o.sourceRef ?? '')).map((o) => o.sourceRef!);
+    const sheets = new Set(sheetRefs.length ? (await tx.arrearsWorksheet.findMany({ where: { organizationId: org, id: { in: sheetRefs } }, select: { id: true } })).map((x) => x.id) : []);
     const special = itemsOnly || !monthly ? [] : mine(await reads.once('special', () => tx.specialDays.findMany({ where: { organizationId: org, employmentId: { in: ids }, periodStart: run.periodStart } })));
     const recent = await tx.payslip.findMany({ where: { organizationId: org, employmentId, status: 'approved', runType: 'regular', periodStart: { lt: run.periodStart } }, orderBy: { periodStart: 'desc' }, take: 3 });
     const recentDays = recent.reduce((t, x) => t + Number(monthRange(dateOf(x.periodStart).slice(0, 7)).to.slice(8)), 0);
@@ -1039,7 +1062,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       joinedOn: dateOf(em.joinedOn),
       ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2), ...(await this.ptWageSoFar(tx, org, employmentId, run.periodStart, fyStart, month, components)) },
       oneTime: [
-        ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}) })),
+        ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}), ...(o.paidSeparately ? { separate: true } : {}), ...(o.grossUp ? { grossUp: true } : {}), ...(o.sourceRef && sheets.has(o.sourceRef) ? { settled: true } : {}) })),
         // Late corrections approved after their month locked, paid in this regular run (PAY-1.03 / 1.04).
         // An F&F run paying the leaver's last salary pays them too (no regular run follows for that person).
         // Answer 2283: the F&F run pays it even when the last month's regular payslip was already approved (items only).
@@ -1206,7 +1229,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (!staff && !(s.status === 'approved' && (await published()))) throw new NotFoundException('Not found');
       const lines = await tx.payslipLine.findMany({ where: { organizationId: c.organizationId, payslipId: s.id }, orderBy: { position: 'asc' } });
       if (staff) await audit(tx, c, 'payroll.payslip.viewed', 'payslip', s.id, { employeeId: s.employeeId });
-      return { ...this.slipView(s), days: await this.dayStrip(tx, c.organizationId, s), ruleVersions: s.ruleVersions, lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, segmentNo: l.segmentNo, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null, rate: l.rate?.toFixed(4) ?? null, explanation: l.explanation, rule: l.rule, verify: l.verify })) };
+      return { ...this.slipView(s), days: await this.dayStrip(tx, c.organizationId, s), ruleVersions: s.ruleVersions, lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, segmentNo: l.segmentNo, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null, rate: l.rate?.toFixed(4) ?? null, explanation: l.explanation, rule: l.rule, verify: l.verify, ...(l.separate ? { separate: true } : {}) })) };
     });
   }
 

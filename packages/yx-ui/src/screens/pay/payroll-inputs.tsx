@@ -519,7 +519,7 @@ export function recurringPlan(amount: number, start: Date, end: Date) {
 
 type Hold = HoldRow & { /** New hold: applies from the October run (September's bank file is already released). */ fromOct?: boolean };
 
-type OneTimePayProps = { state?: ViewState; sheet?: 'add' | 'recurring'; upload?: boolean; rows?: OneTimeRow[]; tab?: 'onetime' | 'holds' };
+type OneTimePayProps = { state?: ViewState; sheet?: 'add' | 'recurring' | 'grossup'; upload?: boolean; rows?: OneTimeRow[]; tab?: 'onetime' | 'holds' };
 /** PAY-05 · One-time pay: list, bulk upload, recurring, add sheet with effect summary. The app passes `live`: Payroll ›
  * Inputs, with the loss of pay (PAY-04) and salary holds (PAY-06) as tabs next to it. */
 export function OneTimePayScreen(p: OneTimePayProps & { live?: LiveInputs }) {
@@ -564,6 +564,8 @@ function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialR
   const [showUpload, setShowUpload] = useState(!!upload);
   const [amount, setAmount] = useState<number | null>(sheet === 'recurring' ? 5_000 : 25_000);
   const [recurring, setRecurring] = useState(sheet === 'recurring');
+  const [separate, setSeparate] = useState(false);
+  const [grossUp, setGrossUp] = useState(sheet === 'grossup');
   const known = rows.find((r) => editing && r.id === editing.id && payeeLabel({ name: r.employee, code: r.code }) === who.trim());
   const runPerson = findRunPerson(who);
   const payee = runPerson ? { name: runPerson.name, code: runPerson.code, gross: runPerson.gross } : known ? { name: known.employee, code: known.code, gross: null } : null;
@@ -841,6 +843,13 @@ function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialR
               }}
               description="Part months at the start and end are paid prorated."
             />
+            {/* Enterprise E5 (O16, answer 2656): a one-time earning can be paid on its own and grossed up. */}
+            {!recurring && (
+              <>
+                <Checkbox label="Pay separately" checked={separate} onChange={setSeparate} description="Its own line in the bank file and its own section on the payslip, in the same month." />
+                <Checkbox label="Company pays the tax (gross-up)" checked={grossUp} onChange={setGrossUp} description="The person gets the full amount; the tax is paid by the company and shown on the payslip. Needs the payroll approver." />
+              </>
+            )}
             {recurring ? (
               <FieldRow>
                 <FormField label="Start date" required>

@@ -94,6 +94,14 @@ export class DismissDto {
   reason!: string;
 }
 
+/** E3 review item 9: why a draft arrears worksheet is discarded. */
+export class DiscardDto {
+  @trim()
+  @IsString()
+  @Length(10, 500)
+  reason!: string;
+}
+
 export class FnfItemChangeDto {
   @IsUUID()
   id!: string;

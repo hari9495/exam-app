@@ -26,7 +26,7 @@ import { markSteppedUp } from './fixtures/step-up';
 
 // Payroll batch 5g end to end against the real database: an off-cycle bonus run on the same engine and approval, which
 // never touches the regular payslip; arrears per month and component (corrected − as-paid) after a past-dated raise,
-// paid in an arrears run with PF on them; a month with no payslip asks for a base, and what was overpaid becomes a
+// paid in an arrears run (PF, ESI, PT and LWF come from the worksheet only); a month with no payslip asks for a base, and what was overpaid becomes a
 // recovery the employee agrees to, written off only by someone else; rule-change proposals accepted or dismissed; F&F
 // made from lifecycle's hand-off with the deadline over a weekend and a holiday, retrenchment lines held without the
 // government's permission and paid in a second run; death in service split by shares; another company apart.
@@ -326,7 +326,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     await api('payAdminB', 'get', `/payroll/arrears-worksheets/${w.id}`).expect(404);
     // The maker cannot approve; the month is locked, so it is paid in an arrears run.
     expect((await api('payAdmin', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(403)).body.message).toMatch(/Someone other/);
-    await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(409);
+    await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({ payMonth: month }).expect(409);
     const arrearsRun = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month, offcycleKind: 'arrears' }).expect(201)).body.id;
     // From 17 Sep 2026 the PF ceiling is 25,000: the raise (basic 20,000 to 24,000) owes 480 more employee PF, which is
     // recovered only with the employee's consent (5g-D6). Under the old 15,000 ceiling both months paid the same PF.
@@ -334,10 +334,18 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const slips = await approveRun(arrearsRun);
     const lines = (await linesOf(slips[0].id)).body.lines as { code: string; amount: string; explanation: string }[];
     expect(lines.find((l) => l.code === 'basic')).toMatchObject({ amount: Number(basic.difference).toFixed(2), explanation: `Arrears for ${month}.` });
-    expect(Number(lines.find((l) => l.code === 'pf_employee')?.amount)).toBeGreaterThan(0);
+    // E3 review item 8: the PF difference is the worksheet's (480, recovered with consent), so the run takes no PF on it again.
+    expect(w.lines.find((l: { componentCode: string }) => l.componentCode === 'pf_employee')).toMatchObject({ kind: 'deduction', difference: '480.00' });
+    for (const code of ['pf_employee', 'pf_employer', 'esi_employee', 'pt', 'lwf_employee']) expect(Number(lines.find((l) => l.code === code)?.amount ?? 0)).toBe(0);
     // A second worksheet for the same month owes nothing more (arrears approved earlier count as paid).
     const again = (await api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp1, from: month, to: month, reason: 'Check again' }).expect(201)).body;
     expect(Number(again.total)).toBe(0);
+    // Nothing to pay: discarded, so it holds no months open (E3 review item 1). E3 review item 9: only with a reason, kept.
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({}).expect(400);
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'short' }).expect(400);
+    expect((await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'Nothing owed after all' }).expect(200)).body).toEqual({ id: again.id, status: 'discarded' });
+    expect((await api('payAdmin', 'get', `/payroll/arrears-worksheets/${again.id}`).expect(200)).body).toMatchObject({ status: 'discarded', discardReason: 'Nothing owed after all' });
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'Nothing owed after all' }).expect(409);
   });
 
   it('a month with no payslip asks for a base; what was overpaid becomes a recovery the employee agrees to', async () => {
@@ -364,6 +372,40 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect((await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(200)).body.status).toBe('active');
     await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(409);
     ids.recovery = ok.recoveryId;
+  });
+
+  it('E3 review item 4: arrears never go into a month whose run is calculated or in review; by default they roll on', async () => {
+    const next = iso(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 1))).slice(0, 7);
+    const after = iso(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)) + 1, 1))).slice(0, 7);
+    const ch = (await api('payAdmin', 'post', `/payroll/employees/${ids.emp2}/compensation-changes`).send({ employeeId: ids.emp2, effectiveDate: first, templateVersionId: ids.version, entryMode: 'ctc', annualCtc: '720000', reason: 'Raise from the start of the month' }).expect(201)).body;
+    await stepUp('approver1');
+    await api('approver1', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
+    const w = (await api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp2, from: month, to: month, reason: 'Raise approved late', changeId: ch.changeId }).expect(201)).body;
+    expect(Number(w.total)).toBeGreaterThan(0);
+    // Next month's run is already calculated: arrears approved now would never be paid by it.
+    const r = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month: next }).expect(201)).body.id;
+    await calculate(r);
+    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({ payMonth: next }).expect(409)).body.message).toMatch(/already calculated/);
+    // By default they roll past this (locked) month and next month's calculated run, to the month after.
+    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(200)).body).toMatchObject({ status: 'approved', payMonth: after });
+    const paid = await scoped((tx) => tx.oneTimePay.findMany({ where: { sourceRef: w.id, source: 'arrears' } }));
+    expect(paid.length).toBeGreaterThan(0);
+    expect(paid.every((o) => o.periodStart.toISOString().startsWith(after))).toBe(true);
+    await api('payAdmin', 'post', `/payroll/runs/${r}/void`).send({ reason: 'Test run, not paid' });
+  });
+
+  it('E3 review item 1: never two open drafts over the same months; a draft made stale by a later approval is refused', async () => {
+    const sheet = (reason: string) => api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp2, from: prevMonth, to: month, reason });
+    const a = (await sheet('First look at the two months').expect(201)).body;
+    expect((await sheet('Second look at the same months').expect(409)).body.message).toMatch(/open draft worksheet already covers/);
+    // A worksheet for the same months approved after this draft was made (possible before this fix): the draft is refused.
+    const row = await scoped((tx) => tx.arrearsWorksheet.findFirstOrThrow({ where: { id: a.id } }));
+    await scoped((tx) =>
+      tx.arrearsWorksheet.create({ data: { organizationId: row.organizationId, legalEntityId: row.legalEntityId, employeeId: row.employeeId, employmentId: row.employmentId, source: 'manual', fromMonth: row.toMonth, toMonth: row.toMonth, reason: 'Approved elsewhere', status: 'approved', createdBy: users.payAdmin, approvedBy: users.approver1, approvedAt: new Date(Date.now() + 1000) } }),
+    );
+    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${a.id}/approve`).send({}).expect(409)).body.message).toMatch(/approved after this draft was made/);
+    // Taken off so the later tests start clean.
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${a.id}/cancel`).send({ reason: 'Out of date: drafted again later' }).expect(200);
   });
 
   it('write-off: someone other than who raised it, with step-up; cross-year recoveries are listed for tax', async () => {

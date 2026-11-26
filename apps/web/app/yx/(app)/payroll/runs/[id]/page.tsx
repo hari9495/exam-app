@@ -94,6 +94,7 @@ export default function YxPayRunPage() {
     onJournal: () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments?tab=journal`),
     onStatutory: () => router.push('/yx/payroll/statutory'),
     onLopInput: () => router.push('/yx/payroll/inputs'),
+    onReadiness: run.data?.runType === 'regular' ? () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/readiness`) : undefined,
     onWaive: (vid, reason) => write(`${base}/validations/${encodeURIComponent(vid)}/waive`, { reason }),
     onCalculate: () => write(`${base}/calculate`),
     onRetryFailed: () => write(`${base}/retry-failed`),
@@ -108,7 +109,7 @@ export default function YxPayRunPage() {
       const link = await write<{ path: string }>(`/files/${encodeURIComponent(fileId)}/link`);
       await download(link.path, name);
     },
-    onPublish: (confirmation, selfApprovalReason) => write(`${base}/publish`, { confirmation, ...(selfApprovalReason ? { selfApprovalReason } : {}) }),
+    onPublish: (confirmation, selfApprovalReason, release) => write(`${base}/publish`, { confirmation, ...(selfApprovalReason ? { selfApprovalReason } : {}), ...(release?.now ? { releaseNow: true, releaseReason: release.reason } : {}) }),
     onSearchPeople: (q) => search(q),
     onAddItem: async (item) => {
       const out = await write(`${base}/items`, item);

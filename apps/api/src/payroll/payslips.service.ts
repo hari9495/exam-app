@@ -16,6 +16,7 @@ import type { ConfirmationDto } from './dto';
 import type { QueryRaiseDto, QueryUpdateDto } from './dto-5d';
 import { entitiesFor, payHolders, payScope, payViewer, publishesAlone, requireSelf, systemAdmins, withPayScope } from './pay-access';
 import { payslipValues, renderPayslipPdf, type SlipData } from './payslip-pdf';
+import { periodDates } from './pay-dates';
 import { plainSalary, splitAmounts, splitsAt, SPLIT_LABEL } from '../people/pay-split';
 import { sha256 } from './pay-file-store';
 
@@ -72,7 +73,18 @@ export class PayslipsService {
 
   // ------------------------------------------------------------------------------------------ publish (PAY-4.04)
 
-  async publish(ctx: TenantContext, user: ScopeUser, runId: string, confirmation: ConfirmationDto, selfApprovalReason?: string) {
+  /** Enterprise E5 (O17): the day a run's payslips are shown to employees (null: when published). */
+  private async releaseOn(tx: Tx, org: string, run: Prisma.PayrollRunGetPayload<object>) {
+    if (run.runType !== 'regular') return null;
+    const g = await tx.payGroup.findFirst({ where: { organizationId: org, id: run.payGroupId } });
+    return g && g.frequency === 'monthly' ? (await periodDates(tx, org, g, dateOf(run.periodStart).slice(0, 7))).release : null;
+  }
+
+  /**
+   * PAY-09 with answer 2657: published payslips stay hidden from employees until the pay group's release date; releasing
+   * them before it ("release now") needs a reason. Employees are told on the release day (releaseDue), or now.
+   */
+  async publish(ctx: TenantContext, user: ScopeUser, runId: string, confirmation: ConfirmationDto, selfApprovalReason?: string, release: { now: boolean; reason?: string } = { now: false }) {
     const v = await this.viewer(user);
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -89,14 +101,33 @@ export class PayslipsService {
       // PAY-09: the sole payroll admin publishes alone only with a reason; it is kept in the audit event and the System Admins are told.
       const alone = await publishesAlone(tx, org, run.legalEntityId, v.userId!);
       if (alone && !selfApprovalReason) throw new BadRequestException({ statusCode: 400, code: 'SELF_APPROVAL_REASON', message: 'No one else can publish these payslips: give a reason to publish them yourself (the System Admins are told).' });
-      await tx.payrollRun.update({ where: { id: run.id }, data: { publishedAt: new Date(), version: { increment: 1 } } });
-      await audit(tx, c, 'payslip.published', 'payroll_run', run.id, { people: slips.length, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact }, selfApproval: alone, reason: alone ? selfApprovalReason : null });
+      const releaseOn = await this.releaseOn(tx, org, run);
+      const later = !!releaseOn && releaseOn > todayIst();
+      if (later && release.now && !release.reason) throw new BadRequestException({ statusCode: 400, code: 'RELEASE_REASON', message: `These payslips are released on ${releaseOn}. Give a reason to release them now.` });
+      const scheduled = later && !release.now;
+      const now = new Date();
+      await tx.payrollRun.update({ where: { id: run.id }, data: { publishedAt: now, releaseAt: scheduled ? new Date(`${releaseOn}T00:00:00+05:30`) : now, releaseReason: later && release.now ? release.reason! : null, releaseNoticedAt: scheduled ? null : now, version: { increment: 1 } } });
+      await audit(tx, c, 'payslip.published', 'payroll_run', run.id, { people: slips.length, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact }, selfApproval: alone, reason: alone ? selfApprovalReason : null, releaseOn: scheduled ? releaseOn : null, releasedEarly: later && release.now ? { due: releaseOn, reason: release.reason } : null });
       const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employeeId) } }, select: { id: true, userId: true } });
       const emailOn = (await settingFor(tx, c, 'payroll.payslip_email', { legalEntityId: run.legalEntityId })) === 'on';
-      return { run, slips, users: people.map((p) => p.userId).filter((u): u is string => Boolean(u)), emailOn, admins: alone ? await systemAdmins(tx, org) : [] };
+      return { run, slips, users: people.map((p) => p.userId).filter((u): u is string => Boolean(u)), emailOn, admins: alone ? await systemAdmins(tx, org) : [], scheduled: scheduled ? releaseOn : null };
     });
     const org = ctx.organizationId!;
     const month = dateOf(out.run.periodStart).slice(0, 7);
+    if (out.admins.length)
+      await this.notifications
+        .notifySystem({ organizationId: org, isSuperAdmin: false }, out.admins, 'payroll.payslip.published', { entityType: 'payroll_run', entityId: out.run.id, contextText: `Payslips for ${month} were published by the only payroll admin. Reason: ${selfApprovalReason}`, linkPath: `/yx/payroll/runs/${out.run.id}` }, { subject: 'Payslips published by the only payroll admin', html: '<p>Payslips were published by the only payroll admin, with a reason. Open YukthiX to see it.</p>' })
+        .catch((e) => this.logger.warn(`self-publish notice: ${(e as Error).message}`));
+    // Answer 2657: a scheduled release tells the employees on the day (releaseDue).
+    if (out.scheduled) return { id: out.run.id, publishedPeople: out.slips.length, emailed: null, releaseOn: out.scheduled };
+    const emailed = await this.tellReleased(org, out.run, out.slips, out.users, out.emailOn);
+    return { id: out.run.id, publishedPeople: out.slips.length, emailed, releaseOn: null };
+  }
+
+  /** Tells the employees their payslips are ready (in the app, and by a link email when the company sends them). */
+  private async tellReleased(org: string, run: Prisma.PayrollRunGetPayload<object>, slips: Slip[], users: string[], emailOn: boolean) {
+    const out = { run, users };
+    const month = dateOf(run.periodStart).slice(0, 7);
     await this.notifications
       .notifySystem(
         { organizationId: org, isSuperAdmin: false },
@@ -106,12 +137,35 @@ export class PayslipsService {
         { subject: 'Your payslip is ready', html: '<p>Your payslip is ready. Open YukthiX to see it.</p>' },
       )
       .catch((e) => this.logger.warn(`payslip notices: ${(e as Error).message}`));
-    if (out.admins.length)
-      await this.notifications
-        .notifySystem({ organizationId: org, isSuperAdmin: false }, out.admins, 'payroll.payslip.published', { entityType: 'payroll_run', entityId: out.run.id, contextText: `Payslips for ${month} were published by the only payroll admin. Reason: ${selfApprovalReason}`, linkPath: `/yx/payroll/runs/${out.run.id}` }, { subject: 'Payslips published by the only payroll admin', html: '<p>Payslips were published by the only payroll admin, with a reason. Open YukthiX to see it.</p>' })
-        .catch((e) => this.logger.warn(`self-publish notice: ${(e as Error).message}`));
-    const emailed = out.emailOn ? await this.emailAll(org, out.slips) : null;
-    return { id: out.run.id, publishedPeople: out.slips.length, emailed };
+    return emailOn ? this.emailAll(org, slips) : null;
+  }
+
+  /** Enterprise E5 (O17): published runs whose release time has come are told to their employees once. Returns how many. */
+  async releaseDue(): Promise<number> {
+    const orgs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.organization.findMany({ select: { id: true } }));
+    let n = 0;
+    for (const o of orgs) {
+      const due = await this.tenantPrisma.forTenant({ organizationId: o.id, isSuperAdmin: false }, async (tx) => {
+        await payScope(tx, (await tx.legalEntity.findMany({ where: { organizationId: o.id }, select: { id: true } })).map((e) => e.id));
+        const runs = await tx.payrollRun.findMany({ where: { organizationId: o.id, publishedAt: { not: null }, releaseNoticedAt: null, releaseAt: { lte: new Date() } } });
+        const out = [];
+        for (const run of runs) {
+          // Claimed first, so two workers never tell twice.
+          const claimed = await tx.payrollRun.updateMany({ where: { id: run.id, releaseNoticedAt: null }, data: { releaseNoticedAt: new Date() } });
+          if (!claimed.count) continue;
+          const slips = await tx.payslip.findMany({ where: { organizationId: o.id, runId: run.id, calcVersion: run.calcVersion, status: 'approved' } });
+          const people = await tx.employee.findMany({ where: { organizationId: o.id, id: { in: slips.map((s) => s.employeeId) } }, select: { userId: true } });
+          const emailOn = (await settingFor(tx, { organizationId: o.id, isSuperAdmin: false, userId: null } as unknown as CompanyContext, 'payroll.payslip_email', { legalEntityId: run.legalEntityId })) === 'on';
+          out.push({ run, slips, users: people.map((p) => p.userId).filter((u): u is string => Boolean(u)), emailOn });
+        }
+        return out;
+      });
+      for (const d of due) {
+        await this.tellReleased(o.id, d.run, d.slips, d.users, d.emailOn);
+        n++;
+      }
+    }
+    return n;
   }
 
   /**
@@ -305,7 +359,7 @@ export class PayslipsService {
       gross: s.gross.toFixed(2),
       deductions: s.deductions.toFixed(2),
       net: s.net.toFixed(2),
-      lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null })),
+      lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null, ...(l.separate ? { separate: true } : {}) })),
       bankLast4: bank?.accountLast4 ?? null,
       bankSplit: await this.splitOf(tx, org, s),
       resultHash: s.resultHash,

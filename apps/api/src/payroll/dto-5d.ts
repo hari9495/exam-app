@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDefined, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDefined, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { ConfirmationDto } from './dto';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -20,6 +20,18 @@ export class PublishDto extends ConfirmDto {
   @MinLength(5)
   @MaxLength(500)
   selfApprovalReason?: string;
+
+  /** Enterprise E5 (O17, answer 2657): show the payslips now although the release date is later (needs releaseReason). */
+  @IsOptional()
+  @IsBoolean()
+  releaseNow?: boolean;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  releaseReason?: string;
 }
 
 export class GenerateBankFileDto {

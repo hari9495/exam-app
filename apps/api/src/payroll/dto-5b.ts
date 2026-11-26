@@ -100,6 +100,13 @@ export class PayGroupDto {
   @Max(28)
   payDay!: number;
 
+  /** Enterprise E5 (O17): payslips are shown this many days after the period ends (0: when published). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(28)
+  releaseDay?: number;
+
   @IsOptional()
   @trim()
   @IsString()
@@ -114,6 +121,26 @@ export class PayGroupDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   anchorDate?: string;
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+/** Enterprise E5 (O17, answer 2657): one month's own cut-off and release dates, with the reason. */
+export class PeriodDatesDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  cutOffOn!: string;
+
+  /** null: released when published. */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  releaseOn?: string | null;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @Length(10, 500)
+  reason!: string;
 
   @IsOptional()
   @IsInt()

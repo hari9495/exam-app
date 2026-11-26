@@ -11,6 +11,7 @@ import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { monthRange } from '../src/time/time-core';
 
 // Payroll batch 5c end to end against the real database and Redis: a run per pay group and month (one live regular run),
 // validations and waivers (a waived missing bank account holds net pay), manual LOP and one-time pay, the BullMQ
@@ -159,6 +160,9 @@ describe('Payroll batch 5c', () => {
     await api('payAdmin', 'post', `/payroll/pay-groups/${ids.group}/members`)
       .send({ employeeIds: [ids.emp1, ids.emp2], from: first })
       .expect(201);
+    // E5 (answer 2657): one-time pay after the cut-off moves to next month; this month's inputs stay open to its last day,
+    // so the suite pays them in this month whatever day it runs.
+    await api('payAdmin', 'put', `/payroll/pay-groups/${ids.group}/periods/${month}/dates`).send({ cutOffOn: monthRange(month).to, releaseOn: null, reason: 'Inputs open all month for this suite' }).expect(200);
     for (const [emp, ctc] of [
       [ids.emp1, '726000'],
       [ids.emp2, '480000'],

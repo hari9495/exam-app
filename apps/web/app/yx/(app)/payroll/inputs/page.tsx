@@ -48,7 +48,7 @@ export default function YxPayInputsPage() {
         },
         oneTime: {
           rows: oneTime.data ?? null,
-          onAdd: (row) => write<{ status: string }>('/one-time-pays', row),
+          onAdd: (row) => write<{ status: string; rolledTo?: string }>('/one-time-pays', row),
           onCancel: (id) => write(`/one-time-pays/${encodeURIComponent(id)}/cancel`, undefined, 'PATCH'),
           onBulk: (ids, action) => write<{ items: { id: string; status: string }[] }>('/one-time-pays/bulk', { ids, action }),
           onEffect: (x) => read<OneTimeEffect>(`/one-time-pays/effect?${new URLSearchParams(x).toString()}`),
