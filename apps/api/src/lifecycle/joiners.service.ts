@@ -118,7 +118,7 @@ export class JoinersService {
       subjectId: pb.id,
       anchorOn: dto.joiningOn,
       templateId: dto.templateId,
-      place: { legalEntityId: dto.legalEntityId, locationId: dto.locationId, departmentId: dto.departmentId ?? null },
+      place: { legalEntityId: dto.legalEntityId, locationId: dto.locationId, departmentId: dto.departmentId ?? null, employmentTypeId: dto.employmentTypeId ?? null },
       ownerUserId: c.userId!,
       managerEmployeeId: dto.managerEmployeeId ?? null,
       personUserId: null,

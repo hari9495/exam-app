@@ -238,6 +238,8 @@ export interface JourneyTemplate {
   legalEntityId: string | null;
   locationId: string | null;
   departmentId: string | null;
+  /** T2-F item 43: the employment type it applies to (null = any). */
+  employmentTypeId?: string | null;
   starterKey: string | null;
   active: boolean;
   version: number;

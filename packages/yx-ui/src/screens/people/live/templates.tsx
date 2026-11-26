@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import '../people.css';
 import { Lock, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
@@ -41,12 +42,16 @@ const DAY_NAME: Record<JourneyKind, string> = { onboarding: 'joining', offboardi
 const TEAM_OWNERS = new Set<OwnerType>(['hr', 'it', 'admin', 'finance', 'payroll', 'group']);
 const dayText = (n: number, kind: JourneyKind) => (n === 0 ? `On the ${DAY_NAME[kind]} day` : `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'} ${n < 0 ? 'before' : 'after'}`);
 
+export type TemplateApplies = { legalEntities: Choice[]; locations: Choice[]; departments: Choice[]; employmentTypes: Choice[] };
+
 export interface JourneyTemplatesScreenProps {
   state: LoadState;
   onRetry?: () => void;
   data: JourneyTemplates | null;
   teams: Choice[];
   catalogItems: (Choice & { desk: string })[];
+  /** T2-F item 43: where a checklist may apply (each optional; empty = any). */
+  applies?: TemplateApplies;
   onUseStarter: (starterKey: string) => Promise<unknown>;
   onSave: (t: JourneyTemplate) => Promise<unknown>;
 }
@@ -100,7 +105,7 @@ export function JourneyTemplatesScreen(p: JourneyTemplatesScreenProps) {
           <Button onClick={() => setEditing(t)}>Edit checklist</Button>
         </Card>
       ))}
-      {editing && <TemplateEditor template={editing} teams={p.teams} items={p.catalogItems} onClose={() => setEditing(null)} onSave={async (t) => {
+      {editing && <TemplateEditor template={editing} teams={p.teams} items={p.catalogItems} applies={p.applies} onClose={() => setEditing(null)} onSave={async (t) => {
         await p.onSave(t);
         setEditing(null);
       }} />}
@@ -108,8 +113,11 @@ export function JourneyTemplatesScreen(p: JourneyTemplatesScreenProps) {
   );
 }
 
-function TemplateEditor({ template, teams, items, onClose, onSave }: { template: JourneyTemplate; teams: Choice[]; items: (Choice & { desk: string })[]; onClose: () => void; onSave: (t: JourneyTemplate) => Promise<void> }) {
+function TemplateEditor({ template, teams, items, applies, onClose, onSave }: { template: JourneyTemplate; teams: Choice[]; items: (Choice & { desk: string })[]; applies?: TemplateApplies; onClose: () => void; onSave: (t: JourneyTemplate) => Promise<void> }) {
   const [name, setName] = useState(template.name);
+  // T2-F item 43: where it applies; the most specific active checklist is used for each person.
+  const [where, setWhere] = useState({ legalEntityId: template.legalEntityId ?? null, locationId: template.locationId ?? null, departmentId: template.departmentId ?? null, employmentTypeId: template.employmentTypeId ?? null });
+  const place = (k: keyof typeof where) => (v: string | null) => (setDirty(true), setWhere((w) => ({ ...w, [k]: v })));
   const [active, setActive] = useState(template.active);
   const [tasks, setTasks] = useState<TemplateTask[]>(template.tasks);
   const [failed, setFailed] = useState<string | null>(null);
@@ -132,7 +140,7 @@ function TemplateEditor({ template, teams, items, onClose, onSave }: { template:
     setSaving(true);
     setFailed(null);
     try {
-      await onSave({ ...template, name: name.trim(), active, tasks });
+      await onSave({ ...template, ...where, name: name.trim(), active, tasks });
     } catch (e) {
       setFailed(errorText(e));
     } finally {
@@ -178,6 +186,16 @@ function TemplateEditor({ template, teams, items, onClose, onSave }: { template:
           maxLength={100}
         />
       </FormField>
+      {applies && (
+        <FormField id="tpl-applies" label="Applies to" optional helper="Leave a box empty for any. When several checklists fit a person, the most specific one is used.">
+          <div className="yx-tpl-applies">
+            <Select aria-label="Legal entity" placeholder="Any legal entity" value={where.legalEntityId} onChange={place('legalEntityId')} options={applies.legalEntities} clearable searchable />
+            <Select aria-label="Location" placeholder="Any location" value={where.locationId} onChange={place('locationId')} options={applies.locations} clearable searchable />
+            <Select aria-label="Department" placeholder="Any department" value={where.departmentId} onChange={place('departmentId')} options={applies.departments} clearable searchable />
+            <Select aria-label="Employment type" placeholder="Any employment type" value={where.employmentTypeId} onChange={place('employmentTypeId')} options={applies.employmentTypes} clearable searchable />
+          </div>
+        </FormField>
+      )}
       <Checkbox
         checked={active}
         onChange={(c) => {

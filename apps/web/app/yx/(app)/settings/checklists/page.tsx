@@ -9,7 +9,7 @@ import { useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 // teams, days and the Service Desk item each IT or Admin task raises (founder D1).
 export default function YxChecklistsPage() {
   const templates = useLife<JourneyTemplates>('/lifecycle/journey-templates');
-  const options = useLife<{ teams: Choice[]; catalogItems: (Choice & { desk: string })[] }>('/lifecycle/journey-templates/options');
+  const options = useLife<{ teams: Choice[]; catalogItems: (Choice & { desk: string })[]; legalEntities: Choice[]; locations: Choice[]; departments: Choice[]; employmentTypes: Choice[] }>('/lifecycle/journey-templates/options');
   const write = useLifeWrite();
   const { toast } = useToast();
   return (
@@ -19,6 +19,7 @@ export default function YxChecklistsPage() {
       data={templates.data ?? null}
       teams={options.data?.teams ?? []}
       catalogItems={options.data?.catalogItems ?? []}
+      applies={options.data ? { legalEntities: options.data.legalEntities ?? [], locations: options.data.locations ?? [], departments: options.data.departments ?? [], employmentTypes: options.data.employmentTypes ?? [] } : undefined}
       onUseStarter={async (starterKey) => {
         await write('POST', '/lifecycle/journey-templates/from-starter', { starterKey });
         toast({ tone: 'success', title: `Your copy of ${templates.data?.starters.find((s) => s.key === starterKey)?.name ?? 'the starter'} is ready` });
@@ -30,6 +31,7 @@ export default function YxChecklistsPage() {
           legalEntityId: t.legalEntityId,
           locationId: t.locationId,
           departmentId: t.departmentId,
+          employmentTypeId: t.employmentTypeId ?? null,
           active: t.active,
           version: t.version,
           tasks: t.tasks.map((x) => ({ key: x.key, title: x.title, ownerType: x.ownerType, ownerUserId: x.ownerUserId, ownerGroupId: x.ownerGroupId, kind: x.kind, config: x.config, dueOffsetDays: x.dueOffsetDays, dependsOn: x.dependsOn, required: x.required, locked: x.locked })),

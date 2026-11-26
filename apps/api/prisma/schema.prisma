@@ -7653,6 +7653,8 @@ model JourneyTemplate {
   legalEntityId  String?  @map("legal_entity_id") @db.Uuid
   locationId     String?  @map("location_id") @db.Uuid
   departmentId   String?  @map("department_id") @db.Uuid
+  /// T2-F item 43: the employment type it applies to (null = any).
+  employmentTypeId String? @map("employment_type_id") @db.Uuid
   starterKey     String?  @map("starter_key") @db.VarChar(40)
   active         Boolean  @default(true)
   version        Int      @default(1)

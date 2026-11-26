@@ -76,6 +76,11 @@ export class TemplateDto {
   @IsUUID()
   departmentId?: string | null;
 
+  /** T2-F item 43: the employment type it applies to; empty = any. */
+  @IsOptional()
+  @IsUUID()
+  employmentTypeId?: string | null;
+
   @IsBoolean()
   active!: boolean;
 
