@@ -475,6 +475,8 @@ export interface PolicyLine {
   carryForwardMax: number | null;
   /** Answer 2342: the most days held at any time (null: no ceiling). */
   maxBalance?: number | null;
+  /** Answer 2755: service bands (whole years from joining); each changes the yearly days and the ceiling only. */
+  bands?: { fromYears: number; annualDays: number; maxBalance?: number | null }[];
 }
 
 export interface LocationRule {

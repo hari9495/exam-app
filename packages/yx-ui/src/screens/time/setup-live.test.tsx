@@ -483,6 +483,32 @@ describe('answer 2754: starter leave types', () => {
   });
 });
 
+describe('answer 2755: service bands on a policy line', () => {
+  it('adds bands that save with the dated version; out-of-order bands block the save', async () => {
+    const live = policies({ data: { ...TIME_SETUP, policies: [] } });
+    wrap(<LeavePoliciesScreen live={live} />);
+    await userEvent.click(screen.getAllByRole('button', { name: 'New policy' })[0]);
+    const drawer = screen.getByRole('dialog');
+    await userEvent.type(within(drawer).getByLabelText(/^Policy name/), 'Staff');
+    await userEvent.click(within(drawer).getAllByRole('button', { name: 'Edit' })[0]);
+    const days = within(drawer).getByLabelText(/Earned leave: days a year/);
+    await userEvent.clear(days);
+    await userEvent.type(days, '15');
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Add service band' }));
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Add service band' }));
+    // Defaults: after 2 years 18 days, after 5 years 21 days. Make band 2 start before band 1: refused.
+    const second = within(drawer).getByLabelText(/^Band 2: after years/);
+    await userEvent.clear(second);
+    await userEvent.type(second, '1');
+    await userEvent.click(within(drawer).getByRole('button', { name: /^Save from/ }));
+    expect(within(drawer).getAllByText(/Each band starts after more years than the one before/).length).toBeGreaterThan(0);
+    expect(live.onAddVersion).not.toHaveBeenCalled();
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Remove band 2' }));
+    await userEvent.click(within(drawer).getByRole('button', { name: /^Save from/ }));
+    await waitFor(() => expect(live.onAddVersion).toHaveBeenCalledWith('pol-new', expect.objectContaining({ lines: [expect.objectContaining({ leaveTypeId: 'el', annualDays: 15, bands: [{ fromYears: 2, annualDays: 18 }] })] })));
+  });
+});
+
 // Founder answer 141: the location editor says where Factories Act coverage comes from.
 describe('TIM-31 Locations: Factories Act coverage (answer 141)', () => {
   const withFa = (factoriesAct: NonNullable<(typeof base.data.locations)[number]['factoriesAct']>) => ({ ...base.data, locations: base.data.locations.map((l, i) => (i === 0 ? { ...l, factoriesAct } : l)) });

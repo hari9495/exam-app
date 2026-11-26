@@ -28960,5 +28960,24 @@
                               "Screens/Time/TIM-28 · Leave policies (No leave types yet · starter gallery)"
                     ],
                     "note": "Positive and negative (api leave-starters.spec 4; kit setup-live 3; web yx-time-starters 2). Migration 850 (leave_types.starter). State rules (Factories Act 1 day per 20 worked) stay as the factory leave table, not a starter."
+          },
+          {
+                    "id": "MT-T2A-SERVICE-BANDS",
+                    "area": "T2-A (answer 2755): service bands (experience levels) on a leave policy line (27 Nov 2026)",
+                    "screen": "Time › Set-up › a leave policy (TIM-28 drawer) › Edit a line › Service bands; Leave balances",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin; an employee who joined more than 2 years ago (and one who joined this year).",
+                    "steps": [
+                              "Open a policy, Edit Earned leave (15 a year). Add service band: after 2 years 18 days, most days held 45. Save from today.",
+                              "Add a second band after 1 year: the save is refused. Remove it and save.",
+                              "Run the accrual (or wait for the monthly credit): the long-serving employee's next credit is at 18 a year (1.5 a month); the new joiner's stays at 1.25.",
+                              "For someone whose anniversary is mid-month, check the credit of that month is still the old rate and the next one is the new rate.",
+                              "Open the policy: the earlier version still shows without bands (bands belong to the dated version)."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; the line reads '15 days a year, ... 18 after 2 years'. Step 2: 'Each band starts after more years than the one before.' and nothing saved. Step 3: only the yearly days change; carry forward is the same; credits over 45 lapse in the band. Step 4: the band applies from the first credit after the anniversary. Step 5: the old version is unchanged. No page scroll at 1278 x 635 with the drawer open.",
+                    "stories": [
+                              "Screens/Time/TIM-28 · Leave policies (Policy drawer)"
+                    ],
+                    "note": "Positive and negative (api service-bands.spec 7, time-maths and accrual-limits still green; kit setup-live 1). Bands live on the policy line JSON of the dated version (no migration). A band below a state floor is raised to it."
           }
 ]

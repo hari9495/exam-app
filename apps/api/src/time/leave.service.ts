@@ -39,7 +39,7 @@ import {
   visibleSql,
   inReportingLine,
 } from './time-core';
-import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween, localDate } from './time-maths';
+import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, bandOn, ceilingLapses, countLeaveDays, daysBetween, localDate } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
 import { joinedRun, BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
@@ -121,6 +121,12 @@ const addMonths = (on: string, n: number) => {
   const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
   return new Date(Date.UTC(y, m, Math.min(d, last))).toISOString().slice(0, 10);
 };
+
+/**
+ * Answer 2755: a policy line with its floored days; a service band never goes below the statutory floor either (a
+ * band only ever changes the yearly days and the ceiling).
+ */
+export const withBands = (l: PolicyLine, floored: number) => ({ ...l, annualDays: floored, ...(l.bands?.length ? { bands: l.bands.map((b) => ({ ...b, annualDays: floored > l.annualDays ? Math.max(b.annualDays, floored) : b.annualDays })) } : {}) });
 
 @Injectable()
 export class LeaveService implements OnModuleInit {
@@ -1495,12 +1501,15 @@ export class LeaveService implements OnModuleInit {
           if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') return [];
           const rules = t.rules as unknown as LeaveRules;
           const notEarning = absences.filter((a) => !creditsDuringAbsence(rules.longAbsence, a.accrues)).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
-          const due = afterWait(accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }), f.joinedOn, rules.accrualWaitMonths ?? 0);
+          const line = withBands(l, ent.get(l.leaveTypeId) ?? l.annualDays);
+          const due = afterWait(accrualsDue(line, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }), f.joinedOn, rules.accrualWaitMonths ?? 0);
+          // Answer 2755: the ceiling of the band each credit falls in (2337).
+          const ceiling = (on: string) => bandOn(line.bands, f.joinedOn, on)?.maxBalance ?? l.maxBalance;
           const fresh = due.filter((d) => !posted.has(`${t.id}|${d.periodKey}`));
           const row = (d: { on: string; days: number; periodKey: string }, kind: string, reason: string) => ({ organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, entryOn: asDate(d.on), kind, days: d.days, periodKey: d.periodKey, reason });
           return [
             ...fresh.map((d) => row(d, 'accrual', l.frequency === 'monthly' ? `${t.name} credit for ${d.periodKey.slice(8)}` : `${t.name} for the year from ${year.start}`)),
-            ...ceilingLapses(fresh, held.get(t.id) ?? 0, l.maxBalance).map((d) => row(d, 'lapse', `Over the ${l.maxBalance}-day ceiling for ${t.name}`)),
+            ...ceilingLapses(fresh, held.get(t.id) ?? 0, ceiling).map((d) => row(d, 'lapse', `Over the ${ceiling(d.on)}-day ceiling for ${t.name}`)),
           ];
         });
         if (data.length) n += (await tx.leaveLedgerEntry.createMany({ data, skipDuplicates: true })).count;
@@ -1579,7 +1588,7 @@ export class LeaveService implements OnModuleInit {
         const t = byId.get(l.leaveTypeId);
         if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') continue;
         const rules = t.rules as unknown as LeaveRules;
-        const line = { ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays };
+        const line = withBands(l, ent.get(l.leaveTypeId) ?? l.annualDays);
         const now = num((await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id }, _sum: { days: true } }))._sum.days);
         // Credits of the old year still to come (the accrual job writes them when due).
         const dueOld = accrualsDue(line, { yearStart: oldYear.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: lastOld }).filter((d) => d.on > today).reduce((x, d) => x + d.days, 0);

@@ -2062,7 +2062,17 @@ const creditedTypes = (d: TimeSetup) => d.types.filter((t) => t.active && !['lop
 // Answer 2754: a starter type comes with its suggested line (casual 12, earned 15 carrying 30 ...).
 const blankLine = (leaveTypeId: string, t?: LeaveTypeRow): PolicyLine => ({ leaveTypeId, annualDays: 0, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: 0, ...(t?.suggestedLine ?? {}) });
 const typeShort = (d: TimeSetup, id: string) => (d.types.find((t) => t.id === id)?.name ?? 'Unknown type').replace(/ leave$/, '');
-const lineText = (l: PolicyLine) => `${num(l.annualDays)} days a year, ${l.frequency === 'monthly' ? 'credited every month' : 'all at the start of the year'}${l.proRata ? ', a share for joiners' : ''}`;
+const lineText = (l: PolicyLine) => `${num(l.annualDays)} days a year, ${l.frequency === 'monthly' ? 'credited every month' : 'all at the start of the year'}${l.proRata ? ', a share for joiners' : ''}${l.bands?.length ? `, ${l.bands.map((b) => `${num(b.annualDays)} after ${b.fromYears} ${b.fromYears === 1 ? 'year' : 'years'}`).join(', ')}` : ''}`;
+/** Answer 2755: what is wrong with a line's service bands (null: fine). */
+export const bandProblem = (l: PolicyLine): string | null => {
+  let last = 0;
+  for (const b of l.bands ?? []) {
+    if (!Number.isInteger(b.fromYears) || b.fromYears < 1 || b.fromYears > 50) return 'A band starts after 1 to 50 whole years.';
+    if (b.fromYears <= last) return 'Each band starts after more years than the one before.';
+    last = b.fromYears;
+  }
+  return null;
+};
 const carryText = (l: PolicyLine) => (l.carryForwardMax === null ? 'carries forward in full' : l.carryForwardMax === 0 ? 'lapses at year end' : `carries forward up to ${num(l.carryForwardMax)} days`);
 /** Is the day a weekly off under the location's rule (weekday 1 = Monday … 7 = Sunday; nth = which ones in the month)? */
 const offUnder = (iso: string, offs: LocationRule['weeklyOffs']) => {
@@ -2532,7 +2542,7 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
   const [assigning, setAssigning] = useState<{ scopeType: 'tenant' | 'legal_entity' | 'location' | 'grade'; scopeId: string | null; from: Date | null } | null>(null);
   const [triedAssign, setTriedAssign] = useState(false);
   const { busy, error, run } = useRun();
-  const errors = [...(!policy && !name.trim() ? [{ fieldId: 'pol-name', message: 'Name the policy.' }] : []), ...(!from ? [{ fieldId: 'pol-from', message: 'Choose the date the entitlements apply from.' }] : [])];
+  const errors = [...(!policy && !name.trim() ? [{ fieldId: 'pol-name', message: 'Name the policy.' }] : []), ...(!from ? [{ fieldId: 'pol-from', message: 'Choose the date the entitlements apply from.' }] : []), ...lines.filter((l) => l.annualDays > 0 && bandProblem(l)).map((l) => ({ fieldId: `pol-bands-${l.leaveTypeId}`, message: `${types.find((t) => t.id === l.leaveTypeId)?.name ?? 'Leave'}: ${bandProblem(l)}` }))];
   const saveErrors = useSaveErrors(errors);
   const setLine = (id: string, patch: Partial<PolicyLine>) => {
     setLines((ls) => ls.map((l) => (l.leaveTypeId === id ? { ...l, ...patch } : l)));
@@ -2608,6 +2618,31 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
                           <Segment label={`${t.name} credited`} value={l.frequency} onChange={(v) => setLine(l.leaveTypeId, { frequency: v })} options={[{ value: 'monthly', label: 'Every month' }, { value: 'yearly', label: 'All at the start of the year' }]} />
                         </FormField>
                         <Checkbox label="Joiners get a share for the part of the year they work" checked={l.proRata} onChange={(v) => setLine(l.leaveTypeId, { proRata: v })} />
+                        {/* Answer 2755: service bands change only the days a year and the ceiling; a band applies from the first credit after the anniversary. */}
+                        <FormField id={`pol-bands-${l.leaveTypeId}`} label="Service bands" optional helper="Years count from the joining date. A band applies from the first credit after the anniversary." error={bandProblem(l)}>
+                          <div className="yx-tim-stack">
+                            {(l.bands ?? []).map((b, i) => {
+                              const setBand = (patch: Partial<NonNullable<PolicyLine['bands']>[number]>) => setLine(l.leaveTypeId, { bands: l.bands!.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+                              return (
+                                <FieldRow key={i}>
+                                  <FormField label={`Band ${i + 1}: after years`}>
+                                    <NumberField value={b.fromYears} onChange={(v) => setBand({ fromYears: v ?? 0 })} min={1} max={50} />
+                                  </FormField>
+                                  <FormField label="Days a year">
+                                    <NumberField value={b.annualDays} onChange={(v) => setBand({ annualDays: v ?? 0 })} decimals min={0} max={366} />
+                                  </FormField>
+                                  <FormField label="Most days held" optional helper="Empty: as above.">
+                                    <NumberField value={b.maxBalance ?? null} onChange={(v) => setBand({ maxBalance: v })} decimals min={0.5} max={400} />
+                                  </FormField>
+                                  <span style={{ alignSelf: 'end' }}><Button size="sm" onClick={() => setLine(l.leaveTypeId, { bands: l.bands!.filter((_, j) => j !== i) })}>Remove band {i + 1}</Button></span>
+                                </FieldRow>
+                              );
+                            })}
+                            {(l.bands?.length ?? 0) < 10 && (
+                              <span><Button size="sm" icon={Plus} onClick={() => { const last = l.bands?.[l.bands.length - 1]; setLine(l.leaveTypeId, { bands: [...(l.bands ?? []), { fromYears: (last?.fromYears ?? 0) + (last ? 3 : 2), annualDays: (last?.annualDays ?? l.annualDays) + 3 }] }); }}>Add service band</Button></span>
+                            )}
+                          </div>
+                        </FormField>
                         <span><Button size="sm" onClick={() => setEditing(null)}>Done</Button></span>
                       </div>
                     ) : (
