@@ -945,6 +945,8 @@ export interface TeamLeaveHome {
   /** Other approvals waiting for me (attendance, overtime, comp-off …). */
   otherWaiting: number;
   away: { employeeId: string; name: string; type: string; from: string; to: string }[];
+  /** Answer 2759: overview cards, counts and names only (never a leave type). */
+  cards?: { unplanned: { count: number; people: { employeeId: string; name: string; requests: number }[] }; noLeave: { days: number; count: number; people: { employeeId: string; name: string }[] } } | null;
 }
 
 /** TIM-19 Manager: GET /time/requests/:id as someone else's request (team availability, balance after, my task). */

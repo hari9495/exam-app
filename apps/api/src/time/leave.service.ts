@@ -15,6 +15,7 @@ import {
   Facts,
   LeaveRules,
   PolicyLine,
+  companySetting,
   TIME_KEYS,
   asDate,
   dateOf,
@@ -53,6 +54,8 @@ export const LEAVE_REQUEST = 'leave.request';
 export const LEAVE_CANCEL = 'leave.cancel';
 export const LEAVE_CANCEL_DAYS = 'leave.cancel_days';
 const ACTIVE = ['pending', 'approved', 'cancel_pending'];
+/** Answer 2759: a manager's overview never names sick or medical leave; it shows as "Leave". */
+const OVERVIEW_TYPE = Prisma.sql`CASE WHEN t.kind = 'sick' OR coalesce((t.rules->>'medical')::boolean, false) THEN 'Leave' ELSE t.name END`;
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 /** "Monday, Tuesday and Friday". */
 export const weekdayList = (days: readonly number[]) => {
@@ -1168,7 +1171,7 @@ export class LeaveService implements OnModuleInit {
   /** Active leave days (pending or approved) from `from` to `to` of the people `where` (on `d.employee_id`) allows. */
   private offIn(tx: Tx, c: CompanyContext, from: string, to: string, where: Prisma.Sql): Promise<Off[]> {
     return tx.$queryRaw<Off[]>`
-      SELECT d.employee_id::text AS "employeeId", ${NAME} AS name, d.leave_on::text AS on, t.name AS type
+      SELECT d.employee_id::text AS "employeeId", ${NAME} AS name, d.leave_on::text AS on, ${OVERVIEW_TYPE} AS type
       FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status = ANY(${ACTIVE}::text[])
       JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
       JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
@@ -1188,7 +1191,7 @@ export class LeaveService implements OnModuleInit {
       const own = await this.ownId(tx, c, v);
       const today = todayIn('Asia/Kolkata');
       const monday = addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
-      if (!own || !v.userId) return { today, waiting: [], otherWaiting: 0, away: [] };
+      if (!own || !v.userId) return { today, waiting: [], otherWaiting: 0, away: [], cards: null };
       const inTeam = (col: string) => implicitSql(tx, c, own, Prisma.raw(col), Prisma.sql`${today}::date`);
       const rows = await tx.$queryRaw<{ id: string; taskId: string; employeeId: string; name: string; type: string; from: string; to: string; fromHalf: string; toHalf: string; days: number; certificate: string; sent: Date }[]>`
         SELECT r.id::text, k.id::text AS "taskId", r.employee_id::text AS "employeeId", ${NAME} AS name, t.name AS type, r.from_on::text AS "from", r.to_on::text AS "to",
@@ -1216,8 +1219,36 @@ export class LeaveService implements OnModuleInit {
         waiting: rows.map((x) => ({ ...x, sent: x.sent.toISOString(), others: offBetween(span, x.from, x.to, x.employeeId), canSendBack: back.get(x.employeeId) ?? false })),
         otherWaiting: other,
         away,
+        cards: await this.overviewCards(tx, c, today, await inTeam('e.id')),
       };
     });
+  }
+
+  /**
+   * Answer 2759: the manager's overview cards, counts and names only (never a leave type). "Unplanned": leave applied on
+   * or after its first day (any type), with its first day this month. "No leave taken": people in the team for the whole
+   * window with no approved leave day in the last N days (leave.overview.no_leave_days, default 90).
+   */
+  private async overviewCards(tx: Tx, c: CompanyContext, today: string, team: Prisma.Sql) {
+    const org = c.organizationId;
+    const window = Number(await companySetting(tx, c, 'leave.overview.no_leave_days'));
+    const since = addDays(today, -window);
+    const month = `${today.slice(0, 8)}01`;
+    const unplanned = await tx.$queryRaw<{ employeeId: string; name: string; requests: number }[]>`
+      SELECT e.id::text AS "employeeId", ${NAME} AS name, count(*)::int AS requests
+      FROM leave_requests r JOIN employees e ON e.organization_id = r.organization_id AND e.id = r.employee_id
+      WHERE r.organization_id = ${org}::uuid AND r.status = ANY(${ACTIVE}::text[]) AND r.from_on BETWEEN ${month}::date AND ${today}::date
+        AND (r.created_at AT TIME ZONE 'Asia/Kolkata')::date >= r.from_on AND ${team}
+      GROUP BY 1, 2 ORDER BY 3 DESC, 2 LIMIT 50`;
+    const none = await tx.$queryRaw<{ employeeId: string; name: string }[]>`
+      SELECT e.id::text AS "employeeId", ${NAME} AS name
+      FROM employees e
+      WHERE e.organization_id = ${org}::uuid AND ${team}
+        AND EXISTS (SELECT 1 FROM employments m WHERE m.organization_id = e.organization_id AND m.employee_id = e.id AND m.exited_on IS NULL AND m.joined_on <= ${since}::date)
+        AND NOT EXISTS (SELECT 1 FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+                        WHERE d.organization_id = e.organization_id AND d.employee_id = e.id AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${since}::date AND ${today}::date)
+      ORDER BY 2 LIMIT 50`;
+    return { unplanned: { count: unplanned.length, people: unplanned }, noLeave: { days: window, count: none.length, people: none } };
   }
 
   /** HR verifies a certificate (Special data, leave.medical.view in scope); approvers then see "verified". */

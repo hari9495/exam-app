@@ -28998,5 +28998,24 @@
                               "Screens/Settings · Time & Leave (Leave types)"
                     ],
                     "note": "Positive and negative (api roster-comp-off.spec 3; kit time-settings-live; web yx-settings-time 1). Job creditRosteredCompOff runs with accruals; period key roster:<date> per person makes reruns safe. 'Take now, work later' stays as the comp-off type's negative balance."
+          },
+          {
+                    "id": "MT-T2A-OVERVIEW-CARDS",
+                    "area": "T2-A (answer 2759): manager leave overview cards (27 Nov 2026)",
+                    "screen": "Team › Leave (TIM-17 Manager)",
+                    "url": "http://localhost:3000/yx/time/team-leave",
+                    "account": "Manager panel@ (Divya) with reports; HR Admin for the setting.",
+                    "steps": [
+                              "As a report, apply casual leave for today (applied on its first day) and sick leave for yesterday.",
+                              "As the manager open Team › Leave: the cards 'Unplanned leave this month' and 'No leave in 90 days'.",
+                              "Check Away this week: the sick leave shows as 'Leave', never 'Sick leave'.",
+                              "As HR set 'Team leave: no leave taken means none approved in the last (days)' to 30 (Settings › Leave types). Reload Team › Leave.",
+                              "Negative: a report who joined 20 days ago with no leave is not counted under no leave in 30 days; leave applied a week ahead is not unplanned; a person with no reports sees no cards."
+                    ],
+                    "expected": "Step 2: unplanned counts the report (names only, no type); no-leave lists reports with no approved leave in 90 days. Step 3: 'Leave · <dates>'. Step 4: the card reads 'No leave in 30 days'. Step 5: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-17 · Leave home (Manager · overview cards)"
+                    ],
+                    "note": "Positive and negative (kit leave-mgr-live 2; web yx-time-team-overview 2). Setting leave.overview.no_leave_days (default 90). Unplanned is counted for leave starting this month (question 2830). Sick or medical types show as 'Leave' everywhere on the manager overview (away, who else is off)."
           }
 ]

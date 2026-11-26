@@ -3510,6 +3510,21 @@ const sampleRecordAbsence: RecordAbsenceProps = {
 /** "Also off: Ravi Kumar (Casual leave), …" from the server's team availability. */
 const offLine = (others: { name: string; type: string }[], label = 'Also off') => othersLine(others.map((o) => ({ text: `${o.name} (${o.type})` })), label);
 
+/** Names, the first five, then "and N more". */
+const someNames = (people: { name: string }[], count: number) => `${people.slice(0, 5).map((p) => p.name).join(', ')}${count > 5 ? ` and ${count - 5} more` : ''}`;
+
+/** Answer 2759: the manager's overview cards. Counts and names only: never which type of leave (sick leave stays private). */
+function OverviewCards({ cards }: { cards: NonNullable<TeamLeaveHome['cards']> }) {
+  return (
+    <Kpis
+      items={[
+        { label: 'Unplanned leave this month', value: cards.unplanned.count, note: cards.unplanned.count ? someNames(cards.unplanned.people, cards.unplanned.count) : 'Applied on or after the first day' },
+        { label: `No leave in ${cards.noLeave.days} days`, value: cards.noLeave.count, note: cards.noLeave.count ? someNames(cards.noLeave.people, cards.noLeave.count) : 'Everyone has taken some leave' },
+      ]}
+    />
+  );
+}
+
 /** TIM-17 Manager, live: my team's leave waiting for me (approve here or open it), other approvals, who is away. */
 function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
   const d = live.data;
@@ -3559,6 +3574,7 @@ function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
               </Card>
             </div>
             <div data-span="5" className="yx-tim-stack">
+              {d.cards && <OverviewCards cards={d.cards} />}
               <Card title="Away this week" actions={<Button size="sm" onClick={() => live.onNavigate(live.hrefs.calendar)}>Open leave calendar</Button>}>
                 {d.away.length === 0 ? <p className="yx-tim-muted">No one in your team is away this week.</p> : (
                   <ul className="yx-tim-list">

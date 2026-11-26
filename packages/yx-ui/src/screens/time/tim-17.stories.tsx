@@ -19,3 +19,25 @@ export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const Failed: S = { name: 'Error', args: { state: 'error' } };
 export const Phone: StoryObj<typeof LeaveHomePhone> = { name: 'Phone · employee', render: () => <LeaveHomePhone />, ...phone };
 export const PhoneManager: StoryObj<typeof LeaveHomePhone> = { name: 'Phone · manager', render: () => <LeaveHomePhone persona="mgr" />, ...phone };
+// Answer 2759: the manager's overview cards (counts and names only, never the leave type).
+export const ManagerOverviewCards: S = {
+  name: 'Manager · overview cards',
+  render: () => (
+    <LeaveHomeScreen
+      mgrLive={{
+        state: 'ready',
+        data: {
+          today: '2026-11-26',
+          waiting: [],
+          otherWaiting: 0,
+          away: [{ employeeId: 'e3', name: 'Ravi Kumar', type: 'Leave', from: '2026-11-24', to: '2026-11-27' }],
+          cards: { unplanned: { count: 2, people: [{ employeeId: 'e1', name: 'Arjun Kulkarni', requests: 2 }, { employeeId: 'e2', name: 'Meera Krishnan', requests: 1 }] }, noLeave: { days: 90, count: 1, people: [{ employeeId: 'e4', name: 'Suresh Pillai' }] } },
+        },
+        onOpen: async () => { throw new Error('Not in this story'); },
+        onDecide: async () => ({}),
+        onNavigate: () => undefined,
+        hrefs: { approvals: '#', calendar: '#' },
+      }}
+    />
+  ),
+};

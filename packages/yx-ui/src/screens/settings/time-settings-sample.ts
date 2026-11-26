@@ -468,6 +468,17 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "off"
   },
+  "leave.overview.no_leave_days": {
+    "label": "Team leave: \"no leave taken\" means none approved in the last (days)",
+    "values": [
+      "30",
+      "60",
+      "90",
+      "120",
+      "180"
+    ],
+    "default": "90"
+  },
   "leave.comp_off.expiry_days": {
     "label": "Comp-off must be used within (days of the work)",
     "values": [

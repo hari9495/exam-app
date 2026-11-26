@@ -30,10 +30,10 @@ describe('Time & Leave settings (S-2): every hidden setting has a field', () => 
   it('the 40 settings that had no screen each sit on exactly one drawn page, with the starter value marked', () => {
     const keys = unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)));
     // 48 here (batch A item 7 added the two hourly-permission settings on 3.5, A9 the office-or-remote day rule, batch C item 16
-    // the five short-hours and breaks settings on 3.5, 2629 the block-leave next-year days, 2757 comp-off from the roster); 3.11's
+    // the five short-hours and breaks settings on 3.5, 2629 the block-leave next-year days, 2757 comp-off from the roster, 2759 the no-leave window); 3.11's
     // one (timesheet.tool_suggestions) is on the Projects settings page.
-    expect(keys).toHaveLength(49);
-    expect(new Set(keys).size).toBe(49);
+    expect(keys).toHaveLength(50);
+    expect(new Set(keys).size).toBe(50);
     expect(TIME_SETTINGS['3.11']).toBeUndefined();
     // The one 3.11 is Projects' page: its pre-fill switch is owned by the projects API since P-3 (answer 1409).
     const v = { 'projects.enabled': 'on', 'timesheet.tool_suggestions': 'off' };

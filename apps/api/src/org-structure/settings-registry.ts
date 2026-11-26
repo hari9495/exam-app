@@ -40,7 +40,7 @@ const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 
  */
 export const LEAVE_PAGE_KEYS: ReadonlySet<string> = new Set([
   'leave.notice_days.default', 'leave.on_behalf.approval', 'leave.send_back', 'leave.encashment.window', 'leave.year_end.encash_excess',
-  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.comp_off.auto_from_roster', 'leave.block_leave.days', 'leave.block_leave.next_year_days',
+  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.comp_off.auto_from_roster', 'leave.overview.no_leave_days', 'leave.block_leave.days', 'leave.block_leave.next_year_days',
   'leave.optional_holiday.prorate_on_move', 'leave.year_start_month', 'leave.block_dates.mode',
 ]);
 
@@ -575,6 +575,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.comp_off.claim_within_days': { label: 'Claim comp-off within (days of the work)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['7', '15', '30', '45', '60'], default: '30' },
   // Answer 2757: off by default; the claim and the manager's approval stay either way.
   'leave.comp_off.auto_from_roster': { label: 'Credit comp-off automatically when the roster puts someone to work on a weekly off or holiday and they work it', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Answer 2759: the manager's "No leave taken" card counts people with no approved leave in this many days.
+  'leave.overview.no_leave_days': { label: 'Team leave: "no leave taken" means none approved in the last (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '120', '180'], default: '90' },
   'leave.comp_off.expiry_days': { label: 'Comp-off must be used within (days of the work)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['30', '45', '60', '90', '180', '365', 'never'], default: '60' },
   // TIM-24: encashment while in service: the month the window is open (off: only at exit), the most days a year and
   // the days that must stay after encashing. The daily rate follows payroll.leave_encashment_basis.
