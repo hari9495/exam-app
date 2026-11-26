@@ -853,3 +853,4 @@ Because of its size, the batch is built in five parts, each with its own commits
   - 2760: peers are people with the same manager today; the peers view shows only "away", read-only.
   - 2761: internal moves: the manager is told by default; a company setting "the manager approves releasing a person" (off by default) sends it through the approvals engine, and no answer in 5 working days goes to HR.
   - 2762 (payroll review M3): a "manager or supervisor" field on the job record, set by HR, used for the Tamil Nadu and Delhi LWF exclusions.
+- 2780 (IT assets): the Finance role template holds asset.view as well as asset.finance.view, so Finance sees the whole register including who holds each asset. Founder answer (27 Nov 2026, "all ok"): keep it; Finance needs the holder to chase recoveries and write-offs; a company that wants it narrower makes its own role.
