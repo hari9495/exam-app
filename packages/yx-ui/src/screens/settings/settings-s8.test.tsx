@@ -10,8 +10,8 @@ const def = (values: string[], d: string): RegistryDef => ({ label: 'x', scopes:
 const data = (registry: Record<string, RegistryDef>, company: Record<string, string> = {}): TimeSettingsData => ({ registry, company, elsewhere: {}, limits: {}, canEdit: true, canGuard: false, lastChange: null });
 
 describe('S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
-  it('the 14 expense and 18 performance choices each sit once on their page, and nowhere else', () => {
-    expect(keysOf('4.8')).toHaveLength(14);
+  it('the 16 expense and 18 performance choices each sit once on their page, and nowhere else', () => {
+    expect(keysOf('4.8')).toHaveLength(16); // T2-B item 67 added the advances switch and the advance limit
     expect(keysOf('4.8').every((k) => k.startsWith('expense.'))).toBe(true);
     expect(keysOf('6.3')).toHaveLength(19); // batch F item 30: perf.goal.stale_days
     expect(keysOf('6.3').every((k) => k.startsWith('perf.'))).toBe(true);
