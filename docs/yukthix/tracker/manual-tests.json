@@ -29226,5 +29226,22 @@
                               "Screens/Pay/My salary (T2-B 63)"
                     ],
                     "note": "T2-B item 63, answer 2860 (approved only; the API still returns requests and names in one's own history until the founder answers). No API change: the PAY-12 history and the salary on a day already allow self. Positive and negative: kit my-salary.test.tsx (3 tests); web yx-nav.test.ts (My salary next to Payslips)."
+          },
+          {
+                    "id": "MT-T2B-64-PAY-SUMMARY",
+                    "area": "T2-B 64 (Pay B1): the pay summary at the top of Me › Payslips (already live)",
+                    "screen": "Me › Payslips (PAY-21)",
+                    "url": "http://localhost:3000/yx/me/payslips",
+                    "account": "panel@demo-org.test (employee with a published payslip that has a day of unpaid leave); a new joiner with no payslip yet.",
+                    "steps": [
+                              "Open Me › Payslips.",
+                              "Read the top of the page and the Days card.",
+                              "Negative: open the page as the new joiner with no payslip."
+                    ],
+                    "expected": "Step 1: the latest payslip opens first (the last pay cycle). Step 2: net pay, gross, deductions and the payment status at the top; 'Days in <month>' with '<n> paid days of <m> · 1 unpaid'; Download PDF and Raise a query beside it. Step 3: 'No payslips yet.' with how payslips are published.",
+                    "stories": [
+                              "Screens/Pay/PAY-21 · Payslip viewer"
+                    ],
+                    "note": "T2-B item 64 was found live (2753, answer 2864): no change. Kit employee-pay.test.tsx covers the payslip page."
           }
 ]
