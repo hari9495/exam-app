@@ -619,7 +619,8 @@ describe('Lifecycle batch 6c', () => {
     try {
       const nisha = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Nisha', familyName: run, employeeCode: 'EX-W01', joinedOn: '2026-04-06', workEmail: `ex-w01@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
       const bought = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`.replace(/-02-29$/, '-02-28');
-      const tag = `WD-${run}`;
+      // Not WD-${run}: the earlier written-down test already uses that tag.
+      const tag = `WDL-${run}`;
       const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Written-down laptop', tag, legalEntityId: ids.entity, locationId: ids.blr, purchasedOn: bought, cost: '90000.00' }).expect(201)).body.id as string;
       await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: nisha, issuedOn: today, condition: 'Good' }).expect(200);
       const lwd = addDays(today, 60);
@@ -1069,7 +1070,8 @@ describe('Lifecycle batch 6c', () => {
     expect(await seatsOf('mgr')).toEqual(expect.arrayContaining([m365]));
     expect(await seatsOf('sita')).toEqual(expect.arrayContaining([m365]));
     // Negative: a peer and another company: not found; asset.view at another place only: the person, but not the seat.
-    await api('meena', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
+    // A peer with no asset key (Arun, same manager). Meena is no longer a plain peer here: an earlier test made her a site asset manager at Bengaluru.
+    await api('arun', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
     await api('adminB', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
     const far = await inA(async (tx) => {
       const loc = await tx.location.create({ data: { ...o, legalEntityId: ids.entity, name: `Mysuru ${run}`, code: `M${run.slice(0, 4)}`, address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } });
