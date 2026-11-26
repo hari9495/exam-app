@@ -138,4 +138,10 @@ describe('Answer 226: the job workspace "Referrals & internal" tab (live)', () =
     // Negative: never "told" at the same time.
     expect(screen.queryByText(/is told when you/)).toBeNull();
   });
+
+  it('answer 2841: an application waiting for the manager’s release says so; others do not', () => {
+    show(<InternalJobsScreen jobs={OPEN} applications={[{ ...APPS[0]!, waitingForManager: true }, ...APPS.slice(1).map((a) => ({ ...a, waitingForManager: false }))]} />);
+    const card = screen.getByText('My applications').closest('section, div')!.parentElement!;
+    expect(within(card).getAllByText(/Waiting for your manager/)).toHaveLength(1);
+  });
 });

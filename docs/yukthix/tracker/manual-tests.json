@@ -29278,5 +29278,24 @@
                               "Screens/Performance/Kit · Growth building blocks (Goal import)"
                     ],
                     "note": "New table goal_templates (forced RLS, in rls-isolation). The CSV takes KPI goals; objectives with key results are added on the Goals page (question 2881). Imported goals are drafts (question 2882)."
+          },
+          {
+                    "id": "MT-T2C-2841",
+                    "area": "Answer 2841: 'Waiting for your manager' on HIR-13 My applications",
+                    "screen": "Hiring › Internal jobs (HIR-13) › My applications",
+                    "url": "http://localhost:3000/yx/hiring/internal-jobs",
+                    "account": "HR admin (to turn on the internal-move release); an employee with a manager; that manager (panel@demo-org.test).",
+                    "steps": [
+                              "As HR turn on 'the current manager releases an internal applicant' (Settings › Hiring). Open an internal job.",
+                              "As the employee open Hiring › Internal jobs and apply for the job. Look at My applications.",
+                              "As the manager approve the release in the approvals inbox. As the employee reload My applications.",
+                              "Apply for a second internal job; as the manager refuse the release. Reload My applications as the employee.",
+                              "Negative: turn the setting off and apply for a third job; look at My applications."
+                    ],
+                    "expected": "Step 2: the new application shows 'Applied … · Waiting for your manager'. Step 3: the line no longer says it; the status follows the pipeline as before. Step 4: the refused one does not say 'Waiting for your manager' either (the usual approval notice tells the person). Step 5: no waiting line, because the manager is only told. Phone view shows the same line.",
+                    "stories": [
+                              "Screens/Hiring/HIR-13 · Internal jobs (My applications · waiting for your manager)"
+                    ],
+                    "note": "GET /api/v1/internal-applications/mine now sends waitingForManager per application."
           }
 ]

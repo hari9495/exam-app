@@ -8,7 +8,7 @@ import { loadState } from '../../../../../lib/yx-org';
 import { useOrgBranding } from '../../../../../lib/hooks/useBranding';
 import { internalJob, type ApiInternalJob } from '../../../../../lib/yx-internal-jobs';
 
-type Mine = { entryId: string; jobTitle: string; status: InternalApplication['status']; appliedAt: string };
+type Mine = { entryId: string; jobTitle: string; status: InternalApplication['status']; appliedAt: string; waitingForManager?: boolean };
 type Eligibility = { eligible: boolean; title?: string; detail?: string; managerName: string | null; tellManager: 'on_apply' | 'at_offer'; managerRelease?: boolean };
 
 // Hiring › Internal jobs (HIR-13): the designed screen with `live`, for anyone with an employee record. The jobs shown on
@@ -26,7 +26,7 @@ export default function YxInternalJobsPage() {
   return (
     <InternalJobsScreen
       jobs={(jobs.data ?? []).map(internalJob)}
-      applications={(mine.data ?? []).map((a) => ({ id: a.entryId, job: a.jobTitle, applied: new Date(a.appliedAt), status: a.status }))}
+      applications={(mine.data ?? []).map((a) => ({ id: a.entryId, job: a.jobTitle, applied: new Date(a.appliedAt), status: a.status, waitingForManager: Boolean(a.waitingForManager) }))}
       live={{
         state: state === 'ready' ? 'ready' : state === 'loading' ? 'loading' : 'error',
         onRetry: () => void Promise.all([jobs.refetch(), mine.refetch(), rule.refetch()]),

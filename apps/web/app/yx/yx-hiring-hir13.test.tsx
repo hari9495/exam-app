@@ -24,11 +24,12 @@ const wrap = (ui: React.ReactElement) =>
 const api = apiFetch as jest.Mock;
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const JOB = { id: 'j1', title: 'Senior QA Engineer', location: 'Chennai', department: 'Quality', employmentType: 'FULL_TIME', postedAt: '2026-11-02T05:00:00Z' };
+let mine: unknown[] = [{ entryId: 'e0', jobTitle: 'Plant Head', status: 'Interview', appliedAt: '2026-10-01T05:00:00Z' }];
 const routes = (eligibility: Record<string, unknown>, post: () => Promise<unknown> = async () => ({ id: 'e1' })) =>
   api.mockImplementation(async (path: string, init?: { method?: string }) => {
     if (init?.method === 'POST') return post();
     if (path === '/internal-applications/jobs') return [JOB];
-    if (path === '/internal-applications/mine') return [{ entryId: 'e0', jobTitle: 'Plant Head', status: 'Interview', appliedAt: '2026-10-01T05:00:00Z' }];
+    if (path === '/internal-applications/mine') return mine;
     if (path === '/internal-applications/eligibility') return eligibility;
     throw new Error(`unexpected ${path}`);
   });
@@ -68,6 +69,19 @@ describe('HIR-13 Internal jobs page', () => {
     await ue.click(await screen.findByRole('button', { name: 'Apply for Senior QA Engineer' }));
     expect(screen.queryByText(/is asked to release you/)).toBeNull();
     expect(screen.getByText(/Your manager, Divya Menon, is told when you apply/)).toBeInTheDocument();
+  });
+
+  it('answer 2841: My applications says "Waiting for your manager" while the release is pending, and only then', async () => {
+    mine = [
+      { entryId: 'e0', jobTitle: 'Plant Head', status: 'Applied', appliedAt: '2026-10-01T05:00:00Z', waitingForManager: true },
+      { entryId: 'e2', jobTitle: 'Shift Lead', status: 'Interview', appliedAt: '2026-09-01T05:00:00Z', waitingForManager: false },
+    ];
+    routes({ eligible: true, managerName: 'Divya Menon', tellManager: 'on_apply', managerRelease: true });
+    wrap(<YxInternalJobsPage />);
+    expect(await screen.findByText('Shift Lead')).toBeInTheDocument();
+    expect(screen.getAllByText(/Waiting for your manager/)).toHaveLength(1);
+    expect(screen.getByText(/Waiting for your manager/).closest('li')).toHaveTextContent('Plant Head');
+    mine = [{ entryId: 'e0', jobTitle: 'Plant Head', status: 'Interview', appliedAt: '2026-10-01T05:00:00Z' }];
   });
 
   it('not eligible: the company rule shows and nothing is sent', async () => {
