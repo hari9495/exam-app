@@ -371,6 +371,26 @@ describe('Lifecycle batch 6a', () => {
 
   // ------------------------------------------------------------------------------------------ isolation
 
+  it('T2-F item 43: a checklist for one employment type is used for joiners of that type; others get the company one', async () => {
+    const appr = await inA(async (tx) => (await tx.employmentType.create({ data: { organizationId: org.A.id, name: `Apprentice ${run}`, code: `AP${run.slice(0, 4)}`, category: 'apprentice' } })).id);
+    const opts = (await api('adminA', 'get', '/lifecycle/journey-templates/options').expect(200)).body as { employmentTypes: { value: string }[]; departments: { value: string }[] };
+    expect(opts.employmentTypes.map((x) => x.value)).toEqual(expect.arrayContaining([ids.perm, appr]));
+    expect(opts.departments.map((x) => x.value)).toContain(ids.dept);
+    const tick = [{ key: 'safety_induction', title: 'Safety induction', ownerType: 'hr', kind: 'tick', dueOffsetDays: 0, dependsOn: [] }];
+    await api('adminA', 'post', '/lifecycle/journey-templates').send({ kind: 'onboarding', name: 'Apprentices', active: true, employmentTypeId: 'not-a-uuid', tasks: tick }).expect(400);
+    const t = (await api('adminA', 'post', '/lifecycle/journey-templates').send({ kind: 'onboarding', name: 'Apprentices', active: true, employmentTypeId: appr, tasks: tick }).expect(201)).body;
+    expect(t).toMatchObject({ employmentTypeId: appr });
+    const add = (given: string, employmentTypeId: string) => api('hr', 'post', '/lifecycle/joiners').send({ givenName: given, familyName: run, email: `${given.toLowerCase()}-${run}@mail.test`, joiningOn: joining, legalEntityId: ids.entity, locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId, managerEmployeeId: ids.mgrEmp }).expect(201);
+    const apprentice = (await add('Ravi', appr)).body;
+    expect(await task(apprentice.journeyId, 'safety_induction')).toBeTruthy();
+    expect(await task(apprentice.journeyId, 'collect_pan')).toBeUndefined();
+    // Negative: a permanent joiner does not get the apprentice checklist.
+    const permanent = (await add('Usha', ids.perm)).body;
+    expect(await task(permanent.journeyId, 'safety_induction')).toBeUndefined();
+    expect(await task(permanent.journeyId, 'collect_pan')).toBeTruthy();
+    await api('emp', 'get', '/lifecycle/journey-templates/options').expect(403);
+  });
+
   it('two companies stay apart: B reads nothing of A, by API or by query', async () => {
     await api('adminB', 'get', `/lifecycle/journeys/${ids.journey}`).expect(404);
     await api('adminB', 'get', `/lifecycle/joiners/${ids.joiner}`).expect(404);

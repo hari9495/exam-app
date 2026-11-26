@@ -118,7 +118,7 @@ export class LifeEventsService {
       orderBy: { validFrom: 'desc' },
     });
     if (!emp || !asg) return null;
-    const place = { legalEntityId: asg.legalEntityId, locationId: asg.locationId, departmentId: asg.departmentId };
+    const place = { legalEntityId: asg.legalEntityId, locationId: asg.locationId, departmentId: asg.departmentId, employmentTypeId: asg.employmentTypeId };
     const template = await this.journeys.pickTemplate(tx, org, cand.kind, place).catch(() => null);
     if (!template) return null; // no active template fits this place
     const j = await this.journeys.startIn(tx, c, {

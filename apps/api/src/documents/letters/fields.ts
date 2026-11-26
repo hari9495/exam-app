@@ -504,6 +504,19 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
       AT_REQUEST,
     ]),
   },
+  // T2-F item 78 (Helpdesk B1): a bonafide certificate, instant like the employment certificate (HR can switch on approval).
+  {
+    letterType: 'bonafide_certificate',
+    name: 'Bonafide certificate',
+    revision: 1,
+    requiresApproval: false,
+    personSigns: false,
+    onePerPerson: false,
+    paragraphs: letter([ADDRESSEE], 'Bonafide certificate for {{employee_name}}', [
+      'This is to certify that {{employee_name}} ({{employee_code}}) is a bonafide employee of {{legal_entity}}, working as {{designation}} in the {{department}} department at {{location}} since {{joining_date}}.',
+      AT_REQUEST,
+    ]),
+  },
   {
     letterType: 'noc',
     name: 'No objection certificate (NOC)',

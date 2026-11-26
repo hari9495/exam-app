@@ -232,3 +232,7 @@
 .yx-pos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-6); }
 .yx-pos-muted { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
 @media (max-width: 960px) { .yx-pos-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* T2-F item 43: where a checklist applies (Settings › Checklists editor). */
+.yx-tpl-applies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-3); }
+@media (max-width: 640px) { .yx-tpl-applies { grid-template-columns: minmax(0, 1fr); } }

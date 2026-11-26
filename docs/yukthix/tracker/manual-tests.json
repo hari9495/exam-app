@@ -29527,5 +29527,75 @@
                               "Screens/Hiring/HIR-13 · Internal jobs (My applications · waiting for your manager)"
                     ],
                     "note": "GET /api/v1/internal-applications/mine now sends waitingForManager per application."
+          },
+          {
+                    "id": "MT-T2F-86",
+                    "area": "Batch T2-F item 86: org chart Go to top",
+                    "screen": "People › Org chart (PPL-02)",
+                    "url": "http://localhost:3000/yx/people/org-chart",
+                    "account": "An employee deep in the chart (for example a team member two levels below the head); HR.",
+                    "steps": [
+                              "As the employee open People › Org chart. It opens on you. Press 'Go to top'.",
+                              "Press 'Show me' to come back, then use Find to open someone else and press 'Go to top' again.",
+                              "Switch to the Department and Position views and press 'Go to top'.",
+                              "Negative: in a company with no people yet, open the org chart."
+                    ],
+                    "expected": "Step 1: the chart moves to the top person (or box) with nobody above, highlights them and announces 'Showing <name>'; the path to them is opened. Step 2: Show me returns to you; Go to top works from anywhere. Step 3: it goes to the first top box of that view. Step 4: no Go to top button. The button looks clickable (border, hover, pointer, focus ring).",
+                    "stories": [
+                              "Screens/People/PPL-02 · Org chart"
+                    ],
+                    "note": ""
+          },
+          {
+                    "id": "MT-T2F-78",
+                    "area": "Batch T2-F item 78: bonafide certificate",
+                    "screen": "Settings › Letters (starters); Me › Documents › Request a certificate (PPL-31)",
+                    "url": "http://localhost:3000/yx/me/documents/certificate",
+                    "account": "HR admin (letters); an employee.",
+                    "steps": [
+                              "As the employee open Request a certificate before HR adds the starter.",
+                              "As HR open the letter templates, add the 'Bonafide certificate' starter, preview it and switch it on.",
+                              "As the employee open Request a certificate again, choose 'Bonafide certificate', pick a purpose and press Generate certificate.",
+                              "Open the certificate and check the verification code on the public check page.",
+                              "As HR switch on approval for that template; as the employee ask for it again."
+                    ],
+                    "expected": "Step 1: no Bonafide certificate in the list. Step 2: the starter says the person is a bonafide employee of the company, with the designation, department, location and joining date. Step 3: it is issued at once with a reference number and a check code; a 5-second toast says so. Step 4: the public check shows 'Bonafide certificate', the name and 'current'. Step 5: it now waits for HR, like the NOC.",
+                    "stories": [
+                              "Screens/People/PPL-31 · Certificate request"
+                    ],
+                    "note": ""
+          },
+          {
+                    "id": "MT-T2F-LINKSFRAME",
+                    "area": "Batch T2-F: LinksFrame is story-only (design-live guard)",
+                    "screen": "Storybook only (no app page)",
+                    "url": "",
+                    "account": "Developer",
+                    "steps": [
+                              "Run the kit guards (design-live-guard).",
+                              "Open any story that uses LinksFrame (for example Screens/Service desk stories)."
+                    ],
+                    "expected": "Step 1: the guard passes and no longer lists '_kit: LinksFrame' as a designed screen that is not live. Step 2: the story shows the app frame around the design as before. No app page renders LinksFrame.",
+                    "stories": [],
+                    "note": "A developer check, not a founder test."
+          },
+          {
+                    "id": "MT-T2F-43",
+                    "area": "Batch T2-F item 43: joining and leaving checklists by employment type",
+                    "screen": "Settings › Checklists (edit a checklist › Applies to); People › Joiners",
+                    "url": "http://localhost:3000/yx/settings/checklists",
+                    "account": "HR admin (checklists and joiners).",
+                    "steps": [
+                              "Open Settings › Checklists › Joining › Edit checklist on your company checklist. Look at 'Applies to' (legal entity, location, department, employment type). Leave all empty and save.",
+                              "Make a second joining checklist (copy or new) with a different first task, set Employment type to 'Apprentice' (or another type you use), save.",
+                              "Add a joiner with employment type Apprentice; open their checklist.",
+                              "Add a joiner with employment type Permanent; open their checklist.",
+                              "Set a department as well on the apprentice checklist and add an apprentice joiner in another department."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; empty boxes mean any. Step 2: saved; the checklist applies only to that type. Step 3: the apprentice gets the apprentice checklist. Step 4: the permanent joiner gets the company checklist (negative). Step 5: that apprentice gets the company checklist, because the apprentice one does not fit their department. When several fit, the most specific is used (an employment type counts like a department). Leaving checklists work the same way.",
+                    "stories": [
+                              "Screens/People/Me and set-up · My assets, first 30 days, checklists and signatories (Checklists · joining, applies to an employment type)"
+                    ],
+                    "note": "Grade is not offered yet: a joiner has no grade until they join (question 2891)."
           }
 ]
