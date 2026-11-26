@@ -246,8 +246,22 @@ describe('Payroll: the PF ceiling from 17 Sep 2026', () => {
     // Negative: another company sees none of it; a person without the arrears key is refused.
     expect(((await api('payAdminB', 'get', '/statutory/arrears-proposals').expect(200)).body as unknown[]).length).toBe(0);
     await api('emp1', 'get', '/statutory/arrears-proposals').expect(403);
+    // E3 (2652): the impact first, then accept (409 before it is worked out).
+    await api('approver1', 'post', `/statutory/arrears-proposals/${p.id}/accept`).expect(409);
+    await api('approver1', 'post', `/statutory/arrears-proposals/${p.id}/preview`).expect(200);
+    for (let i = 0; i < 120; i++) {
+      const row = ((await api('approver1', 'get', '/statutory/arrears-proposals').expect(200)).body as { id: string; impact: { status: string } | null }[]).find((x) => x.id === p.id);
+      if (row?.impact?.status === 'ready') break;
+      await new Promise((ok) => setTimeout(ok, 250));
+    }
     await api('approver1', 'post', `/statutory/arrears-proposals/${p.id}/accept`).expect(200);
-    const sheet = await scoped((tx) => tx.arrearsWorksheet.findFirstOrThrow({ where: { employeeId: ids.emp1, sourceRef: p.id } }));
+    // E3 review item 6: the drafts are made by the arrears job (bounded wait).
+    let sheet = await scoped((tx) => tx.arrearsWorksheet.findFirst({ where: { employeeId: ids.emp1, sourceRef: p.id } }));
+    for (let i = 0; i < 120 && !sheet; i++) {
+      await new Promise((ok) => setTimeout(ok, 250));
+      sheet = await scoped((tx) => tx.arrearsWorksheet.findFirst({ where: { employeeId: ids.emp1, sourceRef: p.id } }));
+    }
+    if (!sheet) throw new Error('no worksheet from the accepted proposal');
     const lines = await scoped((tx) => tx.arrearsWorksheetLine.findMany({ where: { worksheetId: sheet.id } }));
     const pf = lines.find((l) => l.componentCode === 'pf_employee')!;
     expect([pf.asPaid?.toFixed(2), pf.corrected.toFixed(2), pf.difference?.toFixed(2)]).toEqual(['1800.00', '3000.00', '1200.00']);

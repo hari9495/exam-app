@@ -51,6 +51,12 @@ const totalsOf = (lines: { kind: string; difference: Prisma.Decimal | null }[]) 
   total: lines.reduce((t, l) => (l.difference === null || l.kind === 'employer' ? t : l.kind === 'deduction' ? t.sub(l.difference) : t.add(l.difference)), D(0)),
   employerCost: lines.reduce((t, l) => (l.difference !== null && l.kind === 'employer' ? t.add(l.difference) : t), D(0)),
 });
+/** E3: which "recalculate when" switch a trigger reads (answer 2651; LOP is not a trigger, 2786). */
+export type Trigger = 'salary' | 'joining';
+/** Drafts made by a trigger or an accepted proposal: a newer draft over the same months replaces them. */
+const SYSTEM = ['rule', 'salary', 'joining'];
+type Carried = { asPaid: Prisma.Decimal; confirmedBy: string | null; confirmReason: string | null };
+type Line = { period: string; componentCode: string; asPaid: Prisma.Decimal | null; corrected: Prisma.Decimal; difference: Prisma.Decimal | null; baseSource: string; kind: Kind; confirmedBy: string | null; confirmReason: string | null };
 const months = (from: string, to: string) => {
   const out: string[] = [];
   for (let m = from; m <= to; m = nextMonth(m)) out.push(m);
@@ -244,55 +250,27 @@ export class ArrearsService {
     };
   }
 
-  /** Works out one person's worksheet (in the caller's transaction, the pay guard open for the entity). */
-  async worksheetIn(
-    tx: Tx,
-    c: CompanyContext,
-    by: string,
-    em: Prisma.EmploymentGetPayload<object>,
-    from: string,
-    to: string,
-    source: 'change' | 'rule' | 'manual',
-    sourceRef: string | null,
-    reason: string,
-  ) {
+  /**
+   * One person's worksheet lines over the months, not saved: corrected (the engine on today's records) less as paid.
+   * `trigger` leaves out the components whose "recalculate when" switch is off for it (E3, answer 2651); `carried` are
+   * bases someone confirmed by hand on a draft this one replaces (E3: a re-draft never wipes them).
+   */
+  private async linesFor(tx: Tx, c: CompanyContext, by: string, em: Prisma.EmploymentGetPayload<object>, list: string[], trigger: Trigger | undefined, carried: Map<string, Carried>) {
     const org = c.organizationId;
-    const today = todayIst().slice(0, 7);
-    if (from > to) throw new BadRequestException('The first month is after the last.');
-    if (to > today) throw new BadRequestException('Arrears are for months already paid, not future ones.');
-    const list = months(from, to);
-    if (list.length > 36) throw new BadRequestException('Arrears go back at most 36 months at a time.');
-    // E3 review item 1: one worksheet at a time per employment, and never two open drafts over the same months (both
-    // approved, they would pay the same money twice: an open draft's difference is not in the other's as-paid).
-    await lock(tx, `arrears-employment:${em.id}`);
-    const open = await tx.arrearsWorksheet.findFirst({ where: { organizationId: org, employmentId: em.id, status: 'draft', fromMonth: { lte: asDate(`${to}-01`) }, toMonth: { gte: asDate(`${from}-01`) } } });
-    if (open) throw new ConflictException({ statusCode: 409, code: 'OPEN_DRAFT', message: `An open draft worksheet already covers ${dateOf(open.fromMonth).slice(0, 7)} to ${dateOf(open.toMonth).slice(0, 7)} for this person. Approve or discard it first.` });
     const rules = await this.rules.published();
-    const w = await tx.arrearsWorksheet.create({
-      data: {
-        organizationId: org,
-        legalEntityId: em.legalEntityId,
-        employeeId: em.employeeId,
-        employmentId: em.id,
-        source,
-        sourceRef,
-        fromMonth: asDate(`${from}-01`),
-        toMonth: asDate(`${to}-01`),
-        reason,
-        createdBy: by,
-      },
-    });
-    const comps = await tx.payComponent.findMany({ where: { organizationId: org, statutory: { in: [...EMPLOYEE_SHARE, ...EMPLOYER_SHARE] } }, select: { code: true, statutory: true } });
-    const kindOf = new Map<string, Kind>([...comps.map((x) => [x.code, EMPLOYEE_SHARE.includes(x.statutory!) ? 'deduction' : 'employer'] as [string, Kind]), ...EMPLOYER_LINES.map((x) => [x, 'employer'] as [string, Kind])]);
-    const kind = (code: string, lineKind?: string): Kind | null => (kindOf.get(code) ?? (lineKind === undefined || lineKind === 'earning' ? 'earning' : null));
-    const made: { kind: string; difference: Prisma.Decimal | null }[] = [];
+    const comps = await tx.payComponent.findMany({ where: { organizationId: org }, select: { code: true, statutory: true, arrearsOnSalaryChange: true, arrearsOnJoining: true } });
+    const kindOf = new Map<string, Kind>([...comps.filter((x) => x.statutory && [...EMPLOYEE_SHARE, ...EMPLOYER_SHARE].includes(x.statutory)).map((x) => [x.code, EMPLOYEE_SHARE.includes(x.statutory!) ? 'deduction' : 'employer'] as [string, Kind]), ...EMPLOYER_LINES.map((x) => [x, 'employer'] as [string, Kind])]);
+    const off = new Set(trigger ? comps.filter((x) => !(trigger === 'salary' ? x.arrearsOnSalaryChange : x.arrearsOnJoining)).map((x) => x.code) : []);
+    const kind = (code: string, lineKind?: string): Kind | null => (off.has(code) ? null : (kindOf.get(code) ?? (lineKind === undefined || lineKind === 'earning' ? 'earning' : null)));
+    const rows: Line[] = [];
     for (const m of list) {
       const { from: ms, to: me } = monthRange(m);
       if (dateOf(em.joinedOn) > me || (em.exitedOn && dateOf(em.exitedOn) < ms)) continue;
       const run = await monthRun(tx, org, em, m, by);
       let corrected: Map<string, Prisma.Decimal>;
       try {
-        const r = calculatePayslip(await this.runs.snapshot(tx, c, run, em.id, rules), rules);
+        // E3 review item 7: ESI coverage of the period's first month comes from that month's approved payslip, not today's wage.
+        const r = calculatePayslip(await this.runs.snapshot(tx, c, run, em.id, rules, undefined, true, true), rules);
         corrected = new Map();
         for (const l of r.lines) if (kind(l.code, l.kind)) corrected.set(l.code, (corrected.get(l.code) ?? D(0)).add(l.amount));
       } catch (e) {
@@ -312,7 +290,7 @@ export class ArrearsService {
         const imported = await tx.asPaidLine.findMany({ where: { organizationId: org, employmentId: em.id, periodStart: asDate(ms) } });
         if (imported.length) {
           base = 'import';
-          for (const l of imported) put(l.componentCode, l.amount);
+          for (const l of imported) if (kind(l.componentCode)) put(l.componentCode, l.amount);
         }
       }
       if (base !== 'missing') {
@@ -325,36 +303,75 @@ export class ArrearsService {
             worksheetId: { in: (await tx.arrearsWorksheet.findMany({ where: { organizationId: org, employmentId: em.id, status: 'approved' }, select: { id: true } })).map((x) => x.id) },
           },
         });
-        for (const l of earlier) put(l.componentCode, l.difference!);
+        for (const l of earlier) if (kind(l.componentCode)) put(l.componentCode, l.difference!);
       }
       for (const code of [...new Set([...corrected.keys(), ...paid.keys()])].sort()) {
         const cor = corrected.get(code) ?? D(0);
-        const asPaid = base === 'missing' ? null : (paid.get(code) ?? D(0));
+        const kept = base === 'missing' ? carried.get(`${ms}|${code}`) : undefined;
+        const asPaid = kept ? kept.asPaid : base === 'missing' ? null : (paid.get(code) ?? D(0));
         if (asPaid && cor.eq(asPaid)) continue;
-        const difference = asPaid ? cor.sub(asPaid) : null;
-        const k = kind(code)!;
-        made.push({ kind: k, difference });
-        await tx.arrearsWorksheetLine.create({
-          data: {
-            organizationId: org,
-            legalEntityId: em.legalEntityId,
-            employeeId: em.employeeId,
-            worksheetId: w.id,
-            period: asDate(ms),
-            componentCode: code,
-            asPaid,
-            corrected: cor,
-            difference,
-            baseSource: base,
-            kind: k,
-          },
-        });
+        rows.push({ period: ms, componentCode: code, asPaid, corrected: cor, difference: asPaid ? cor.sub(asPaid) : null, baseSource: kept ? 'confirmed' : base, kind: kind(code)!, confirmedBy: kept?.confirmedBy ?? null, confirmReason: kept?.confirmReason ?? null });
       }
     }
-    const { total, employerCost } = totalsOf(made);
-    const done = await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { total, employerCost } });
+    return rows;
+  }
+
+  private checkMonths(from: string, to: string) {
+    if (from > to) throw new BadRequestException('The first month is after the last.');
+    if (to > todayIst().slice(0, 7)) throw new BadRequestException('Arrears are for months already paid, not future ones.');
+    const list = months(from, to);
+    if (list.length > 36) throw new BadRequestException('Arrears go back at most 36 months at a time.');
+    return list;
+  }
+
+  /** E3 "impact preview" (answer 2652): what a worksheet would come to, nothing saved. */
+  async previewIn(tx: Tx, c: CompanyContext, by: string, em: Prisma.EmploymentGetPayload<object>, from: string, to: string, trigger?: Trigger) {
+    const rows = await this.linesFor(tx, c, by, em, this.checkMonths(from, to), trigger, new Map());
+    return { ...totalsOf(rows), lines: rows.length };
+  }
+
+  /** Works out one person's worksheet (in the caller's transaction, the pay guard open for the entity). */
+  async worksheetIn(
+    tx: Tx,
+    c: CompanyContext,
+    by: string,
+    em: Prisma.EmploymentGetPayload<object>,
+    from: string,
+    to: string,
+    source: 'change' | 'rule' | 'manual' | 'salary' | 'joining',
+    sourceRef: string | null,
+    reason: string,
+    trigger?: Trigger,
+  ) {
+    const org = c.organizationId;
+    const list = this.checkMonths(from, to);
+    // E3 review item 1: one worksheet at a time per employment, and never two open drafts over the same months (both
+    // approved, they would pay the same money twice: an open draft's difference is not in the other's as-paid).
+    await lock(tx, `arrears-employment:${em.id}`);
+    const open = await tx.arrearsWorksheet.findMany({ where: { organizationId: org, employmentId: em.id, status: 'draft', fromMonth: { lte: asDate(`${to}-01`) }, toMonth: { gte: asDate(`${from}-01`) } } });
+    // A hand-made draft (by payroll, alone or for a change) is never replaced; a newer draft over a trigger's or a rule's is.
+    const hand = open.find((x) => !SYSTEM.includes(x.source));
+    if (hand) throw new ConflictException({ statusCode: 409, code: 'OPEN_DRAFT', message: `An open draft worksheet already covers ${dateOf(hand.fromMonth).slice(0, 7)} to ${dateOf(hand.toMonth).slice(0, 7)} for this person. Approve or discard it first.` });
+    // E3: a system draft (a salary change, joining date or rule) over the same months is replaced by the new one; bases
+    // someone confirmed by hand on it are carried over, never wiped.
+    const carried = new Map<string, Carried>();
+    for (const x of open) {
+      for (const l of await tx.arrearsWorksheetLine.findMany({ where: { organizationId: org, worksheetId: x.id, baseSource: 'confirmed' } }))
+        carried.set(`${dateOf(l.period)}|${l.componentCode}`, { asPaid: l.asPaid!, confirmedBy: l.confirmedBy, confirmReason: l.confirmReason });
+      await tx.arrearsWorksheet.update({ where: { id: x.id }, data: { status: 'discarded', discardReason: `Replaced by a newer draft (${source === 'joining' ? 'joining date' : source === 'rule' ? 'rule change' : source === 'salary' ? 'salary change' : 'by hand'}); bases confirmed by hand carried over.`, discardedBy: by, discardedAt: new Date(), version: { increment: 1 } } });
+      await audit(tx, c, 'payroll.arrears.worksheet_replaced', 'arrears_worksheet', x.id, { source, sourceRef, carried: carried.size });
+    }
+    const rows = await this.linesFor(tx, c, by, em, list, trigger, carried);
+    const { total, employerCost } = totalsOf(rows);
+    const w = await tx.arrearsWorksheet.create({
+      data: { organizationId: org, legalEntityId: em.legalEntityId, employeeId: em.employeeId, employmentId: em.id, source, sourceRef, fromMonth: asDate(`${from}-01`), toMonth: asDate(`${to}-01`), reason, createdBy: by, total, employerCost },
+    });
+    if (rows.length)
+      await tx.arrearsWorksheetLine.createMany({
+        data: rows.map((l) => ({ organizationId: org, legalEntityId: em.legalEntityId, employeeId: em.employeeId, worksheetId: w.id, period: asDate(l.period), componentCode: l.componentCode, asPaid: l.asPaid, corrected: l.corrected, difference: l.difference, baseSource: l.baseSource, kind: l.kind, confirmedBy: l.confirmedBy, confirmReason: l.confirmReason })),
+      });
     await audit(tx, c, 'payroll.arrears.worksheet_created', 'arrears_worksheet', w.id, { employeeId: em.employeeId, from, to, source, sourceRef, total: total.toFixed(2), employerCost: employerCost.toFixed(2) });
-    return done;
+    return w;
   }
 
   async createWorksheet(ctx: TenantContext, user: ScopeUser, dto: WorksheetCreateDto) {
@@ -563,6 +580,8 @@ export class ArrearsService {
       status: p.status,
       reason: p.reason,
       decidedBy: p.decidedBy,
+      // E3 (answer 2787): the preview's people, total and largest change, once worked out.
+      impact: p.impactStatus ? { status: p.impactStatus, people: p.impactPeople, total: p.impactTotal?.toFixed(2) ?? null, largest: p.impactLargest?.toFixed(2) ?? null } : null,
     };
   }
 
@@ -583,35 +602,6 @@ export class ArrearsService {
     if (!p || !ids.includes(p.legalEntityId)) throw new NotFoundException('Not found');
     if (p.status !== 'open') throw new ConflictException(`This proposal is already ${p.status}.`);
     return p;
-  }
-
-  /** Accept: a worksheet for each person over the months touched (each still approved by someone else). */
-  async accept(ctx: TenantContext, user: ScopeUser, id: string) {
-    const v = await this.viewer(user);
-    return inCompany(
-      this.tenantPrisma,
-      ctx,
-      async (tx, c) => {
-        const p = await this.proposalIn(tx, c, v, id);
-        const periods = (p.periods as string[]).sort();
-        const sheets: string[] = [];
-        // E3 review item 1: someone with an open draft over these months gets none (listed, so payroll settles that draft first).
-        const skipped: string[] = [];
-        for (const employeeId of p.employees as string[]) {
-          const em = await this.employment(tx, c.organizationId, employeeId, [p.legalEntityId]);
-          try {
-            sheets.push((await this.worksheetIn(tx, c, v.userId!, em, periods[0], periods[periods.length - 1], 'rule', p.id, `${p.statute} ${p.jurisdiction} rules ${p.ruleVersion} apply to months already paid`)).id);
-          } catch (e) {
-            if ((e as { response?: { code?: string } }).response?.code !== 'OPEN_DRAFT') throw e;
-            skipped.push(employeeId);
-          }
-        }
-        await tx.statutoryArrearsProposal.update({ where: { id: p.id }, data: { status: 'accepted', decidedBy: v.userId, decidedAt: new Date() } });
-        await audit(tx, c, 'payroll.arrears.proposal_accepted', 'statutory_arrears_proposal', p.id, { statute: p.statute, ruleVersion: p.ruleVersion, worksheets: sheets.length });
-        return { id: p.id, status: 'accepted', worksheets: sheets, skipped };
-      },
-      { timeout: 120_000 },
-    );
   }
 
   async dismiss(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {

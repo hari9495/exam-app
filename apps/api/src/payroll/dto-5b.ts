@@ -190,6 +190,9 @@ export class ComponentDto {
   @IsOptional() @IsBoolean() prorated?: boolean;
   @IsOptional() @IsBoolean() onPayslip?: boolean;
   @IsOptional() @IsBoolean() inCtc?: boolean;
+  /** E3 (answer 2651): recalculate back-dated pay on a salary change / a joining date. Default: on for regular (prorated) earnings. */
+  @IsOptional() @IsBoolean() arrearsOnSalaryChange?: boolean;
+  @IsOptional() @IsBoolean() arrearsOnJoining?: boolean;
 
   @IsOptional()
   @IsString()

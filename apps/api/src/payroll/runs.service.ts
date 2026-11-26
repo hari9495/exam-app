@@ -892,7 +892,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------------------------------ the snapshot (§3.5)
 
   /** Everything one person's month is worked out from, by value (the function reads nothing else). */
-  async snapshot(tx: Tx, c: CompanyContext, run: Run, employmentId: string, rules: RuleSet[], reads = new ChunkReads([employmentId]), late = true): Promise<Snapshot> {
+  async snapshot(tx: Tx, c: CompanyContext, run: Run, employmentId: string, rules: RuleSet[], reads = new ChunkReads([employmentId]), late = true, asPaidCoverage = false): Promise<Snapshot> {
     const org = c.organizationId;
     const month = this.month(run);
     const { from, to } = monthRange(month);
@@ -996,7 +996,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const esiMode = (prof?.esi ?? (dflt('IN.ESI') === 'excluded' ? 'no' : 'by_wage')) as 'yes' | 'no' | 'by_wage';
     // ESI coverage is decided at the start of each contribution period (Apr–Sep, Oct–Mar) and kept until it ends.
     const cpStart = `${month.slice(5) >= '10' || month.slice(5) <= '03' ? (month.slice(5) <= '03' ? Number(month.slice(0, 4)) - 1 : month.slice(0, 4)) : month.slice(0, 4)}-${month.slice(5) >= '04' && month.slice(5) <= '09' ? '04' : '10'}-01`;
-    const earlier = await tx.payslip.findFirst({ where: { organizationId: org, employmentId, runType: 'regular', status: 'approved', periodStart: { gte: asDate(cpStart), lt: run.periodStart } }, orderBy: { periodStart: 'asc' } });
+    // E3 review item 7: arrears for a past month take the coverage the period really had, from the approved payslip of its
+    // first month (that month's own included), so a raise back-dated to 1 April never refunds April's ESI.
+    const earlier = await tx.payslip.findFirst({ where: { organizationId: org, employmentId, runType: 'regular', status: 'approved', periodStart: { gte: asDate(cpStart), ...(asPaidCoverage ? { lte: run.periodStart } : { lt: run.periodStart }) } }, orderBy: { periodStart: 'asc' } });
     let covered = esiMode === 'yes';
     if (esiMode === 'by_wage') {
       if (earlier) covered = (await tx.payslipLine.count({ where: { organizationId: org, payslipId: earlier.id, componentCode: { in: components.filter((x) => x.statutory === 'esi_employee').map((x) => x.code) } } })) > 0;

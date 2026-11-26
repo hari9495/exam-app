@@ -91,7 +91,9 @@ export class PayStructuresService {
     if (dto.codeWagePart && dto.codeExclusion) throw new BadRequestException('A component is either part of the Code wage or an exclusion, not both.');
     if (dto.pfBelowCeiling && !dto.pfWage) throw new BadRequestException('"Only below the PF ceiling" is a kind of PF wage: set the component as PF wage too.');
     const proration = dto.prorationText ? plain(() => checkFormula(dto.prorationText!, new Set(PAY_VARIABLES))) : null;
-    return { name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, pfBelowCeiling: !!dto.pfBelowCeiling, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
+    // E3 (answer 2651): "recalculate when" defaults from the flags: regular (prorated) earnings follow, one-off pay does not.
+    const regular = dto.kind === 'earning' && (dto.prorated ?? true);
+    return { arrearsOnSalaryChange: dto.arrearsOnSalaryChange ?? regular, arrearsOnJoining: dto.arrearsOnJoining ?? regular, name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, pfBelowCeiling: !!dto.pfBelowCeiling, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
   }
 
   createComponent(ctx: TenantContext, user: ScopeUser, dto: ComponentDto) {
@@ -125,7 +127,7 @@ export class PayStructuresService {
       this.need(v, 'payroll.template.manage');
       if (!tenantWide(v, 'payroll.template.manage')) throw new ForbiddenException('The starter template is company-wide: it needs payroll.template.manage for the whole company.');
       const added = await tx.payComponent.createMany({
-        data: [...STARTER_COMPONENTS, ...FNF_COMPONENTS, ...MODULE_COMPONENTS].map(({ statutory, ...s }) => ({ organizationId: c.organizationId, ...s, taxable: s.taxable ?? true, statutory: statutory ?? null, createdBy: c.userId })),
+        data: [...STARTER_COMPONENTS, ...FNF_COMPONENTS, ...MODULE_COMPONENTS].map(({ statutory, ...s }) => ({ organizationId: c.organizationId, ...s, taxable: s.taxable ?? true, statutory: statutory ?? null, createdBy: c.userId, ...(statutory ? {} : { arrearsOnSalaryChange: s.kind === 'earning' && (s.prorated ?? true), arrearsOnJoining: s.kind === 'earning' && (s.prorated ?? true) }) })),
         skipDuplicates: true,
       });
       let templateId: string | null = null;
