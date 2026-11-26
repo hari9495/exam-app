@@ -39,9 +39,20 @@ export function ItBudgetsScreen(p: ItBudgetsScreenProps) {
   const columns: TableColumn<Row>[] = [
     { key: 'department', header: 'Department', value: (r) => r.department },
     { key: 'budget', header: 'Budget', type: 'money', value: (r) => (r.budget === null ? null : Number(r.budget)), render: (r) => inr(r.budget) },
-    { key: 'time', header: 'Time', type: 'money', value: (r) => Number(r.time), render: (r) => inr(r.time) },
-    { key: 'lines', header: 'Fixed and material', type: 'money', value: (r) => Number(r.lines), render: (r) => inr(r.lines) },
-    { key: 'spent', header: 'Spent', type: 'money', value: (r) => Number(r.spent), render: (r) => inr(r.spent) },
+    {
+      key: 'spent',
+      header: 'Spent',
+      type: 'money',
+      value: (r) => Number(r.spent),
+      render: (r) => (
+        <span className="yx-ops-list__main">
+          <span>{inr(r.spent)}</span>
+          <span className="yx-ops-list__sub">
+            time {inr(r.time)} · costs {inr(r.lines)}
+          </span>
+        </span>
+      ),
+    },
     { key: 'left', header: 'Left', type: 'money', value: (r) => (r.left === null ? null : Number(r.left)), render: (r) => (r.left !== null && Number(r.left) < 0 ? <Badge tone="danger">{`Over by ${inr(String(-Number(r.left)))}`}</Badge> : inr(r.left)) },
   ];
   return (
