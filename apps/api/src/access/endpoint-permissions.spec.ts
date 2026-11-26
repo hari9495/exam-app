@@ -37,6 +37,7 @@ import { AnnouncementsController, ModerationController, MyEngageController, Surv
 import { CasesController, EthicsController, MisconductReportsController, MyCasesController } from '../cases/cases.controller';
 import { LearningController } from '../learning/learning.controller';
 import { LibraryController } from '../library/library.controller';
+import { ApprovalPoliciesController } from '../workflow/approval-policies.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -138,6 +139,9 @@ const IMPLICIT: Record<string, string[]> = {
   PeopleRegistersController: [],
   RestructureController: [],
   PositionsController: [],
+  // E2: approval rules, limits, "Try it", the hiring move and notices; every route has its key (pay types also check
+  // the pay approve key inside).
+  ApprovalPoliciesController: [],
   // Batch G2 item 12: announcements need engage.announce; the feed is one's own (audience checked per announcement).
   AnnouncementsController: [],
   // Items 100, 73, 74, 75: my spaces, an invitation, my own team or a readable post (404 otherwise).
@@ -148,7 +152,7 @@ const IMPLICIT: Record<string, string[]> = {
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController, PositionsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController, PositionsController, ApprovalPoliciesController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

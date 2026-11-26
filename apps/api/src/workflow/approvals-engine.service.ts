@@ -7,7 +7,8 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '../rules-engine/conditions';
 import { ApprovalCards } from './approval-channels';
-import { ApprovalPolicies } from './approval-policies';
+import { type NoticeEvent, mergeNotice, noticeTextFor } from './approval-notices';
+import { ApprovalPolicies, declaredFields, type ChosenRoute } from './approval-policies';
 import { type ChainSpec, type KeyHoldersSpec, type Place, type Requirement, chainUntil, keyHolders, meets, placeOf } from './approver-kinds';
 
 // P03 approvals engine (shared platform engine, built first for the Service Desk catalogue, SD-2.05; leave, expenses
@@ -22,7 +23,7 @@ import { type ChainSpec, type KeyHoldersSpec, type Place, type Requirement, chai
 //   - approvers see only the summary the module chose for them (never the record itself, never sensitive answers);
 //   - auto-approve / auto-reject after a timeout only for request types that allow it and are not high risk (P03 Q2).
 
-export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'app_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string } | { kind: 'hr' } | KeyHoldersSpec | ChainSpec;
+export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'hiring_manager' } | { kind: 'cost_centre_owner'; field: string } | { kind: 'app_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string } | { kind: 'hr' } | KeyHoldersSpec | ChainSpec;
 export interface StepSpec {
   name: string;
   approvers: ApproverSpec[];
@@ -124,6 +125,20 @@ export interface SubmitInput {
   fallbackWording?: { who: string; check: string };
   /** 'high' for this request only (e.g. a costly order): it then never auto-approves or auto-rejects on timeout. */
   risk?: 'high';
+  /** E2: the company's policy for the type applies even when the module has no steps of its own (hiring once moved). */
+  alwaysRoute?: boolean;
+}
+
+/** E2: a request's route, resolved but not saved (submit saves it; "Try it" shows it). */
+export interface RouteResult {
+  steps: FrozenStep[];
+  /** Steps that went to the fallback people (nobody else could approve them). */
+  noApprover: string[];
+  /** Steps nobody at all can approve (submit refuses the request). */
+  empty: string[];
+  version: number | null;
+  /** The company rule that matched ("Otherwise" for the default route), or null for the module's built-in steps. */
+  rule: string | null;
 }
 
 /**
@@ -306,6 +321,11 @@ export class ApprovalsEngine {
     return t?.cardPreview ? t.cardPreview(tx, req).catch(() => 'neutral' as const) : 'neutral';
   }
 
+  /** E2: whether the company has its own policy for the type (hiring then routes every requisition and offer by it). */
+  async hasPolicy(tx: Tx, ctx: CompanyContext, type: string): Promise<boolean> {
+    return this.policies ? this.policies.has(tx, ctx, type) : false;
+  }
+
   /** A module registers its request types once, at start-up (P03 §4.1). */
   register(t: RequestType) {
     this.types.set(t.key, t);
@@ -381,6 +401,11 @@ export class ApprovalsEngine {
       return row ? [row.ownerUserId] : [];
     }
     if (a.kind === 'users') return a.userIds;
+    // Answer 2647: the job's hiring manager, as the module put it in the request's values.
+    if (a.kind === 'hiring_manager') {
+      const v = input.payload.hiring_manager_id;
+      return typeof v === 'string' && UUID.test(v) ? [v] : [];
+    }
     // S-6 (answer 1330): the company's HR Admins.
     if (a.kind === 'hr') return this.hrAdmins(tx, org);
     return (await tx.userGroupMember.findMany({ where: { organizationId: org, groupId: a.groupId }, select: { userId: true }, take: MAX.users })).map((m) => m.userId);
@@ -421,24 +446,33 @@ export class ApprovalsEngine {
    * Freezes the route and opens the first step, inside the caller's transaction. Returns the request id (and whether it
    * was decided at once: no steps, or every step skipped), plus notices to send after commit.
    */
-  async submit(tx: Tx, ctx: CompanyContext, input: SubmitInput): Promise<{ id: string; status: string; notices: Notice[] }> {
+  /**
+   * E2: works out the route of a request: the company's policy (the first rule whose condition holds, else its
+   * "otherwise" steps) or the module's built-in steps, each resolved to people. Reads only. submit() saves what it
+   * returns; "Try it" (Settings › Approval policies) shows it, so both always route the same way. `chosen` replaces the
+   * company's saved policy (a draft being tried); undefined reads the saved one.
+   */
+  async route(tx: Tx, ctx: CompanyContext, input: SubmitInput, chosen?: ChosenRoute | null): Promise<RouteResult> {
     const org = ctx.organizationId;
-    const type = this.type(input.type);
+    this.type(input.type);
+    const fields = input.payloadFields.length ? input.payloadFields : declaredFields(input.type);
     const excluded = new Set([input.requesterUserId, input.raisedByUserId].filter((x): x is string => Boolean(x)));
     const fallback = await this.active(tx, org, input.fallbackUserIds);
     let place: Place | null = null;
     const placeFor = async () => (place ??= await placeOf(tx, org, input.subjectPersonId, input.requesterUserId, input.payload));
     const steps: FrozenStep[] = [];
     const noApprover: string[] = [];
-    // Settings S-6 (answer 1330): the company's own steps for this request type, when it set them (a request the module
-    // decides at once, with no steps, stays that way).
-    const policy = input.steps.length && this.policies ? await this.policies.stepsFor(tx, ctx, input.type) : null;
-    const own = policy?.steps ?? null;
+    const empty: string[] = [];
+    // Settings S-6 (answer 1330) and E2: the company's own steps for this request type, when it set them (a request the
+    // module decides at once, with no steps, stays that way unless the module asks for the company's route anyway).
+    const policy = chosen !== undefined ? chosen : (input.steps.length || input.alwaysRoute) && this.policies ? await this.policies.stepsFor(tx, ctx, input.type, input.payload, fields) : null;
     // Answer 1765: built-in steps of a people request take the company's reminder and escalation hours too.
-    const builtIn = own || !this.policies ? input.steps : await this.policies.builtIn(tx, ctx, input.type, input.steps);
+    const builtIn = (policy && !policy.addOn) || !this.policies ? input.steps : await this.policies.builtIn(tx, ctx, input.type, input.steps);
     // E2 review item 1: the module's required steps follow the company's own, so a saved policy can never drop a control.
-    for (const s of own ? [...own, ...input.steps.filter((x) => x.required)] : builtIn) {
-      const skip = s.skipIf ? evaluate(s.skipIf, input.payload, input.payloadFields).pass : false;
+    // Answer 2785: on add-on types (other pay types, exits, letters) the company's steps come after the module's.
+    const all = !policy ? builtIn : policy.addOn ? [...builtIn, ...policy.steps] : [...policy.steps, ...input.steps.filter((x) => x.required)];
+    for (const s of all) {
+      const skip = s.skipIf ? evaluate(s.skipIf, input.payload, fields).pass : false;
       const derived = s.approvers.some((a) => a.kind === 'key_holders' || a.kind === 'chain_until');
       const p = derived ? await placeFor() : { entityId: null, departmentId: null, locationId: null };
       let ids = await this.active(tx, org, (await Promise.all(s.approvers.map((a) => this.resolve(tx, org, a, input, p, excluded)))).flat());
@@ -451,10 +485,19 @@ export class ApprovalsEngine {
       if (!ids.length && !skip) {
         ids = fallback.filter((id) => !excluded.has(id));
         if (ids.length) noApprover.push(s.name);
+        else empty.push(s.name);
       }
-      if (!ids.length && !skip) throw new BadRequestException({ statusCode: 400, code: 'NO_APPROVER', message: `No one can approve the step "${s.name}" for this request. Ask the desk admin to check the approvers.` });
       steps.push({ ...s, approverIds: ids, need: needOf(s, ids.length), state: skip ? 'skipped' : 'waiting', ...(requires ? { requires, fallbackIds: fallback.filter((id) => !excluded.has(id)) } : {}) });
     }
+    return { steps, noApprover, empty, version: policy?.version ?? null, rule: policy?.rule ?? null };
+  }
+
+  async submit(tx: Tx, ctx: CompanyContext, input: SubmitInput): Promise<{ id: string; status: string; notices: Notice[] }> {
+    const org = ctx.organizationId;
+    const type = this.type(input.type);
+    const { steps, noApprover, empty, version } = await this.route(tx, ctx, input);
+    if (empty.length) throw new BadRequestException({ statusCode: 400, code: 'NO_APPROVER', message: `No one can approve the step "${empty[0]}" for this request. Ask the desk admin to check the approvers.` });
+    const fields = input.payloadFields.length ? input.payloadFields : declaredFields(input.type);
     const req = await tx.wfRequest.create({
       data: {
         organizationId: org,
@@ -468,8 +511,8 @@ export class ApprovalsEngine {
         subjectPersonId: input.subjectPersonId,
         steps: steps as unknown as Prisma.InputJsonValue,
         // E2 (review item 6): only the type's declared fields, as they routed it, and the policy version used.
-        payload: Object.fromEntries(input.payloadFields.filter((f) => input.payload[f.key] !== undefined).map((f) => [f.key, input.payload[f.key]])) as Prisma.InputJsonValue,
-        policyVersion: policy?.version ?? null,
+        payload: Object.fromEntries(fields.filter((f) => input.payload[f.key] !== undefined).map((f) => [f.key, input.payload[f.key]])) as Prisma.InputJsonValue,
+        policyVersion: version,
         risk: input.risk ?? type.risk,
       },
     });
@@ -1082,11 +1125,16 @@ export class ApprovalsEngine {
       try {
         const url = `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}${n.link}`;
         const from = n.actor ?? n.toRequester ?? null;
-        const { who, company } = await this.tenantPrisma.forTenant(ctx, async (tx) => ({
+        const { who, company, own } = await this.tenantPrisma.forTenant(ctx, async (tx) => ({
           who: from ? ((await this.names(tx, ctx.organizationId as string, [from])).get(from) ?? null) : null,
           company: (await tx.organization.findUnique({ where: { id: ctx.organizationId as string }, select: { name: true } }))?.name ?? null,
+          // E2 part 7: the company's own text for this event (requisitions and offers only).
+          own: await noticeTextFor(tx, ctx.organizationId as string, (await tx.wfRequest.findFirst({ where: { organizationId: ctx.organizationId as string, id: n.requestId }, select: { requestType: true } }))?.requestType ?? '', noticeEvent(n)),
         }));
-        const subject = approvalSubject(n, who, Boolean(n.toRequester)).slice(0, 150);
+        const step = n.text.split(': ').pop() ?? n.text;
+        // Review item 11: title, requester, step and link only, never the summary; the renderer HTML-escapes them.
+        const vars = { title: n.title, requester: who ?? 'Someone', step: n.toRequester ? '' : step, link: url };
+        const subject = (own ? mergeNotice(own.subject, vars) : approvalSubject(n, who, Boolean(n.toRequester))).replace(/\s+/g, ' ').slice(0, 150);
         // The designed YukthiX email (as the sign-in and account emails), one per recipient so its footer names them.
         const email = (address: string) =>
           noticeEmail({
@@ -1095,7 +1143,11 @@ export class ApprovalsEngine {
             subject,
             heading: subject,
             // The step's own name ("Manager"), never the internal "Leave: Manager" label.
-            blocks: [details([['Request', n.title], ...(n.toRequester ? [] : [['Step', n.text.split(': ').pop() ?? n.text] as [string, string]])]), button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url)],
+            blocks: [
+              ...(own ? mergeNotice(own.body, vars).split(/\n\s*\n/).map((text) => ({ kind: 'text' as const, text: text.trim() })).filter((b) => b.text) : []),
+              details([['Request', n.title], ...(n.toRequester ? [] : [['Step', step] as [string, string]])]),
+              button(n.link.startsWith('/yx/approvals') ? 'Review in YukthiX' : 'Open in YukthiX', url),
+            ],
           });
         await this.notifications.notifySystem(ctx, to, n.type, { entityType: 'wf_request', entityId: n.requestId, contextText: subject.slice(0, 300), linkPath: n.link }, email, n.actor ?? null);
       } catch (e) {
@@ -1105,6 +1157,14 @@ export class ApprovalsEngine {
       if (n.type === 'workflow.approval.needed' || n.type === 'workflow.approval.reminder') await this.cards.deliver(ctx, n.requestId, to, (tx, req) => this.previewOf(tx, req));
     }
   }
+}
+
+/** E2 part 7: which company-editable notice a notice is (answer 2648), or null for notices with no own text. */
+export function noticeEvent(n: Pick<Notice, 'type' | 'text' | 'toRequester'>): NoticeEvent | null {
+  if (n.type === 'workflow.approval.reminder') return 'reminder';
+  if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? 'escalated' : 'requested';
+  if (n.type === 'workflow.approval.decided' && n.toRequester) return n.text === 'Approved' ? 'approved' : n.text === SENT_BACK ? 'sent_back' : 'turned_down';
+  return null;
 }
 
 /** One task of a bulk decision: decided (and where its request now is), or refused and why. */
