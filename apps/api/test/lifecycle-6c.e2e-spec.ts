@@ -977,6 +977,29 @@ describe('Lifecycle batch 6c', () => {
     await api('adminB', 'post', `/lifecycle/asset-licences/${l}/seats/${seat}/free`).send({}).expect(404);
   });
 
+  it("IT assets follow-up (2825): waiving a leaver's licence-seat item frees the seat too, audited; the seat count drops", async () => {
+    const omar = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Omar', familyName: run, employeeCode: 'EX-L03', joinedOn: '2026-04-06', workEmail: `ex-l03@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+    const l = (await api('it', 'post', '/lifecycle/asset-licences').send({ software: 'Figma', softwareVersion: 'Pro', legalEntityId: ids.entity, locationId: ids.blr, seats: 3, allowOverQuota: false }).expect(201)).body.id as string;
+    await api('it', 'post', `/lifecycle/asset-licences/${l}/seats`).send({ employeeId: omar }).expect(201);
+    await api('it', 'post', `/lifecycle/asset-licences/${l}/seats`).send({ employeeId: emp.sita }).expect(201);
+    const lic = async () => (await api('it', 'get', '/lifecycle/asset-licences').expect(200)).body.rows.find((r: { id: string }) => r.id === l);
+    expect((await lic()).used).toBe(2);
+    await api('hr', 'post', '/lifecycle/exits').send({ employeeId: omar, exitType: 'end_of_contract', lwd: addDays(today, 20), reasonText: 'Contract ends' }).expect(201);
+    const item = ((await api('it', 'get', '/lifecycle/clearance/mine').expect(200)).body.rows as { id: string; title: string; status: string; version: number }[]).find((i) => i.title.includes('Figma Pro') && i.status === 'open')!;
+    // Negative: a waiver needs its reason; another company cannot touch it; nothing is freed by a refused call.
+    await api('it', 'post', `/lifecycle/clearance/${item.id}/sign-off`).send({ action: 'waive', version: item.version }).expect(400);
+    await api('adminB', 'post', `/lifecycle/clearance/${item.id}/sign-off`).send({ action: 'waive', note: 'Left', version: item.version }).expect((r) => expect([403, 404]).toContain(r.status));
+    expect((await lic()).used).toBe(2);
+    // Waived: the seat is freed (Sita keeps hers), audited on the licence as a waiver.
+    await api('it', 'post', `/lifecycle/clearance/${item.id}/sign-off`).send({ action: 'waive', note: 'Account already closed by the vendor', version: item.version }).expect(200);
+    const after = await lic();
+    expect(after.used).toBe(1);
+    expect(after.holders).toEqual([expect.objectContaining({ kind: 'person', name: `Sita ${run}` })]);
+    const freed = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { entityType: 'asset_licence', entityId: l, action: 'asset.licence.seat.freed' } }));
+    expect(JSON.parse(freed.metadataJson ?? '{}')).toMatchObject({ clearance: 'waive' });
+    expect(await inA((tx) => tx.assetLicenceSeat.findFirstOrThrow({ where: { licenceId: l, freedOn: { not: null } } }))).toMatchObject({ freeReason: 'Account already closed by the vendor' });
+  });
+
   it('IT assets part 4 (2718): asset managers of the place are told once before a licence expires (a company setting)', async () => {
     const alerts = app.get(AssetAlertsService);
     const o = { organizationId: org.A.id };

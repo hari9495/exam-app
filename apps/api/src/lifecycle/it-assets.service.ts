@@ -24,7 +24,7 @@ import { contractEndsOn, contractNoticeOn } from './asset-categories';
 // over it changes; place-less = company-wide). Seats go to a current employee or a device the caller sees and are counted
 // (no install scan); beyond the seats bought a seat is refused unless the licence allows over quota. Its cost is money
 // (answer 2711). A seat given to someone already leaving joins their exit clearance at once (ExitsService.assetItemsIn);
-// freeing a seat signs off its open clearance item, and clearing the item frees the seat. Every change is audited.
+// freeing a seat signs off its open clearance item, and clearing or waiving the item frees the seat (answer 2825). Every change is audited.
 
 type Contact = { name: string; email: string | null; phone: string | null };
 

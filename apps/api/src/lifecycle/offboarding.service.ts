@@ -219,12 +219,13 @@ export class OffboardingService {
           await freezeSettlementIn(tx, c, k.id, 'asset_returned');
         }
       }
-      // IT assets answer 2718: clearing a leaver's licence seat item frees the seat (audited on the licence).
-      if (i.licenceSeatId && dto.action === 'clear') {
+      // IT assets answers 2718, 2825: clearing or waiving a leaver's licence seat item frees the seat (they leave either
+      // way; audited on the licence).
+      if (i.licenceSeatId) {
         const seat = await tx.assetLicenceSeat.findFirst({ where: { organizationId: org, id: i.licenceSeatId, freedOn: null } });
         if (seat) {
           await tx.assetLicenceSeat.update({ where: { id: seat.id }, data: { freedOn: asDate(todayIst()), freedBy: c.userId ?? null, freeReason: (dto.note?.trim() || 'Freed at exit clearance').slice(0, 200), version: { increment: 1 } } });
-          await audit(tx, c, 'asset.licence.seat.freed', 'asset_licence', seat.licenceId, { seatId: seat.id, personId: seat.personId, exitCaseId: k.id });
+          await audit(tx, c, 'asset.licence.seat.freed', 'asset_licence', seat.licenceId, { seatId: seat.id, personId: seat.personId, exitCaseId: k.id, clearance: dto.action });
         }
       }
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
