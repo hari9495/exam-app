@@ -338,6 +338,8 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     // A second worksheet for the same month owes nothing more (arrears approved earlier count as paid).
     const again = (await api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp1, from: month, to: month, reason: 'Check again' }).expect(201)).body;
     expect(Number(again.total)).toBe(0);
+    // Nothing to pay: discarded, so it holds no months open (E3 review item 1).
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'Nothing owed after all' }).expect(200);
   });
 
   it('a month with no payslip asks for a base; what was overpaid becomes a recovery the employee agrees to', async () => {
@@ -364,6 +366,20 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect((await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(200)).body.status).toBe('active');
     await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(409);
     ids.recovery = ok.recoveryId;
+  });
+
+  it('E3 review item 1: never two open drafts over the same months; a draft made stale by a later approval is refused', async () => {
+    const sheet = (reason: string) => api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp2, from: prevMonth, to: month, reason });
+    const a = (await sheet('First look at the two months').expect(201)).body;
+    expect((await sheet('Second look at the same months').expect(409)).body.message).toMatch(/open draft worksheet already covers/);
+    // A worksheet for the same months approved after this draft was made (possible before this fix): the draft is refused.
+    const row = await scoped((tx) => tx.arrearsWorksheet.findFirstOrThrow({ where: { id: a.id } }));
+    await scoped((tx) =>
+      tx.arrearsWorksheet.create({ data: { organizationId: row.organizationId, legalEntityId: row.legalEntityId, employeeId: row.employeeId, employmentId: row.employmentId, source: 'manual', fromMonth: row.toMonth, toMonth: row.toMonth, reason: 'Approved elsewhere', status: 'approved', createdBy: users.payAdmin, approvedBy: users.approver1, approvedAt: new Date(Date.now() + 1000) } }),
+    );
+    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${a.id}/approve`).send({}).expect(409)).body.message).toMatch(/approved after this draft was made/);
+    // Taken off so the later tests start clean.
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${a.id}/cancel`).send({ reason: 'Out of date: drafted again later' }).expect(200);
   });
 
   it('write-off: someone other than who raised it, with step-up; cross-year recoveries are listed for tax', async () => {

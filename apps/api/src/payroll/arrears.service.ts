@@ -258,6 +258,11 @@ export class ArrearsService {
     if (to > today) throw new BadRequestException('Arrears are for months already paid, not future ones.');
     const list = months(from, to);
     if (list.length > 36) throw new BadRequestException('Arrears go back at most 36 months at a time.');
+    // E3 review item 1: one worksheet at a time per employment, and never two open drafts over the same months (both
+    // approved, they would pay the same money twice: an open draft's difference is not in the other's as-paid).
+    await lock(tx, `arrears-employment:${em.id}`);
+    const open = await tx.arrearsWorksheet.findFirst({ where: { organizationId: org, employmentId: em.id, status: 'draft', fromMonth: { lte: asDate(`${to}-01`) }, toMonth: { gte: asDate(`${from}-01`) } } });
+    if (open) throw new ConflictException({ statusCode: 409, code: 'OPEN_DRAFT', message: `An open draft worksheet already covers ${dateOf(open.fromMonth).slice(0, 7)} to ${dateOf(open.toMonth).slice(0, 7)} for this person. Approve or discard it first.` });
     const rules = await this.rules.published();
     const w = await tx.arrearsWorksheet.create({
       data: {
@@ -416,6 +421,11 @@ export class ArrearsService {
       const w = await this.sheetIn(tx, c, v, id);
       if (w.status !== 'draft') throw new ConflictException(`A ${w.status} worksheet is not approved again.`);
       if (w.createdBy === v.userId) throw new ForbiddenException('Someone other than the person who made the worksheet approves it.');
+      // E3 review item 1: a worksheet for the same months approved after this draft was made changed what was paid, so this
+      // draft's differences are stale: it is refused (discard it and draft again).
+      await lock(tx, `arrears-employment:${w.employmentId}`);
+      const since = await tx.arrearsWorksheet.findFirst({ where: { organizationId: org, employmentId: w.employmentId, id: { not: w.id }, status: 'approved', approvedAt: { gt: w.createdAt }, fromMonth: { lte: w.toMonth }, toMonth: { gte: w.fromMonth } } });
+      if (since) throw new ConflictException(`A worksheet for ${dateOf(since.fromMonth).slice(0, 7)} to ${dateOf(since.toMonth).slice(0, 7)} was approved after this draft was made, so its amounts are out of date. Discard it and draft again.`);
       const lines = await tx.arrearsWorksheetLine.findMany({ where: { organizationId: org, worksheetId: w.id } });
       if (lines.some((l) => l.baseSource === 'missing')) throw new ConflictException('Confirm what was paid for the months with no payslip or imported history first.');
       // Net by component: owed amounts are paid under their own component; overpaid ones become one recovery.
@@ -570,16 +580,20 @@ export class ArrearsService {
         const p = await this.proposalIn(tx, c, v, id);
         const periods = (p.periods as string[]).sort();
         const sheets: string[] = [];
+        // E3 review item 1: someone with an open draft over these months gets none (listed, so payroll settles that draft first).
+        const skipped: string[] = [];
         for (const employeeId of p.employees as string[]) {
           const em = await this.employment(tx, c.organizationId, employeeId, [p.legalEntityId]);
-          sheets.push(
-            (await this.worksheetIn(tx, c, v.userId!, em, periods[0], periods[periods.length - 1], 'rule', p.id, `${p.statute} ${p.jurisdiction} rules ${p.ruleVersion} apply to months already paid`))
-              .id,
-          );
+          try {
+            sheets.push((await this.worksheetIn(tx, c, v.userId!, em, periods[0], periods[periods.length - 1], 'rule', p.id, `${p.statute} ${p.jurisdiction} rules ${p.ruleVersion} apply to months already paid`)).id);
+          } catch (e) {
+            if ((e as { response?: { code?: string } }).response?.code !== 'OPEN_DRAFT') throw e;
+            skipped.push(employeeId);
+          }
         }
         await tx.statutoryArrearsProposal.update({ where: { id: p.id }, data: { status: 'accepted', decidedBy: v.userId, decidedAt: new Date() } });
         await audit(tx, c, 'payroll.arrears.proposal_accepted', 'statutory_arrears_proposal', p.id, { statute: p.statute, ruleVersion: p.ruleVersion, worksheets: sheets.length });
-        return { id: p.id, status: 'accepted', worksheets: sheets };
+        return { id: p.id, status: 'accepted', worksheets: sheets, skipped };
       },
       { timeout: 120_000 },
     );
