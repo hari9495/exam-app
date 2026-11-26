@@ -28921,5 +28921,28 @@
                               "Screens/Learning/LRN-06 · Nomination / enrolment (all six)"
                     ],
                     "note": "Positive and negative (api scorm.spec 19: manifest 1.2/2004/broken/entity/escape, each zip limit and refusal, bridge fields, oversize suspend data, tokens, CSP; e2e learning-scorm 5: upload refusals and keys, launch link on the content origin, serving refusals (app host, unsigned, tampered, expired, other package, other company, pending and infected files), CSP and no cookies, allowed fields only, oversize 400, other learner and other company 404, completion and certificate through the usual path; kit scorm-bridge 3 and learn-scorm-live 5). Migration 840 (learning_scorm_files, learning_scorm_attempts, scorm columns on learning_course_items). scorm-again 3.5.0, MIT. Multi-frame packages (frames inside the package) need a browser check: frame-ancestors on an opaque sandboxed parent."
-          }
+          },
+    {
+        "id": "MT-E3-ARREARS",
+        "area": "Enterprise E3 (answers 2651, 2652, 2786, 2787): back-dated pay that drafts itself",
+        "screen": "Payroll › Component library (Recalculate when); Payroll › Arrears and recoveries › Rule changes and triggers; Settings › Payroll policies (Back-dated pay)",
+        "url": "http://localhost:3000/yx/payroll/arrears",
+        "account": "Payroll admin who raises salary changes (payroll.arrears.approve); a second payroll approver; HR who approves changes; an employee; another company's payroll admin.",
+        "steps": [
+            "In Payroll › Component library open HRA and switch off 'Recalculate when a back-dated salary change reaches a paid month'; save. Open Basic: the switch is on.",
+            "As the payroll admin raise a salary change for someone, back-dated to the start of a month whose payroll is approved; have HR approve it. Open Arrears and recoveries › Rule changes and triggers.",
+            "Open the drafted worksheet from the Arrears worksheets tab. As the payroll admin press Approve; then as the second approver.",
+            "Add a person with a joining date in a month already paid and give them a salary from that date; check the tab again.",
+            "On a worksheet with a month that has no payslip, confirm the base by hand. Then approve another back-dated raise for the same person over the same months; open the new draft.",
+            "On a statutory rule change, press Accept straight away; then Work out the impact, wait, and Accept. Dismiss another one with a short reason, then with a proper one.",
+            "Raise someone's pay back-dated to 1 April so it passes the ESI wage ceiling, where April's payroll was approved with ESI; make the April worksheet.",
+            "Turn Settings › Payroll policies › Back-dated pay off, approve another back-dated raise.",
+            "Negative access: the employee and another company's payroll admin open the tab and GET /api/v1/payroll/arrears-runs."
+        ],
+        "expected": "Step 1: saved with a 5-second toast; the table shows 'On raise' per component. Step 2: a row 'Back-dated salary change · Done · 1 of 1' with the total and largest. Step 3: the admin who asked for the change is refused ('Someone other than the person who made the worksheet approves it'); the second approver approves; there is no HRA line. Step 4: a 'Joining date' row (or 'Not drafted: no salary from the joining date yet' until the salary exists). Step 5: the old draft says 'Replaced by a newer draft… bases confirmed by hand carried over'; the new draft keeps the confirmed amount and reason. Step 6: 'Work out the impact first…'; then the row shows people, total change and largest for one person, and Accept drafts the worksheets in the background (toast); dismiss needs 10 characters. Step 7: the ESI line is higher than paid (no refund). Step 8: nothing drafted. Step 9: the employee is refused (403); the other company sees nothing. No page scroll at 1278 x 635 on the tab.",
+        "stories": [
+            "Screens/Pay/PAY-28 · Arrears base confirmation (E3 · Rule changes and triggers, all three)"
+        ],
+        "note": "Positive and negative (api payroll-5g e2e: E3 trigger test (maker, switches, once per change, joining replace, confirmed base kept, other company and no-key refusals), E3 ESI April test, proposal preview and accept; payroll-pf-ceiling; kit offcycle-live E3 tests). Migrations 860 (switches, arrears_runs, proposal impact) and 861 (trigger sources)."
+    }
 ]
