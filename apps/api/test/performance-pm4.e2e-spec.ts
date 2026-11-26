@@ -390,6 +390,38 @@ describe('Performance batch PM4', () => {
     expect(funnel.find((f) => f.stage === 'self')!.count).toBe(520);
   }, 120_000);
 
+  it('T2-C 68 (answer 2842): What is expected of me: the designation competencies at the expected level, then the values; the manager chain reads a report’s', async () => {
+    await inA(async (tx) => {
+      const x = { organizationId: org.A.id };
+      const domain = await tx.companySkill.create({ data: { ...x, name: `Plant ${run}`, kind: 'domain' } });
+      const skill = await tx.companySkill.create({ data: { ...x, parentId: domain.id, name: `Line safety ${run}`, kind: 'skill' } });
+      const comp = await tx.competency.create({ data: { ...x, companySkillId: skill.id, group: 'functional', description: 'Keeps the line safe.' } });
+      await tx.competencyLevel.createMany({ data: [1, 2, 3].map((level) => ({ ...x, competencyId: comp.id, level, label: `L${level}`, behaviours: `Behaviour at ${level}` })) });
+      await tx.roleCompetencyMap.create({ data: { ...x, designationId: ids.desig, competencyId: comp.id, expectedLevel: 2, validFrom: new Date('2020-01-01T00:00:00Z') } });
+      // Ended last year: not expected any more.
+      const old = await tx.competency.create({ data: { ...x, companySkillId: (await tx.companySkill.create({ data: { ...x, parentId: domain.id, name: `Old skill ${run}`, kind: 'skill' } })).id, group: 'core' } });
+      await tx.roleCompetencyMap.create({ data: { ...x, designationId: ids.desig, competencyId: old.id, expectedLevel: 1, validFrom: new Date('2020-01-01T00:00:00Z'), validTo: new Date('2025-01-01T00:00:00Z') } });
+    });
+    type E = { employee: { id: string; designation: string; mine: boolean }; competencies: { name: string; expectedLevel: number; levelLabel: string; behaviours: string }[]; values: string[]; reports: { value: string }[] };
+    const own = (await api('arjun', 'get', '/expectations').expect(200)).body as E;
+    expect(own.employee).toMatchObject({ id: emp.arjun, designation: 'Executive', mine: true });
+    expect(own.competencies).toContainEqual(expect.objectContaining({ name: `Line safety ${run}`, expectedLevel: 2, levelLabel: 'L2', behaviours: 'Behaviour at 2' }));
+    expect(own.competencies.some((c) => c.name === `Old skill ${run}`)).toBe(false);
+    expect(own.values).toEqual(['Customer first', 'Own it', 'Win together', 'Do the right thing']);
+    expect(JSON.stringify(own)).not.toMatch(/rating|score/i);
+    // The manager and the skip-level read Arjun's page; the manager's pick list has her reports.
+    const mgr = (await api('priya', 'get', `/expectations?employeeId=${emp.arjun}`).expect(200)).body as E;
+    expect(mgr.employee).toMatchObject({ id: emp.arjun, mine: false });
+    expect(mgr.reports.map((r) => r.value)).toContain(emp.arjun);
+    await api('head', 'get', `/expectations?employeeId=${emp.arjun}`).expect(200);
+    // Negative: a peer, someone outside the chain and another company get nothing; a bad id is refused.
+    await api('sita', 'get', `/expectations?employeeId=${emp.arjun}`).expect(404);
+    await api('ravi', 'get', `/expectations?employeeId=${emp.arjun}`).expect(404);
+    await api('arjun', 'get', `/expectations?employeeId=${emp.priya}`).expect(404);
+    await api('adminB', 'get', `/expectations?employeeId=${emp.arjun}`).expect(404);
+    await api('arjun', 'get', '/expectations?employeeId=not-a-uuid').expect(400);
+  });
+
   it('keeps companies apart', async () => {
     await api('adminB', 'get', `/reviews/${ids.review}`).expect(404);
     await api('adminB', 'post', `/cycles/${ids.cycle}/preflight`).expect(404);

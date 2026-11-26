@@ -518,6 +518,8 @@ export function buildNav(n: NavInput): NavArea[] {
     sections: sec(undefined, [
       ...when(employee || has('perf.goal.manage') || has('perf.cycle.manage'), L('perf-home', 'Performance home', '/yx/performance')),
       ...when(employee, L('goals', 'Goals', '/yx/performance/goals')),
+      // T2-C item 68 (answer 2842): read-only; a manager opens the same page for a report.
+      ...when(employee, L('expected', 'What is expected of me', '/yx/performance/expected')),
       ...when(has('perf.goal.view'), L('goal-map', 'Goal map', '/yx/performance/goal-map')),
       ...when(has('perf.cycle.manage'), L('review-cycles', 'Review cycles', '/yx/performance/cycles')),
       ...when(employee, L('feedback', 'Feedback', '/yx/performance/feedback'), L('feedback-tasks', 'Feedback I owe', '/yx/performance/feedback-tasks'), L('one-on-ones', '1:1s', '/yx/performance/one-on-ones')),

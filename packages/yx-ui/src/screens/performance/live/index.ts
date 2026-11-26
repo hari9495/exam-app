@@ -37,3 +37,5 @@ export type { CoachNudge } from '../../growth/growth-kit';
 export type { BiasFlag } from '../../growth/growth-logic';
 export type { ApprovalStep } from '../../../components/timeline';
 export { PerfNoAccessScreen, type PerfNoAccessProps } from '../../growth/perf-access';
+// T2-C item 68 (answer 2842): What is expected of me.
+export { ExpectationsScreen, type Expectations } from '../../growth/perf-expectations';

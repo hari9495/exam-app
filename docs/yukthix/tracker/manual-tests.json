@@ -29210,5 +29210,26 @@
                               "Screens/Performance/PRF-05 · Review workspace (Employee · kudos this period, Manager · kudos this period)"
                     ],
                     "note": "Kudos held for a moderator, or given outside the review period, never show. A former manager added as an other reviewer sees no kudos."
+          },
+          {
+                    "id": "MT-T2C-68",
+                    "area": "Batch T2-C item 68 (answer 2842): What is expected of me",
+                    "screen": "Performance › What is expected of me (PRF-18)",
+                    "url": "http://localhost:3000/yx/performance/expected",
+                    "account": "An employee whose designation has competencies set in Performance › Competencies (PRF-14); their manager (panel@demo-org.test); a colleague in another team; HR to set competencies.",
+                    "steps": [
+                              "As HR open Performance › Competencies and make sure two competencies are set for the employee's designation with an expected level, and each level has behaviours. Check Settings › Engage values (the company's core values).",
+                              "As the employee open Performance › What is expected of me.",
+                              "Look for anything that can be rated or typed.",
+                              "As the manager open the page, then pick the employee in 'Show the page for'. Pick 'Me' again.",
+                              "As HR end one competency's link to the designation (or retire the competency) and reload the employee's page.",
+                              "Negative: as the colleague in another team open /yx/performance/expected?employee=<the employee's id>; as the employee open the page with their manager's id; call GET /api/v1/performance/expectations?employeeId=not-a-uuid.",
+                              "Negative: a person whose designation has no competencies opens the page."
+                    ],
+                    "expected": "Step 2: the title is 'What is expected of me' with the designation; 'Competencies for <designation>' lists each competency with its group (Core, Functional, Leadership), the description, 'Expected: level N of M · <level name>' and the behaviours at that level; then 'Our core values' lists the company values. Step 3: nothing to rate or type; no scores. Step 4: the title changes to 'What is expected of <name>' with the same parts; 'Me' goes back to the manager's own page. Step 5: the ended or retired competency is gone. Step 6: 'This page didn’t load' (the API answers 404, nothing is shown); the bad id gets 400. Step 7: 'No competencies are set for this job yet.' with the values still shown. The page fits the screen without a scroll bar for a few competencies.",
+                    "stories": [
+                              "Screens/Performance/PRF-18 · What is expected of me"
+                    ],
+                    "note": "Competencies come from the designation (the PRF-14 framework links competencies to designations, not grades). A competency weight is not kept anywhere yet, so the page shows the expected level and behaviours, not a weight (question 2880)."
           }
 ]
