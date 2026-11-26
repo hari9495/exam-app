@@ -11,6 +11,7 @@ import { asDate, dateOf, monthRange } from '../time/time-core';
 import { calculatePayslip } from './calc';
 import { monthRun } from './month-run';
 import { nextMonth, taxYearOf } from './tax';
+import { groupOf, periodDates } from './pay-dates';
 import { PayRunsService } from './runs.service';
 import { FNF_COMPONENTS } from './starter';
 import { PayKey, entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
@@ -33,6 +34,8 @@ const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 const NIL = '00000000-0000-0000-0000-000000000000';
 const EDITABLE = ['draft', 'calculated', 'in_review', 'reopened'];
+/** A regular run past its draft: its items are fixed, so nothing new is paid into its month. */
+const PAST_DRAFT = ['calculating', 'calculated', 'in_review', 'submitted', 'approved', 'paid'];
 // Founder decisions 5g-D6 / 5g-D7 (12 Oct 2026, M03 §19.9): worksheets carry PF, ESI, PT and LWF too; the employee share
 // owed is recovered only with consent (like an overpayment), one deducted too much is refunded, and the employer share is
 // the company's cost (shown on the worksheet). The tax of an earlier-year overpayment (revised Form 16, s.89) is handled
@@ -225,6 +228,7 @@ export class ArrearsService {
       runId: w.runId,
       createdBy: w.createdBy,
       approvedBy: w.approvedBy,
+      discardReason: w.discardReason,
       missing: lines.filter((l) => l.baseSource === 'missing').length,
       lines: lines.map((l) => ({
         id: l.id,
@@ -258,6 +262,11 @@ export class ArrearsService {
     if (to > today) throw new BadRequestException('Arrears are for months already paid, not future ones.');
     const list = months(from, to);
     if (list.length > 36) throw new BadRequestException('Arrears go back at most 36 months at a time.');
+    // E3 review item 1: one worksheet at a time per employment, and never two open drafts over the same months (both
+    // approved, they would pay the same money twice: an open draft's difference is not in the other's as-paid).
+    await lock(tx, `arrears-employment:${em.id}`);
+    const open = await tx.arrearsWorksheet.findFirst({ where: { organizationId: org, employmentId: em.id, status: 'draft', fromMonth: { lte: asDate(`${to}-01`) }, toMonth: { gte: asDate(`${from}-01`) } } });
+    if (open) throw new ConflictException({ statusCode: 409, code: 'OPEN_DRAFT', message: `An open draft worksheet already covers ${dateOf(open.fromMonth).slice(0, 7)} to ${dateOf(open.toMonth).slice(0, 7)} for this person. Approve or discard it first.` });
     const rules = await this.rules.published();
     const w = await tx.arrearsWorksheet.create({
       data: {
@@ -416,6 +425,11 @@ export class ArrearsService {
       const w = await this.sheetIn(tx, c, v, id);
       if (w.status !== 'draft') throw new ConflictException(`A ${w.status} worksheet is not approved again.`);
       if (w.createdBy === v.userId) throw new ForbiddenException('Someone other than the person who made the worksheet approves it.');
+      // E3 review item 1: a worksheet for the same months approved after this draft was made changed what was paid, so this
+      // draft's differences are stale: it is refused (discard it and draft again).
+      await lock(tx, `arrears-employment:${w.employmentId}`);
+      const since = await tx.arrearsWorksheet.findFirst({ where: { organizationId: org, employmentId: w.employmentId, id: { not: w.id }, status: 'approved', approvedAt: { gt: w.createdAt }, fromMonth: { lte: w.toMonth }, toMonth: { gte: w.fromMonth } } });
+      if (since) throw new ConflictException(`A worksheet for ${dateOf(since.fromMonth).slice(0, 7)} to ${dateOf(since.toMonth).slice(0, 7)} was approved after this draft was made, so its amounts are out of date. Discard it and draft again.`);
       const lines = await tx.arrearsWorksheetLine.findMany({ where: { organizationId: org, worksheetId: w.id } });
       if (lines.some((l) => l.baseSource === 'missing')) throw new ConflictException('Confirm what was paid for the months with no payslip or imported history first.');
       // Net by component: owed amounts are paid under their own component; overpaid ones become one recovery.
@@ -433,6 +447,16 @@ export class ArrearsService {
         if (!run || !EDITABLE.includes(run.status)) throw new ConflictException('Choose a draft arrears or correction off-cycle run of the same legal entity.');
         payMonth = dateOf(run.periodStart).slice(0, 7);
       } else if (owed) {
+        // E3 review item 4: a run picks up only its own month's items, so arrears never go into a month whose run is past
+        // its draft (they would be lost). A chosen month is refused; otherwise they roll on past the cut-off and past such
+        // runs, as one-time pay does after its cut-off.
+        const g = await groupOf(tx, org, w.employmentId, monthRange(payMonth).to);
+        const busy = (m: string) => tx.payrollRun.findFirst({ where: { organizationId: org, legalEntityId: w.legalEntityId, runType: 'regular', periodStart: asDate(`${m}-01`), status: { in: PAST_DRAFT }, ...(g ? { payGroupId: g.id } : {}) }, select: { status: true } });
+        const late = async (m: string) => !!g && g.frequency === 'monthly' && todayIst() > (await periodDates(tx, org, g, m)).cutOff;
+        if (dto.payMonth) {
+          const r = await busy(payMonth);
+          if (r) throw new ConflictException(`The ${payMonth} payroll is already ${r.status.replace('_', ' ')}, so it would not pay these arrears. Choose a later month or an off-cycle run.`);
+        } else for (let i = 0; i < 24 && ((await late(payMonth)) || (await busy(payMonth))); i++) payMonth = nextMonth(payMonth);
         const p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: w.legalEntityId, payGroupId: null, periodStart: asDate(`${payMonth}-01`) } });
         if (p?.lockedByRunId || p?.stage === 'filed') throw new ConflictException(`${payMonth} is already paid and locked; pay the arrears next month or in an off-cycle run.`);
       }
@@ -491,14 +515,15 @@ export class ArrearsService {
     return { id: out.id, status: out.status, payMonth: out.payMonth, runId: out.runId, overpaid: out.overpaid, recoveryId: out.recoveryId };
   }
 
-  async cancelWorksheet(ctx: TenantContext, user: ScopeUser, id: string) {
+  /** E3 review item 9: a draft is discarded with a reason, kept with who and when (nothing is paid from it). */
+  async cancelWorksheet(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const w = await this.sheetIn(tx, c, v, id);
-      if (w.status !== 'draft') throw new ConflictException('Only a draft worksheet is cancelled.');
-      await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { status: 'cancelled', version: { increment: 1 } } });
-      await audit(tx, c, 'payroll.arrears.worksheet_cancelled', 'arrears_worksheet', w.id, {});
-      return { id: w.id, status: 'cancelled' };
+      if (w.status !== 'draft') throw new ConflictException('Only a draft worksheet is discarded.');
+      await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { status: 'discarded', discardReason: reason, discardedBy: v.userId!, discardedAt: new Date(), version: { increment: 1 } } });
+      await audit(tx, c, 'payroll.arrears.worksheet_discarded', 'arrears_worksheet', w.id, { reason, total: w.total.toFixed(2) });
+      return { id: w.id, status: 'discarded' };
     });
   }
 
@@ -570,16 +595,20 @@ export class ArrearsService {
         const p = await this.proposalIn(tx, c, v, id);
         const periods = (p.periods as string[]).sort();
         const sheets: string[] = [];
+        // E3 review item 1: someone with an open draft over these months gets none (listed, so payroll settles that draft first).
+        const skipped: string[] = [];
         for (const employeeId of p.employees as string[]) {
           const em = await this.employment(tx, c.organizationId, employeeId, [p.legalEntityId]);
-          sheets.push(
-            (await this.worksheetIn(tx, c, v.userId!, em, periods[0], periods[periods.length - 1], 'rule', p.id, `${p.statute} ${p.jurisdiction} rules ${p.ruleVersion} apply to months already paid`))
-              .id,
-          );
+          try {
+            sheets.push((await this.worksheetIn(tx, c, v.userId!, em, periods[0], periods[periods.length - 1], 'rule', p.id, `${p.statute} ${p.jurisdiction} rules ${p.ruleVersion} apply to months already paid`)).id);
+          } catch (e) {
+            if ((e as { response?: { code?: string } }).response?.code !== 'OPEN_DRAFT') throw e;
+            skipped.push(employeeId);
+          }
         }
         await tx.statutoryArrearsProposal.update({ where: { id: p.id }, data: { status: 'accepted', decidedBy: v.userId, decidedAt: new Date() } });
         await audit(tx, c, 'payroll.arrears.proposal_accepted', 'statutory_arrears_proposal', p.id, { statute: p.statute, ruleVersion: p.ruleVersion, worksheets: sheets.length });
-        return { id: p.id, status: 'accepted', worksheets: sheets };
+        return { id: p.id, status: 'accepted', worksheets: sheets, skipped };
       },
       { timeout: 120_000 },
     );

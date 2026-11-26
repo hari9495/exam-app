@@ -103,14 +103,18 @@ describe('Arrears and recoveries (PAY-28 live)', () => {
     await waitFor(() => expect(live.onConfirmBase).toHaveBeenCalledWith(MISSING, '2026-07', [{ componentCode: 'BASIC', asPaid: '25000' }], 'Old register, page 14'));
   });
 
-  it('cancels a worksheet after asking', async () => {
+  it('discards a worksheet only with a reason (E3 review item 9)', async () => {
     const live = arrears();
     render(<ArrearsBaseScreen live={live} />);
     const dlg = await openSheet('Lakshmi Devi');
-    await ue.click(within(dlg).getByRole('button', { name: 'Cancel worksheet' }));
-    const ask = await screen.findByRole('alertdialog', { name: 'Cancel this worksheet?' }).catch(() => screen.findByRole('dialog', { name: 'Cancel this worksheet?' }));
-    await ue.click(within(ask).getByRole('button', { name: 'Cancel worksheet' }));
-    await waitFor(() => expect(live.onCancel).toHaveBeenCalledWith(READY));
+    await ue.click(within(dlg).getByRole('button', { name: 'Discard worksheet' }));
+    const ask = await screen.findByRole('alertdialog', { name: 'Discard this worksheet?' }).catch(() => screen.findByRole('dialog', { name: 'Discard this worksheet?' }));
+    await ue.click(within(ask).getByRole('button', { name: 'Discard worksheet' }));
+    expect(await within(ask).findByText('Say why, in 10 characters or more.')).toBeInTheDocument();
+    expect(live.onCancel).not.toHaveBeenCalled();
+    await ue.type(within(ask).getByLabelText(/Why/), 'Raise was withdrawn');
+    await ue.click(within(ask).getByRole('button', { name: 'Discard worksheet' }));
+    await waitFor(() => expect(live.onCancel).toHaveBeenCalledWith(READY, 'Raise was withdrawn'));
   });
 
   it('a write-off needs a reason', async () => {

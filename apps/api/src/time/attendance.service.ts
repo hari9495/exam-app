@@ -356,7 +356,7 @@ export class AttendanceService implements OnModuleInit {
       });
       const hr = await hrApprovers(tx, org, f.employeeId, today, f.userId);
       const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }];
-      if (used >= limit) steps.push({ name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24 });
+      if (used >= limit) steps.push({ name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24, required: true });
       const fix = dto.kind === 'full_day' ? 'Present all day' : [needIn ? `in ${hhmm(dto.inMinute!)}` : '', needOut ? `out ${hhmm(dto.outMinute!)}` : ''].filter(Boolean).join(', ');
       const sub = await this.engine.submit(tx, c, {
         type: REGULARISE,
@@ -423,7 +423,7 @@ export class AttendanceService implements OnModuleInit {
     const r = await tx.attendanceRequest.create({ data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'wfh', reason: dto.reason, raisedBy: c.userId ?? null } });
     const hr = await hrApprovers(tx, org, f.employeeId, today, f.userId);
     const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }];
-    if (used >= limit) steps.push({ name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24 });
+    if (used >= limit) steps.push({ name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24, required: true });
     const sub = await this.engine.submit(tx, c, {
       type: WFH,
       subjectType: 'attendance_request',

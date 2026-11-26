@@ -52,7 +52,8 @@ export interface LiveArrears {
   me: string | null;
   can: { approve: boolean; writeOff: boolean };
   onApprove: (w: Worksheet, runId?: string) => Promise<unknown>;
-  onCancel: (w: Worksheet) => Promise<unknown>;
+  /** E3 review item 9: a draft is discarded with a reason (10 characters or more). */
+  onCancel: (w: Worksheet, reason: string) => Promise<unknown>;
   onConfirmBase: (w: Worksheet, period: string, lines: { componentCode: string; asPaid: string }[], reason: string) => Promise<unknown>;
   onWriteOff: (r: Recovery, reason: string) => Promise<unknown>;
   /**
@@ -63,7 +64,7 @@ export interface LiveArrears {
 }
 
 const sheetStatus = (w: Worksheet): { label: string; tone: BadgeTone } =>
-  w.status === 'approved' ? { label: 'Approved', tone: 'success' } : w.status === 'cancelled' ? { label: 'Cancelled', tone: 'neutral' } : w.missing ? { label: 'Base needed', tone: 'warning' } : { label: 'Ready to approve', tone: 'info' };
+  w.status === 'approved' ? { label: 'Approved', tone: 'success' } : w.status === 'cancelled' ? { label: 'Cancelled', tone: 'neutral' } : w.status === 'discarded' ? { label: 'Discarded', tone: 'neutral' } : w.missing ? { label: 'Base needed', tone: 'warning' } : { label: 'Ready to approve', tone: 'info' };
 const BASE: Record<WorksheetLine['base'], { label: string; tone: BadgeTone }> = {
   payslip: { label: 'YukthiX run', tone: 'neutral' },
   import: { label: 'Imported', tone: 'info' },
@@ -152,6 +153,8 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
   const [paid, setPaid] = useState<Record<string, number | null>>({});
   const [reason, setReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [discardReason, setDiscardReason] = useState('');
+  const [triedDiscard, setTriedDiscard] = useState(false);
   const missing = [...new Set(w.lines.filter((l) => l.base === 'missing').map((l) => l.period))];
   const period = missing[0] ?? null;
   const baseLines = w.lines.filter((l) => l.period === period && l.base === 'missing');
@@ -170,7 +173,10 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
           {missing.length ? 'No pay lines exist for this month. Arrears can’t be approved until you confirm what was paid, with a reason.' : 'You can approve the arrears; they are paid with the next run.'}
         </InlineAlert>
       ) : (
-        <Badge tone={sheetStatus(w).tone}>{sheetStatus(w).label}</Badge>
+        <div className="yx-pay-row">
+          <Badge tone={sheetStatus(w).tone}>{sheetStatus(w).label}</Badge>
+          {w.discardReason && <span>Reason: {w.discardReason}</span>}
+        </div>
       )}
       <WorksheetLinesTable lines={w.lines} totalLabel={missing.length ? `Arrears so far for ${name} (${missing.map(monthText).join(', ')} not included)` : `Arrears for ${name}`} total={w.total} />
       {draft && period && (
@@ -237,29 +243,38 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
                     Approve
                   </Button>
                 ))}
-              <Button onClick={() => setCancelling(true)}>Cancel worksheet</Button>
+              <Button onClick={() => setCancelling(true)}>Discard worksheet</Button>
             </div>
           )}
         </section>
       )}
       {draft && missing.length > 0 && (
         <div className="yx-pay-row">
-          <Button onClick={() => setCancelling(true)}>Cancel worksheet</Button>
+          <Button onClick={() => setCancelling(true)}>Discard worksheet</Button>
         </div>
       )}
       <ConfirmDialog
         open={cancelling}
         onOpenChange={setCancelling}
-        title="Cancel this worksheet?"
-        consequence={`No arrears are paid to ${name} from it. A new pay change makes a new worksheet.`}
-        confirmLabel="Cancel worksheet"
+        title="Discard this worksheet?"
+        consequence={`No arrears are paid to ${name} from it. The worksheet is kept with your reason; a new pay change makes a new one.`}
+        confirmLabel="Discard worksheet"
         cancelLabel="Keep it"
         destructive
         onConfirm={async () => {
-          await live.onCancel(w);
-          toast({ tone: 'success', title: 'Worksheet cancelled.' });
+          setTriedDiscard(true);
+          if (discardReason.trim().length < 10) {
+            document.getElementById('ws-discard')?.focus();
+            return false;
+          }
+          await live.onCancel(w, discardReason.trim());
+          toast({ tone: 'success', title: 'Worksheet discarded.' });
         }}
-      />
+      >
+        <FormField id="ws-discard" label="Why" required error={triedDiscard && discardReason.trim().length < 10 ? 'Say why, in 10 characters or more.' : null}>
+          <TextArea value={discardReason} onChange={setDiscardReason} rows={3} maxLength={500} />
+        </FormField>
+      </ConfirmDialog>
     </div>
   );
 }

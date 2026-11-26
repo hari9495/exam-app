@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AnswerDto, ConfirmBaseDto, DismissDto, FnfPatchDto, FnfPayeesDto, OffcycleItemDto, OverpaymentDto, OverpaymentListDto, WorksheetApproveDto, WorksheetCreateDto, WriteOffDto } from './dto-5g';
+import { AnswerDto, ConfirmBaseDto, DiscardDto, DismissDto, FnfPatchDto, FnfPayeesDto, OffcycleItemDto, OverpaymentDto, OverpaymentListDto, WorksheetApproveDto, WorksheetCreateDto, WriteOffDto } from './dto-5g';
 import { ArrearsService } from './arrears.service';
 import { OneTimeEffectDto } from './dto-5c';
 import { Throttle } from '@nestjs/throttler';
@@ -100,8 +100,8 @@ export class Payroll5gController {
   @Post('payroll/arrears-worksheets/:id/cancel')
   @HttpCode(200)
   @RequirePermissions('payroll.arrears.approve')
-  cancelWorksheet(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.arrears.cancelWorksheet(ctx, this.user(req), id);
+  cancelWorksheet(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DiscardDto) {
+    return this.arrears.cancelWorksheet(ctx, this.user(req), id, dto.reason);
   }
 
   // ------------------------------------------------------------------------------------------ rule-change proposals

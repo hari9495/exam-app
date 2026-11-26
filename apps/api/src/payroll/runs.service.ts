@@ -1018,6 +1018,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         }),
       ),
     );
+    // E3 review item 8: arrears from a worksheet (not a correction) already carry their statutory differences.
+    const sheetRefs = oneTime.filter((o) => o.source === 'arrears' && /^[0-9a-f-]{36}$/i.test(o.sourceRef ?? '')).map((o) => o.sourceRef!);
+    const sheets = new Set(sheetRefs.length ? (await tx.arrearsWorksheet.findMany({ where: { organizationId: org, id: { in: sheetRefs } }, select: { id: true } })).map((x) => x.id) : []);
     const special = itemsOnly || !monthly ? [] : mine(await reads.once('special', () => tx.specialDays.findMany({ where: { organizationId: org, employmentId: { in: ids }, periodStart: run.periodStart } })));
     const recent = await tx.payslip.findMany({ where: { organizationId: org, employmentId, status: 'approved', runType: 'regular', periodStart: { lt: run.periodStart } }, orderBy: { periodStart: 'desc' }, take: 3 });
     const recentDays = recent.reduce((t, x) => t + Number(monthRange(dateOf(x.periodStart).slice(0, 7)).to.slice(8)), 0);
@@ -1059,7 +1062,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       joinedOn: dateOf(em.joinedOn),
       ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2), ...(await this.ptWageSoFar(tx, org, employmentId, run.periodStart, fyStart, month, components)) },
       oneTime: [
-        ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}), ...(o.paidSeparately ? { separate: true } : {}), ...(o.grossUp ? { grossUp: true } : {}) })),
+        ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}), ...(o.paidSeparately ? { separate: true } : {}), ...(o.grossUp ? { grossUp: true } : {}), ...(o.sourceRef && sheets.has(o.sourceRef) ? { settled: true } : {}) })),
         // Late corrections approved after their month locked, paid in this regular run (PAY-1.03 / 1.04).
         // An F&F run paying the leaver's last salary pays them too (no regular run follows for that person).
         // Answer 2283: the F&F run pays it even when the last month's regular payslip was already approved (items only).
@@ -1163,7 +1166,10 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   private async ptWageSoFar(tx: Tx, org: string, employmentId: string, periodStart: Date, fyStart: string, month: string, components: CalcComponent[]) {
     const codes = components.filter((x) => x.kind === 'earning' && x.ptWage).map((x) => x.code);
     const slips = await tx.payslip.findMany({ where: { organizationId: org, employmentId, status: 'approved', periodStart: { gte: asDate(fyStart), lt: periodStart } }, select: { id: true, periodStart: true } });
-    const lines = slips.length && codes.length ? await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) }, componentCode: { in: codes } }, select: { payslipId: true, amount: true } }) : [];
+    const all = slips.length && codes.length ? await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) }, componentCode: { in: codes } }, select: { payslipId: true, amount: true, sourceRef: true } }) : [];
+    // 5g-D6: worksheet arrears carry their PT in the worksheet, so they are no PT wage of a later month either.
+    const settled = await this.settledArrears(tx, org, all.map((l) => l.sourceRef));
+    const lines = all.filter((l) => !l.sourceRef || !settled.has(l.sourceRef));
     const m = Number(month.slice(5, 7));
     const halfStart = m >= 4 && m <= 9 ? fyStart : `${fyStart.slice(0, 4)}-10-01`;
     const inHalf = new Set(slips.filter((x) => dateOf(x.periodStart) >= halfStart).map((x) => x.id));
@@ -1171,14 +1177,25 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return { ptWage: sum(() => true), halfPtWage: sum((l) => inHalf.has(l.payslipId)) };
   }
 
+  /** Of these payslip-line sources, the one-time pays that are arrears from an approved worksheet (5g-D6, E3 review item 8). */
+  private async settledArrears(tx: Tx, org: string, refs: (string | null)[]): Promise<Set<string>> {
+    const ids = [...new Set(refs.filter((r): r is string => !!r && /^[0-9a-f-]{36}$/i.test(r)))];
+    if (!ids.length) return new Set();
+    const pays = await tx.oneTimePay.findMany({ where: { organizationId: org, id: { in: ids }, source: 'arrears' }, select: { id: true, sourceRef: true } });
+    const sheetIds = pays.map((p) => p.sourceRef).filter((r): r is string => !!r && /^[0-9a-f-]{36}$/i.test(r));
+    const sheets = new Set(sheetIds.length ? (await tx.arrearsWorksheet.findMany({ where: { organizationId: org, id: { in: sheetIds } }, select: { id: true } })).map((x) => x.id) : []);
+    return new Set(pays.filter((p) => p.sourceRef && sheets.has(p.sourceRef)).map((p) => p.id));
+  }
+
   private async monthToDate(tx: Tx, org: string, employmentId: string, run: Run, comps: { code: string; taxable: boolean; ptWage: boolean; statutory: string | null; kind: string }[]) {
     const slips = await tx.payslip.findMany({ where: { organizationId: org, employmentId, periodStart: run.periodStart, runType: 'regular', status: 'approved', subPeriod: { gt: 0, not: run.subPeriod } }, select: { id: true } });
-    const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) } }, select: { componentCode: true, kind: true, amount: true } });
-    const by = (pick: (l: { componentCode: string; kind: string }) => boolean) => lines.filter(pick).reduce((t, l) => t.add(l.amount), D(0)).toFixed(2);
+    const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) } }, select: { componentCode: true, kind: true, amount: true, sourceRef: true } });
+    const settled = await this.settledArrears(tx, org, lines.map((l) => l.sourceRef));
+    const by = (pick: (l: { componentCode: string; kind: string; sourceRef: string | null }) => boolean) => lines.filter(pick).reduce((t, l) => t.add(l.amount), D(0)).toFixed(2);
     const c = (code: string) => comps.find((x) => x.code === code);
     return {
       taxable: by((l) => l.kind === 'earning' && c(l.componentCode)?.taxable !== false),
-      ptWage: by((l) => l.kind === 'earning' && !!c(l.componentCode)?.ptWage),
+      ptWage: by((l) => l.kind === 'earning' && !!c(l.componentCode)?.ptWage && !(l.sourceRef && settled.has(l.sourceRef))),
       basic: by((l) => l.componentCode === 'basic'),
       hra: by((l) => l.componentCode === 'hra'),
     };

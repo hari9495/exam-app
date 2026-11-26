@@ -790,7 +790,7 @@ export class RosterService implements OnModuleInit {
         requesterUserId: c.userId ?? null,
         raisedByUserId: c.userId ?? null,
         steps: [
-          { name: 'Colleague agrees', approvers: [{ kind: 'users', userIds: [theirs.userId] }], mode: 'any', remindAfterHours: 12 },
+          { name: 'Colleague agrees', approvers: [{ kind: 'users', userIds: [theirs.userId] }], mode: 'any', remindAfterHours: 12, required: true },
           { name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 },
         ],
         payload: {},
