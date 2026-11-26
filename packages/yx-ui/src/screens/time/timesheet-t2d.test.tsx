@@ -1,9 +1,15 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { MyProjectsTable, TimesheetActivityCard } from './ops';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '../../components/notify';
+import { MyProjectsTable, TimesheetActivityCard, TimesheetScreen, type LiveTimesheet } from './ops';
+import { MY_TIMESHEET, TODAY } from './live/fixtures';
 import { T2D_ACTIVITY, T2D_MY_PROJECTS, T2D_PROJECTS } from './timesheet-t2d-samples';
 
-// T2-D 55 (My projects tab) and 62 (the week's Activity card).
+// T2-D 55 (My projects tab), 61 (the view switch) and 62 (the week's Activity card).
+const ue = userEvent.setup({ pointerEventsCheck: 0 });
+const ok = () => vi.fn(async () => ({}));
+const live = (): LiveTimesheet => ({ state: 'ready', data: MY_TIMESHEET, week: MY_TIMESHEET.week, today: TODAY, onWeek: vi.fn(), onSave: ok(), onSubmit: ok(), onWithdraw: ok() });
 describe('T2-D 55 My projects', () => {
   it('lists the project I am on first, with my allocation, the manager and my hours booked and approved', () => {
     render(<MyProjectsTable projects={T2D_MY_PROJECTS} />);
@@ -36,5 +42,34 @@ describe('T2-D 62 Activity', () => {
     render(<TimesheetActivityCard activity={[]} projects={T2D_PROJECTS} />);
     expect(screen.queryByText('Activity')).toBeNull();
     expect(screen.queryByRole('list', { name: 'Timesheet activity' })).toBeNull();
+  });
+});
+
+describe('T2-D 61 view switch', () => {
+  it('switches the week between the grid and day cards and keeps the choice on this device', async () => {
+    window.localStorage.removeItem('yx.timesheet.layout');
+    const { container, unmount } = render(<ToastProvider><TimesheetScreen live={live()} /></ToastProvider>);
+    expect(container.querySelector('.yx-ts')).toHaveAttribute('data-layout', 'grid');
+    await ue.click(screen.getByRole('radio', { name: 'Day cards' }));
+    expect(container.querySelector('.yx-ts')).toHaveAttribute('data-layout', 'days');
+    unmount();
+    const again = render(<ToastProvider><TimesheetScreen live={live()} /></ToastProvider>);
+    expect(again.container.querySelector('.yx-ts')).toHaveAttribute('data-layout', 'days');
+    await ue.click(screen.getByRole('radio', { name: 'Grid' }));
+    expect(again.container.querySelector('.yx-ts')).toHaveAttribute('data-layout', 'grid');
+  });
+
+  it('negative: with storage blocked the switch still works for this visit', async () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const { container } = render(<ToastProvider><TimesheetScreen live={live()} /></ToastProvider>);
+    await ue.click(screen.getByRole('radio', { name: 'Day cards' }));
+    expect(container.querySelector('.yx-ts')).toHaveAttribute('data-layout', 'days');
+    get.mockRestore();
+    set.mockRestore();
   });
 });

@@ -29183,5 +29183,24 @@
                               "Screens/Time/TIM-15 · Timesheets › My projects tab · none yet (T2-D 55)"
                     ],
                     "note": "T2-D item 55 (no answer needed). New route GET /time/me/timesheet/projects (the caller's own, no key; access endpoint-permissions.spec.ts). Positive and negative: API projects-p2 e2e (T2-D 62 and 55 test); kit timesheet-t2d.test.tsx (55 tests)."
+          },
+          {
+                    "id": "MT-T2D-61-VIEW-SWITCH",
+                    "area": "T2-D 61 (Timesheet A2): Grid or Day cards on my week",
+                    "screen": "Me › My timesheet (TIM-15), Week tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "panel@demo-org.test (employee on a timesheet).",
+                    "steps": [
+                              "Open Me › My timesheet. Above the week choose 'Day cards'; type hours on a day card and press Save draft.",
+                              "Reload the page.",
+                              "Choose 'Grid'. Use Tab and the arrow keys to move between Grid and Day cards.",
+                              "Negative: open the page in a private window (or with site data blocked) and switch."
+                    ],
+                    "expected": "Step 1: the week shows one card per day with the same hours, and the draft saves with a toast (5 s). Step 2: the page opens on Day cards again (kept on this device). Step 3: back to the grid; the switch is one joined control with a visible focus ring. Step 4: the switch works for that visit; nothing breaks. On a phone width the week starts as day cards until the person picks.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Desk · weekly grid",
+                              "Screens/Time/TIM-15 · Timesheets › Phone · day list, submit week"
+                    ],
+                    "note": "T2-D item 61 (no answer needed). The choice is a per-device convenience (local storage), not a setting. Positive and negative: kit timesheet-t2d.test.tsx (61 tests)."
           }
 ]

@@ -697,6 +697,29 @@ export function MyProjectsTable({ projects }: { projects: MyProject[] }) {
   );
 }
 
+/** T2-D 61: the person's choice of grid or day cards, kept on this device only. */
+const VIEW_KEY = 'yx.timesheet.layout';
+function useWeekLayout(): ['auto' | 'grid' | 'days', (v: 'grid' | 'days') => void] {
+  const [v, setV] = useState<'auto' | 'grid' | 'days'>(() => {
+    try {
+      const x = window.localStorage.getItem(VIEW_KEY);
+      return x === 'grid' || x === 'days' ? x : 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+  return [
+    v,
+    (x) => {
+      setV(x);
+      try {
+        window.localStorage.setItem(VIEW_KEY, x);
+      } catch {
+        /* storage off: the choice lasts this visit */
+      }
+    },
+  ];
+}
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 const isoPlus = (iso: string, n: number) => new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + n)).toISOString().slice(0, 10);
@@ -709,6 +732,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const [problems, setProblems] = useState<string[]>([]);
   const [pf, setPf] = useState(false);
   const [view, setView] = useState('week');
+  const [layout, setLayout] = useWeekLayout();
   const { busy, error, run } = useRun();
   useEffect(() => {
     if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)), comments: Array.from({ length: 7 }, (_, k) => l.comments?.[k] ?? '') })));
@@ -764,7 +788,11 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             </InlineAlert>
           )}
           {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          <div className="yx-tim-row">
+            <Segment label="Show the week as" value={layout === 'days' ? 'days' : 'grid'} onChange={(x) => setLayout(x as 'grid' | 'days')} options={[{ value: 'grid', label: 'Grid' }, { value: 'days', label: 'Day cards' }]} />
+          </div>
           <TimesheetGrid
+            layout={layout}
             weekStart={localDay(d.week)}
             days={days}
             status={st}
