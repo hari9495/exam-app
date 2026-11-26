@@ -928,6 +928,34 @@ describe('Lifecycle batch 6c', () => {
     expect(await told(soon)).not.toContain(users.adminB);
   });
 
+  it('IT assets follow-up (2824): Renew adds one more length to an express contract, audited; tacit refused; wrong key 403; another company 404', async () => {
+    const sup = (await api('it', 'post', '/lifecycle/asset-suppliers').send({ name: `Renew Co ${run}`, contacts: [] }).expect(201)).body.id as string;
+    const add = async (n: string, over: Record<string, unknown>) => (await api('it', 'post', '/lifecycle/asset-contracts').send({ kind: 'insurance', number: `${n}-${run}`, supplierId: sup, legalEntityId: ids.entity, locationId: ids.blr, startsOn: '2026-03-01', months: 12, renewal: 'express', noticeDays: 30, assetIds: [], ...over }).expect(201)).body.id as string;
+    const exp = await add('RNX', {});
+    const tacit = await add('RNT', { renewal: 'tacit' });
+    const row = async (k: string) => (await api('it', 'get', '/lifecycle/asset-contracts').expect(200)).body.rows.find((r: { id: string }) => r.id === k);
+    const renew = (who: Who, k: string, version: number) => api(who, 'post', `/lifecycle/asset-contracts/${k}/renew`).send({ version });
+    expect(await row(exp)).toMatchObject({ startsOn: '2026-03-01', endsOn: '2027-02-28', renewals: 0 });
+    // Renewed: the start stays, the end moves by the length, recorded and audited.
+    expect((await renew('it', exp, 1).expect(200)).body).toMatchObject({ endsOn: '2028-02-29', renewals: 1 });
+    expect(await row(exp)).toMatchObject({ startsOn: '2026-03-01', months: 12, endsOn: '2028-02-29', noticeOn: '2028-01-30', renewals: 1, status: 'active', version: 2 });
+    const audits = await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'asset_contract', entityId: exp }, orderBy: { createdAt: 'asc' } }));
+    expect(audits.map((x) => x.action)).toEqual(['asset.contract.added', 'asset.contract.renewed']);
+    expect(JSON.parse(audits[1].metadataJson ?? '{}')).toMatchObject({ from: '2027-02-28', to: '2028-02-29', renewals: 1, by: 'hand' });
+    // Negative: a stale version, a tacit contract (it renews by itself), no manage key, another company.
+    await renew('it', exp, 1).expect(409);
+    await renew('it', tacit, 1).expect(400);
+    await renew('agent', exp, 2).expect(403);
+    await renew('fin', exp, 2).expect(403);
+    await renew('ravi', exp, 2).expect(403);
+    await renew('adminB', exp, 2).expect(404);
+    expect(await row(tacit)).toMatchObject({ endsOn: '2027-02-28', renewals: 0 });
+    expect(await row(exp)).toMatchObject({ endsOn: '2028-02-29', renewals: 1 });
+    // Editing the contract later keeps its renewals (the end stays two lengths on).
+    await api('it', 'put', `/lifecycle/asset-contracts/${exp}`).send({ kind: 'insurance', number: `RNX-${run}`, supplierId: sup, legalEntityId: ids.entity, locationId: ids.blr, startsOn: '2026-03-01', months: 12, renewal: 'express', noticeDays: 15, assetIds: [], version: 2 }).expect(200);
+    expect(await row(exp)).toMatchObject({ endsOn: '2028-02-29', renewals: 1, noticeDays: 15 });
+  });
+
   it('IT assets part 4 (2718): licences with seats to people and devices; over quota refused unless allowed; cost for money holders only', async () => {
     const sup = (await api('it', 'post', '/lifecycle/asset-suppliers').send({ name: `Licence Co ${run}`, contacts: [] }).expect(201)).body.id as string;
     const dev = (await api('it', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Seat laptop', tag: `SL-${run}`, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;

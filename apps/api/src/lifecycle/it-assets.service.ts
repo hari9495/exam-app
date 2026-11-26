@@ -227,6 +227,29 @@ export class ItAssetsService {
     });
   }
 
+  /**
+   * Answer 2824: an express contract renewed by hand for one more length: the start stays, the end moves by its length
+   * (an ended one whose new end is still ahead is active again). A tacit contract renews by itself (the daily check).
+   */
+  async renewContract(ctx: TenantContext, user: ScopeUser, id: string, version: number) {
+    const v = await this.viewer(user);
+    if (!manages(v)) throw new ForbiddenException('Only asset managers renew contracts.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const cur = await tx.assetContract.findFirst({ where: { organizationId: org, id } });
+      if (!cur || !reachesPlace(v, 'asset.view', cur)) throw new NotFoundException('No such contract.');
+      if (!reachesPlace(v, 'asset.manage', cur)) throw new ForbiddenException('You cannot change this contract.');
+      if (cur.renewal !== 'express') throw new BadRequestException('A tacit contract renews by itself at its end.');
+      const renewals = cur.renewals + 1;
+      const from = iso(cur.endsOn);
+      const to = contractEndsOn(iso(cur.startsOn), cur.months, renewals);
+      const n = await tx.assetContract.updateMany({ where: { organizationId: org, id, version }, data: { renewals, endsOn: asDate(to), ...(to >= todayIst() ? { status: 'active' } : {}), version: { increment: 1 } } });
+      if (!n.count) throw new ConflictException('Someone else changed this contract. Reload it.');
+      await audit(tx, c, 'asset.contract.renewed', 'asset_contract', id, { from, to, times: 1, renewals, months: cur.months, by: 'hand' });
+      return { id, endsOn: to, renewals };
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ licences (answer 2718)
 
   async licences(ctx: TenantContext, user: ScopeUser) {
