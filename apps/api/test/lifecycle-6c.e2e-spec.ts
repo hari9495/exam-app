@@ -1060,6 +1060,35 @@ describe('Lifecycle batch 6c', () => {
     expect(await inA((tx) => tx.assetLicenceSeat.findFirstOrThrow({ where: { licenceId: l, freedOn: { not: null } } }))).toMatchObject({ freeReason: 'Account already closed by the vendor' });
   });
 
+  it("IT assets follow-up (2826): a person's licence seats on the PPL-03 Assets tab for asset.view over the licence and their managers", async () => {
+    const o = { organizationId: org.A.id };
+    const seatsOf = async (who: Who) => (await api(who, 'get', `/lifecycle/people/${emp.sita}/assets`).expect(200)).body.seats as { software: string; softwareVersion: string | null; givenOn: string }[];
+    const m365 = expect.objectContaining({ software: 'Microsoft 365', softwareVersion: 'E3', expiresOn: '2027-03-31', givenOn: today });
+    // asset.view holders (company-wide), the manager and the person see Sita's seat.
+    expect(await seatsOf('agent')).toEqual(expect.arrayContaining([m365]));
+    expect(await seatsOf('mgr')).toEqual(expect.arrayContaining([m365]));
+    expect(await seatsOf('sita')).toEqual(expect.arrayContaining([m365]));
+    // Negative: a peer and another company: not found; asset.view at another place only: the person, but not the seat.
+    await api('meena', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
+    await api('adminB', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
+    const far = await inA(async (tx) => {
+      const loc = await tx.location.create({ data: { ...o, legalEntityId: ids.entity, name: `Mysuru ${run}`, code: `M${run.slice(0, 4)}`, address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } });
+      const u = await tx.user.create({ data: { ...o, email: `far-it@life6c-${run}.test`, name: `Far IT ${run}`, passwordHash: await argon2.hash(PASSWORD), role: 'panel', permissionProfileId: (await tx.permissionProfile.create({ data: { ...o, name: `far-none-${run}`, permissionsJson: '[]' } })).id } });
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `asset-far-${run}`, permissionsJson: JSON.stringify(['asset.view']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: u.id, permissionProfileId: role.id, scopeType: 'location', locationId: loc.id, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Mysuru IT', grantedBy: users.adminA } });
+      return u.id;
+    });
+    expect(far).toBeTruthy();
+    const farToken = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `far-it@life6c-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken as string;
+    const farView = (await request(server()).get(`/api/v1/lifecycle/people/${emp.sita}/assets`).set('Authorization', `Bearer ${farToken}`).expect(200)).body;
+    expect(farView.seats).toEqual([]);
+    // A freed seat leaves the tab.
+    const l = (await api('it', 'get', '/lifecycle/asset-licences').expect(200)).body.rows.find((r: { id: string }) => r.id === ids.licence);
+    const sitaSeat = l.holders.find((h: { name: string }) => h.name === `Sita ${run}`).seatId as string;
+    await api('it', 'post', `/lifecycle/asset-licences/${ids.licence}/seats/${sitaSeat}/free`).send({ reason: 'Moved team' }).expect(200);
+    expect(await seatsOf('mgr')).not.toEqual(expect.arrayContaining([m365]));
+  });
+
   it('IT assets part 4 (2718): asset managers of the place are told once before a licence expires (a company setting)', async () => {
     const alerts = app.get(AssetAlertsService);
     const o = { organizationId: org.A.id };

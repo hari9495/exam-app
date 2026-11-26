@@ -579,7 +579,10 @@ export class OffboardingService {
     });
   }
 
-  /** PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers. */
+  /**
+   * PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers.
+   * Answer 2826: their licence seats too, by the same rule (asset.view over the seat's licence place).
+   */
   async personAssets(ctx: TenantContext, user: ScopeUser, employeeId: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -593,7 +596,13 @@ export class OffboardingService {
       const assets = await tx.asset.findMany({ where: { organizationId: org, id: { in: open.map((o) => o.assetId) } } });
       const shown = assets.filter((a) => self || team || this.reachesAsset(v, 'asset.view', a));
       if (!self && !team && !v.grants.has('asset.view')) throw new NotFoundException('Not found');
+      const seats = await tx.assetLicenceSeat.findMany({ where: { organizationId: org, personId: emp.personId, freedOn: null }, orderBy: { givenOn: 'desc' } });
+      const licences = (await tx.assetLicence.findMany({ where: { organizationId: org, id: { in: seats.map((x) => x.licenceId) } } })).filter((l) => self || team || reachesPlace(v, 'asset.view', l));
       return {
+        seats: seats.flatMap((x) => {
+          const l = licences.find((y) => y.id === x.licenceId);
+          return l ? [{ seatId: x.id, software: l.software, softwareVersion: l.softwareVersion, expiresOn: l.expiresOn ? iso(l.expiresOn) : null, givenOn: iso(x.givenOn) }] : [];
+        }),
         rows: open.flatMap((o) => {
           const a = shown.find((x) => x.id === o.assetId);
           return a ? [{ tag: a.tag, name: a.name, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) }] : [];
