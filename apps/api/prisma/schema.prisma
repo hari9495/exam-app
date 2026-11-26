@@ -15564,12 +15564,15 @@ model LearningCourseItem {
   courseId       String   @map("course_id") @db.Uuid
   position       Int
   title          String   @db.VarChar(200)
-  /// pdf · video · link
+  /// pdf · video · link · scorm
   kind           String   @db.VarChar(10)
   minutes        Int      @default(0)
   required       Boolean  @default(true)
   fileId         String?  @map("file_id") @db.Uuid
   url            String?  @db.VarChar(1000)
+  /// Answer 2781: SCORM packages: 1.2 or 2004, and the launch file inside the package.
+  scormVersion   String?  @map("scorm_version") @db.VarChar(4)
+  scormLaunch    String?  @map("scorm_launch") @db.VarChar(1000)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([organizationId, courseId, position], map: "learning_course_items_course_idx")
@@ -15629,6 +15632,31 @@ model LearningEnrolment {
 
   @@index([organizationId, employeeId], map: "learning_enrolments_employee_idx")
   @@map("learning_enrolments")
+}
+
+/// Answer 2781: one unpacked file of a SCORM item (stored and scanned like every upload), by its path in the package.
+model LearningScormFile {
+  organizationId String @map("organization_id") @db.Uuid
+  itemId         String @map("item_id") @db.Uuid
+  path           String @db.VarChar(1000)
+  fileId         String @map("file_id") @db.Uuid
+
+  @@id([itemId, path])
+  @@index([organizationId, itemId], map: "learning_scorm_files_org_idx")
+  @@map("learning_scorm_files")
+}
+
+/// Answer 2781: what a SCORM package reported for one enrolment (allowed cmi fields only), so the learner can resume.
+model LearningScormAttempt {
+  organizationId String   @map("organization_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  itemId         String   @map("item_id") @db.Uuid
+  cmi            Json     @default("{}")
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([enrolmentId, itemId])
+  @@index([organizationId, enrolmentId], map: "learning_scorm_attempts_org_idx")
+  @@map("learning_scorm_attempts")
 }
 
 model LearningItemProgress {

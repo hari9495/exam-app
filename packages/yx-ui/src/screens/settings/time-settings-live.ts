@@ -256,6 +256,11 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Learning', key: 'learning.check_after_days', synonyms: ['training check', 'manager check'] },
       { section: 'Learning', key: 'learning.overdue.manager_days', synonyms: ['overdue', 'mandatory training', 'escalation'] },
       { section: 'Learning', key: 'learning.overdue.hr_days', synonyms: ['overdue', 'mandatory training', 'escalation'] },
+      // Answer 2781: SCORM upload limits.
+      { section: 'Learning', key: 'learning.scorm.max_zip_mb', synonyms: ['scorm', 'package', 'upload size'] },
+      { section: 'Learning', key: 'learning.scorm.max_unzipped_mb', synonyms: ['scorm', 'package', 'zip'] },
+      { section: 'Learning', key: 'learning.scorm.max_files', synonyms: ['scorm', 'package', 'zip'] },
+      { section: 'Learning', key: 'learning.scorm.max_ratio', synonyms: ['scorm', 'zip bomb', 'compression'] },
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },
