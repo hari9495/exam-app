@@ -1167,6 +1167,13 @@ export const GROUP_2: SettingsGroupDef = {
             { key: 'asset.contract_alert_days', label: 'Contract notice alert', kind: 'radio', value: 'On the notice date', options: ['Off', 'On the notice date', '7 days before the notice date', '15 days before the notice date', '30 days before the notice date'], helper: 'Asset managers of the contract’s place (company-wide ones for a contract with no place) are told once. A tacit contract renews itself at its end; an express one ends.', synonyms: ['contract', 'notice', 'renewal'] },
           ],
         },
+        // IT assets answer 2718: the licence's asset managers are told once before it expires.
+        {
+          title: 'Licences',
+          settings: [
+            { key: 'asset.licence_alert_days', label: 'Licence expiry alert', kind: 'radio', value: '30 days before', options: ['Off', '7 days before', '15 days before', '30 days before', '60 days before', '90 days before'], helper: 'Asset managers of the licence’s place (company-wide ones for a licence with no place) are told once before it expires.', synonyms: ['licence', 'license', 'software', 'expiry'] },
+          ],
+        },
       ],
       lastChange: { by: 'Karthik Subramanian', role: 'Engineering Manager', at: '2026-06-18T09:55', what: 'Changed default laptop recovery from ₹40,000 to ₹45,000' },
       related: [{ label: 'Asset register', screenId: 'PPL-25' }],

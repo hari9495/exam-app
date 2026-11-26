@@ -8084,6 +8084,52 @@ model AssetContractAsset {
   @@map("asset_contract_assets")
 }
 
+/// IT assets part 4 (answer 2718): a software licence with its seats (counted; no install scan). A place-less licence is
+/// company-wide. expiryAlertedFor: the expiry date its asset managers were told about.
+model AssetLicence {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  software         String    @db.VarChar(120)
+  softwareVersion  String?   @map("software_version") @db.VarChar(60)
+  supplierId       String?   @map("supplier_id") @db.Uuid
+  legalEntityId    String?   @map("legal_entity_id") @db.Uuid
+  locationId       String?   @map("location_id") @db.Uuid
+  seats            Int
+  expiresOn        DateTime? @map("expires_on") @db.Date
+  cost             Decimal?  @db.Decimal(14, 2)
+  allowOverQuota   Boolean   @default(false) @map("allow_over_quota")
+  expiryAlertedFor DateTime? @map("expiry_alerted_for") @db.Date
+  version          Int       @default(1)
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([expiresOn])
+  @@map("asset_licences")
+}
+
+/// Answer 2718: a seat of a licence, given to a person or a device (an asset); freed, never deleted.
+model AssetLicenceSeat {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  licenceId      String    @map("licence_id") @db.Uuid
+  personId       String?   @map("person_id") @db.Uuid
+  assetId        String?   @map("asset_id") @db.Uuid
+  givenOn        DateTime  @map("given_on") @db.Date
+  givenBy        String?   @map("given_by") @db.Uuid
+  freedOn        DateTime? @map("freed_on") @db.Date
+  freedBy        String?   @map("freed_by") @db.Uuid
+  freeReason     String?   @map("free_reason") @db.VarChar(200)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, personId])
+  @@index([organizationId, assetId])
+  @@map("asset_licence_seats")
+}
+
 model AssetAssignment {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId  String    @map("organization_id") @db.Uuid
@@ -8116,6 +8162,8 @@ model ClearanceItem {
   recoveryAmount    Decimal?  @map("recovery_amount") @db.Decimal(14, 2)
   recoveryReason    String?   @map("recovery_reason") @db.VarChar(300)
   assetAssignmentId String?   @map("asset_assignment_id") @db.Uuid
+  /// IT assets part 4 (answer 2718): a leaver's licence seat; clearing the item frees it.
+  licenceSeatId     String?   @map("licence_seat_id") @db.Uuid
   signedOffBy       String?   @map("signed_off_by") @db.Uuid
   signedOffAt       DateTime? @map("signed_off_at") @db.Timestamptz(3)
   /// PPL-20: an open item the owner marked blocked, with the reason (cleared when it is signed off or waived).

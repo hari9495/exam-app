@@ -70,6 +70,7 @@ describe('notification catalog', () => {
       'asset.assigned',
       'asset.warranty.ending',
       'asset.contract.notice',
+      'asset.licence.expiring',
       'probation.review.done',
       'exit.deprovisioning.failed',
       'payroll.fnf.due',

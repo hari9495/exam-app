@@ -535,6 +535,14 @@ export interface MyAsset {
   /** Settings 2.8: the company asks no confirmation. */
   ackNone?: boolean;
 }
+/** IT assets answer 2718: a software licence seat given to me. */
+export interface MySeat {
+  seatId: string;
+  software: string;
+  softwareVersion: string | null;
+  expiresOn: string | null;
+  givenOn: string;
+}
 
 // ---- Batch 6d: exit steps, the payroll hand-off, the alumni vault
 

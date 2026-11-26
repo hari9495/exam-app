@@ -1,5 +1,6 @@
 import type { LiveSuppliers, SupplierRow } from './asset-suppliers';
 import type { ContractRow, LiveContracts } from './asset-contracts';
+import type { LicenceRow, LiveLicences } from './asset-licences';
 
 // IT assets part 3 sample data (stories and tests): the IT and Admin supplier list (answer 2716).
 export const SUPPLIERS: SupplierRow[] = [
@@ -31,6 +32,33 @@ export const liveContracts = (over: Partial<LiveContracts> = {}): LiveContracts 
   locations: [{ value: 'l1', label: 'Hosur plant', entityId: 'e1' }],
   assets: [{ value: 'a1', label: 'LT-0418 · Dell Latitude 5440' }, { value: 'a2', label: 'LT-0419 · Dell Latitude 5440' }, { value: 'a3', label: 'PR-0007 · HP LaserJet M404' }],
   onSave: () => Promise.resolve({ id: 'k9' }),
+  onOpenAsset: () => {},
+  ...over,
+});
+
+// Answer 2718: software licences on 26 Nov 2026 (one over quota, one with every seat in use, one expired).
+export const LICENCES: LicenceRow[] = [
+  { id: 'l1', software: 'Microsoft 365', softwareVersion: 'E3', supplierId: 's2', supplier: 'Redington Ltd', legalEntityId: null, locationId: null, place: null, seats: 3, used: 4, expiresOn: '2027-03-31', cost: '96000.00', allowOverQuota: true, holders: [{ seatId: 'q1', kind: 'person', name: 'Meera Iyer', tag: null, assetId: null, givenOn: '2026-04-01', leaving: false }, { seatId: 'q2', kind: 'person', name: 'Arjun Kulkarni', tag: null, assetId: null, givenOn: '2026-04-01', leaving: true }, { seatId: 'q3', kind: 'device', name: 'Dell Latitude 5440', tag: 'LT-0418', assetId: 'a1', givenOn: '2026-08-14', leaving: false }], hiddenSeats: 1, canManage: true, version: 3 },
+  { id: 'l2', software: 'AutoCAD', softwareVersion: '2026', supplierId: 's1', supplier: 'Dell India Pvt Ltd', legalEntityId: 'e1', locationId: 'l1', place: 'Hosur plant', seats: 2, used: 2, expiresOn: '2026-12-15', cost: '310000.00', allowOverQuota: false, holders: [{ seatId: 'q4', kind: 'person', name: 'Kavya Reddy', tag: null, assetId: null, givenOn: '2026-01-10', leaving: false }, { seatId: 'q5', kind: 'device', name: 'Dell Latitude 5440', tag: 'LT-0419', assetId: 'a2', givenOn: '2026-01-10', leaving: false }], hiddenSeats: 0, canManage: true, version: 1 },
+  { id: 'l3', software: 'Tally Prime', softwareVersion: null, supplierId: null, supplier: null, legalEntityId: 'e1', locationId: null, place: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', seats: 5, used: 1, expiresOn: null, cost: '54000.00', allowOverQuota: false, holders: [{ seatId: 'q6', kind: 'person', name: 'Meera Iyer', tag: null, assetId: null, givenOn: '2025-06-01', leaving: false }], hiddenSeats: 0, canManage: true, version: 1 },
+  { id: 'l4', software: 'Adobe Acrobat Pro', softwareVersion: '2024', supplierId: 's2', supplier: 'Redington Ltd', legalEntityId: 'e1', locationId: 'l1', place: 'Hosur plant', seats: 10, used: 0, expiresOn: '2026-10-31', cost: null, allowOverQuota: false, holders: [], hiddenSeats: 0, canManage: true, version: 2 },
+];
+
+export const liveLicences = (over: Partial<LiveLicences> = {}): LiveLicences => ({
+  state: 'ready',
+  onRetry: () => {},
+  today: CONTRACTS_TODAY,
+  rows: LICENCES,
+  money: true,
+  canAdd: true,
+  suppliers: [{ value: 's1', label: 'Dell India Pvt Ltd' }, { value: 's2', label: 'Redington Ltd' }],
+  entities: [{ value: 'e1', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }],
+  locations: [{ value: 'l1', label: 'Hosur plant', entityId: 'e1' }],
+  people: [{ value: 'p1', label: 'Meera Iyer' }, { value: 'p3', label: 'Kavya Reddy' }],
+  devices: [{ value: 'a1', label: 'LT-0418 · Dell Latitude 5440' }, { value: 'a2', label: 'LT-0419 · Dell Latitude 5440' }],
+  onSave: () => Promise.resolve({ id: 'l9' }),
+  onGiveSeat: () => Promise.resolve({ id: 'q9' }),
+  onFreeSeat: () => Promise.resolve({ ok: true }),
   onOpenAsset: () => {},
   ...over,
 });

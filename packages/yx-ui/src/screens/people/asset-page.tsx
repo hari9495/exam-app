@@ -2,7 +2,7 @@
 // Details (with maker, model, invoice number and warranty) and History (added, changed, issued, confirmed, taken back).
 // Asset managers of its place edit the details. Answer 2722: the Tickets tab lists the Helpdesk tickets about the device
 // that the viewer may see there (agents of the ticket's desk); everyone else who sees the asset gets only the count.
-// Licences and bookings join as tabs when their answers arrive.
+// Answer 2718: the Licences tab lists the licence seats on the device. Bookings join as a tab when its answer arrives.
 import { useState } from 'react';
 import { Laptop, Pencil } from 'lucide-react';
 import { Button } from '../../components/button';
@@ -16,6 +16,7 @@ import { CurrencyField, NumberField, TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
 import { Breadcrumbs, Card, DescriptionList, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Text } from '../../components/foundations';
 import { Timeline } from '../../components/timeline';
 import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
@@ -62,6 +63,17 @@ export interface AssetPageData {
   tickets?: { count: number; rows: AssetTicket[] };
   /** Answer 2717: the contracts covering it that the viewer sees. */
   contracts?: AssetContractRef[];
+  /** Answer 2718: the licence seats on this device, of the licences the viewer sees. */
+  licences?: AssetLicenceRef[];
+}
+export interface AssetLicenceRef {
+  /** The licence. */
+  id: string;
+  seatId: string;
+  software: string;
+  softwareVersion: string | null;
+  expiresOn: string | null;
+  givenOn: string;
 }
 export interface AssetContractRef {
   id: string;
@@ -109,8 +121,10 @@ export interface LiveAssetPage {
   onOpenTicket?: (id: string) => void;
   /** Answer 2717: opens a contract on People › Asset contracts. */
   onOpenContract?: (id: string) => void;
+  /** Answer 2718: opens a licence on People › Software licences. */
+  onOpenLicence?: (id: string) => void;
 }
-type Tab = 'details' | 'history' | 'tickets' | 'contracts';
+type Tab = 'details' | 'history' | 'tickets' | 'contracts' | 'licences';
 
 const SAMPLE_CATEGORIES = ['Laptop', 'Phone', 'SIM', 'Tools'].map((x) => ({ value: x, label: x }));
 const SAMPLE_SUPPLIERS = [{ value: 's1', label: 'Dell India Pvt Ltd' }, { value: 's2', label: 'Redington Ltd' }];
@@ -135,9 +149,9 @@ export function AssetPageScreen(props: { data: AssetPageData; tab?: Tab; editing
     if (l.state === 'no-access') return <Frame onBack={l.onBack}><NoAccessState what="the assets" grantedBy="your IT or HR admin" /></Frame>;
     if (l.state === 'error') return <Frame onBack={l.onBack}><ErrorState title="We couldn't load this asset" description="Check your connection and try again." onRetry={l.onRetry} /></Frame>;
     if (l.state === 'loading' || !l.data) return <Frame onBack={l.onBack}><Skeleton height={360} /></Frame>;
-    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} suppliers={l.suppliers} onOpenTicket={l.onOpenTicket} onOpenContract={l.onOpenContract} />;
+    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} suppliers={l.suppliers} onOpenTicket={l.onOpenTicket} onOpenContract={l.onOpenContract} onOpenLicence={l.onOpenLicence} />;
   }
-  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} suppliers={SAMPLE_SUPPLIERS} onOpenTicket={() => undefined} onOpenContract={() => undefined} />;
+  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} suppliers={SAMPLE_SUPPLIERS} onOpenTicket={() => undefined} onOpenContract={() => undefined} onOpenLicence={() => undefined} />;
 }
 
 function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; children: React.ReactNode }) {
@@ -149,7 +163,7 @@ function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; ch
   );
 }
 
-function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, suppliers, onOpenTicket, onOpenContract }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onOpenTicket?: LiveAssetPage['onOpenTicket']; onOpenContract?: LiveAssetPage['onOpenContract'] }) {
+function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, suppliers, onOpenTicket, onOpenContract, onOpenLicence }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onOpenTicket?: LiveAssetPage['onOpenTicket']; onOpenContract?: LiveAssetPage['onOpenContract']; onOpenLicence?: LiveAssetPage['onOpenLicence'] }) {
   const [open, setOpen] = useState(editing);
   const a = data.asset;
   const ended = a.warrantyEndsOn != null && a.warrantyEndsOn < data.today;
@@ -180,6 +194,7 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
           <TabsTrigger value="history">History</TabsTrigger>
           {data.tickets && <TabsTrigger value="tickets">{`Tickets (${data.tickets.count})`}</TabsTrigger>}
           {data.contracts && <TabsTrigger value="contracts">{`Contracts (${data.contracts.length})`}</TabsTrigger>}
+          {data.licences && <TabsTrigger value="licences">{`Licences (${data.licences.length})`}</TabsTrigger>}
         </TabsList>
         <TabsContent value="details">
           <Card>
@@ -221,6 +236,11 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
         {data.contracts && (
           <TabsContent value="contracts">
             <ContractsTab contracts={data.contracts} onOpenContract={onOpenContract} />
+          </TabsContent>
+        )}
+        {data.licences && (
+          <TabsContent value="licences">
+            <LicencesTab licences={data.licences} today={data.today} onOpenLicence={onOpenLicence} />
           </TabsContent>
         )}
         {data.tickets && (
@@ -279,6 +299,22 @@ function ContractsTab({ contracts, onOpenContract }: { contracts: AssetContractR
   return (
     <Card>
       <DataTable label="Contracts covering this device" columns={cols} rows={contracts} getRowId={(k) => k.id} state="ready" />
+    </Card>
+  );
+}
+
+/** Answer 2718: the licence seats on the device (a licence opens on People › Software licences). */
+function LicencesTab({ licences, today, onOpenLicence }: { licences: AssetLicenceRef[]; today: string; onOpenLicence?: (id: string) => void }) {
+  const name = (l: AssetLicenceRef) => [l.software, l.softwareVersion].filter(Boolean).join(' ');
+  const cols: TableColumn<AssetLicenceRef>[] = [
+    { key: 'software', header: 'Software', value: (l) => name(l), render: onOpenLicence ? (l) => <Link href={`#${l.id}`} onClick={(e) => (e.preventDefault(), onOpenLicence(l.id))}>{name(l)}</Link> : undefined, width: 260 },
+    { key: 'givenOn', header: 'Seat given on', type: 'date', value: (l) => day(l.givenOn), width: 150 },
+    { key: 'expiresOn', header: 'Licence expires', value: (l) => l.expiresOn ?? '', render: (l) => (l.expiresOn ? <span>{formatDate(day(l.expiresOn))}{l.expiresOn < today && <Text as="div" size="sm"><Badge tone="danger">Expired</Badge></Text>}</span> : <Text tone="secondary">Does not expire</Text>), width: 170 },
+  ];
+  if (!licences.length) return <Card><InlineAlert tone="info" title="No licence seats you see are on this device." /></Card>;
+  return (
+    <Card>
+      <DataTable label="Licence seats on this device" columns={cols} rows={licences} getRowId={(l) => l.seatId} state="ready" />
     </Card>
   );
 }

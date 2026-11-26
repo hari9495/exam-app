@@ -38,6 +38,11 @@ export const ASSET_PAGE: AssetPageData = {
   ],
   // Answer 2717: one AMC covers it.
   contracts: [{ id: 'k1', kind: 'amc', number: 'AMC-2026-014', supplier: 'Dell India Pvt Ltd', endsOn: '2026-12-31', renewal: 'tacit', status: 'active' }],
+  // Answer 2718: two licence seats on it, one of a licence that has expired.
+  licences: [
+    { id: 'l1', seatId: 'q3', software: 'Microsoft 365', softwareVersion: 'E3', expiresOn: '2027-03-31', givenOn: '2026-08-14' },
+    { id: 'l4', seatId: 'q7', software: 'Adobe Acrobat Pro', softwareVersion: '2024', expiresOn: '2026-10-31', givenOn: '2025-11-02' },
+  ],
   // Answer 2722: three tickets about it; this viewer is an agent of the IT desk that holds two.
   tickets: {
     count: 3,

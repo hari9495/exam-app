@@ -162,6 +162,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // IT assets answer 2714.
       'asset-warranty-alerts': () => assetAlerts.warrantySweep(),
       'asset-contract-alerts': () => assetAlerts.contractSweep(),
+      'asset-licence-alerts': () => assetAlerts.licenceSweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

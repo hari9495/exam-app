@@ -219,6 +219,14 @@ export class OffboardingService {
           await freezeSettlementIn(tx, c, k.id, 'asset_returned');
         }
       }
+      // IT assets answer 2718: clearing a leaver's licence seat item frees the seat (audited on the licence).
+      if (i.licenceSeatId && dto.action === 'clear') {
+        const seat = await tx.assetLicenceSeat.findFirst({ where: { organizationId: org, id: i.licenceSeatId, freedOn: null } });
+        if (seat) {
+          await tx.assetLicenceSeat.update({ where: { id: seat.id }, data: { freedOn: asDate(todayIst()), freedBy: c.userId ?? null, freeReason: (dto.note?.trim() || 'Freed at exit clearance').slice(0, 200), version: { increment: 1 } } });
+          await audit(tx, c, 'asset.licence.seat.freed', 'asset_licence', seat.licenceId, { seatId: seat.id, personId: seat.personId, exitCaseId: k.id });
+        }
+      }
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
       if (dto.recoveryAmount) await freezeSettlementIn(tx, c, k.id, 'recovery');
       await this.maybeClearedIn(tx, c, k.id);
@@ -227,7 +235,7 @@ export class OffboardingService {
   }
 
   /** Every item cleared or waived: the case is "cleared" (the no-dues certificate can then be issued, 6d). */
-  private async maybeClearedIn(tx: Tx, c: CompanyContext, exitCaseId: string) {
+  async maybeClearedIn(tx: Tx, c: CompanyContext, exitCaseId: string) {
     const open = await tx.clearanceItem.count({ where: { organizationId: c.organizationId, exitCaseId, status: 'open' } });
     if (open) return;
     const n = await tx.exitCase.updateMany({ where: { organizationId: c.organizationId, id: exitCaseId, status: 'accepted' }, data: { status: 'cleared', version: { increment: 1 } } });
@@ -513,6 +521,9 @@ export class OffboardingService {
       // Answer 2717: the contracts covering it that this viewer sees (asset.view over the contract's place).
       const covering = (await tx.assetContract.findMany({ where: { organizationId: org, id: { in: (await tx.assetContractAsset.findMany({ where: { organizationId: org, assetId: a.id }, select: { contractId: true } })).map((l) => l.contractId) } }, orderBy: { endsOn: 'desc' } })).filter((k) => reachesPlace(v, 'asset.view', k));
       const contractSuppliers = new Map((await tx.itSupplier.findMany({ where: { organizationId: org, id: { in: covering.map((k) => k.supplierId) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
+      // Answer 2718: the licence seats on this device, of the licences this viewer sees (asset.view over the licence's place).
+      const deviceSeats = await tx.assetLicenceSeat.findMany({ where: { organizationId: org, assetId: a.id, freedOn: null }, orderBy: { givenOn: 'desc' } });
+      const seatLicences = (await tx.assetLicence.findMany({ where: { organizationId: org, id: { in: deviceSeats.map((x) => x.licenceId) } } })).filter((l) => reachesPlace(v, 'asset.view', l));
       const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
       // Answer 2722: every viewer of the asset gets how many tickets are about it; only the ones they may see are listed.
       const ticketCount = await tx.sdTicket.count({ where: { organizationId: org, assetId: a.id } });
@@ -550,6 +561,10 @@ export class OffboardingService {
         holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence), ackNone: (open.ackEvidence as { method?: string } | null)?.method === 'none' } : null,
         history,
         contracts: covering.map((k) => ({ id: k.id, kind: k.kind, number: k.number, supplier: contractSuppliers.get(k.supplierId) ?? 'Unknown supplier', endsOn: iso(k.endsOn), renewal: k.renewal, status: k.status })),
+        licences: deviceSeats.flatMap((x) => {
+          const l = seatLicences.find((y) => y.id === x.licenceId);
+          return l ? [{ id: l.id, seatId: x.id, software: l.software, softwareVersion: l.softwareVersion, expiresOn: l.expiresOn ? iso(l.expiresOn) : null, givenOn: iso(x.givenOn) }] : [];
+        }),
         tickets: { count: ticketCount, rows: seen.map((t) => ({ id: t.id, number: t.number, subject: t.subject, state: t.systemState, raisedAt: t.createdAt.toISOString() })) },
       };
     });
@@ -696,10 +711,14 @@ export class OffboardingService {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = await ownOf(tx, c, v);
-      if (!own.personId) return { rows: [] };
+      if (!own.personId) return { rows: [], seats: [] };
       const open = await tx.assetAssignment.findMany({ where: { organizationId: c.organizationId, personId: own.personId, returnedOn: null }, orderBy: { issuedOn: 'desc' } });
       const assets = await tx.asset.findMany({ where: { organizationId: c.organizationId, id: { in: open.map((o) => o.assetId) } } });
-      return { rows: open.map((o) => { const a = assets.find((x) => x.id === o.assetId)!; return { assignmentId: o.id, name: a.name, category: a.category, tag: a.tag, serial: a.serial, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledgedAt: (o.ackEvidence as { at?: string } | null)?.at ?? null, ackNone: (o.ackEvidence as { method?: string } | null)?.method === 'none' }; }) };
+      // Answer 2718: the licence seats given to me.
+      const mine = await tx.assetLicenceSeat.findMany({ where: { organizationId: c.organizationId, personId: own.personId, freedOn: null }, orderBy: { givenOn: 'desc' } });
+      const licences = await tx.assetLicence.findMany({ where: { organizationId: c.organizationId, id: { in: mine.map((x) => x.licenceId) } } });
+      const seats = mine.map((x) => { const l = licences.find((y) => y.id === x.licenceId)!; return { seatId: x.id, software: l.software, softwareVersion: l.softwareVersion, expiresOn: l.expiresOn ? iso(l.expiresOn) : null, givenOn: iso(x.givenOn) }; });
+      return { seats, rows: open.map((o) => { const a = assets.find((x) => x.id === o.assetId)!; return { assignmentId: o.id, name: a.name, category: a.category, tag: a.tag, serial: a.serial, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledgedAt: (o.ackEvidence as { at?: string } | null)?.at ?? null, ackNone: (o.ackEvidence as { method?: string } | null)?.method === 'none' }; }) };
     });
   }
 

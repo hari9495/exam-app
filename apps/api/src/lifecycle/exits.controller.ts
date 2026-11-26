@@ -11,7 +11,7 @@ import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
 import { ItAssetsService } from './it-assets.service';
-import { ContractDto, SupplierDto } from './it-assets-dto';
+import { ContractDto, FreeSeatDto, LicenceDto, LicenceSeatDto, SupplierDto } from './it-assets-dto';
 import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
@@ -272,6 +272,39 @@ export class ExitsController {
   @RequirePermissions('asset.manage')
   saveAssetContract(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractDto) {
     return this.itAssets.saveContract(ctx, this.user(req), id, dto);
+  }
+
+  // Answer 2718: software licences and their seats (asset.view over the licence's place reads; asset.manage over it
+  // changes, gives and frees seats; checked again per licence by the service, with the cost only for money holders).
+  @Get('asset-licences')
+  @RequirePermissions('asset.view')
+  assetLicences(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.itAssets.licences(ctx, this.user(req));
+  }
+
+  @Post('asset-licences')
+  @RequirePermissions('asset.manage')
+  addAssetLicence(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LicenceDto) {
+    return this.itAssets.saveLicence(ctx, this.user(req), null, dto);
+  }
+
+  @Put('asset-licences/:id')
+  @RequirePermissions('asset.manage')
+  saveAssetLicence(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LicenceDto) {
+    return this.itAssets.saveLicence(ctx, this.user(req), id, dto);
+  }
+
+  @Post('asset-licences/:id/seats')
+  @RequirePermissions('asset.manage')
+  giveLicenceSeat(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LicenceSeatDto) {
+    return this.itAssets.giveSeat(ctx, this.user(req), id, dto);
+  }
+
+  @Post('asset-licences/:id/seats/:seatId/free')
+  @HttpCode(200)
+  @RequirePermissions('asset.manage')
+  freeLicenceSeat(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('seatId', ParseUUIDPipe) seatId: string, @Body() dto: FreeSeatDto) {
+    return this.itAssets.freeSeat(ctx, this.user(req), id, seatId, dto);
   }
 
   /** Who an asset can be issued to: current employees, name only. IT holds asset.manage without any employee grant. */

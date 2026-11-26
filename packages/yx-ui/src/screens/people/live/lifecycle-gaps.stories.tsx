@@ -24,6 +24,8 @@ const assets = (over: Partial<MyAssetsScreenProps> = {}) => <MyAssetsScreen stat
 export const Assets: S = { name: 'My assets · two to confirm', render: () => assets() };
 export const AssetsAllConfirmed: S = { name: 'My assets · all confirmed', render: () => assets({ rows: ASSETS.map((a) => ({ ...a, acknowledgedAt: a.acknowledgedAt ?? '2026-11-03T06:00:00Z' })) }) };
 export const AssetsConfirming: S = { name: 'My assets · confirming', render: () => assets({ onAcknowledge: never }), play: play(pressFirst('I have it')) };
+// IT assets answer 2718: the software licence seats given to me, under my assets.
+export const AssetsSeats: S = { name: 'My assets · with my software licences', render: () => assets({ seats: [{ seatId: 'q1', software: 'Microsoft 365', softwareVersion: 'E3', expiresOn: '2027-03-31', givenOn: '2026-11-03' }, { seatId: 'q2', software: 'Tally Prime', softwareVersion: null, expiresOn: null, givenOn: '2026-11-03' }] }) };
 export const AssetsEmpty: S = { name: 'My assets · none held', render: () => assets({ rows: [] }) };
 export const AssetsLoading: S = { name: 'My assets · loading', render: () => assets({ state: 'loading', rows: null }) };
 export const AssetsError: S = { name: 'My assets · could not load', render: () => assets({ state: 'error', rows: null, onRetry: () => undefined }) };

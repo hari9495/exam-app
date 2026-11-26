@@ -22,7 +22,9 @@ const page = (canEdit = true, data = DATA) => assetSettingsPage(timeSettingsPage
 describe('2.8 Assets live', () => {
   it('the company list comes first, then the acknowledgement (no E-sign yet) and the recovery basis, at their starter values', () => {
     const p = page();
-    expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return', 'Warranty', 'Contracts']);
+    expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return', 'Warranty', 'Contracts', 'Licences']);
+    // Answer 2718: 30 days before a licence expires by default; off tells nobody.
+    expect(allSettings(p).find((d) => d.key === 'asset.licence_alert_days')).toMatchObject({ kind: 'radio', value: '30', options: ['off', '7', '15', '30', '60', '90'], helper: expect.stringMatching(/before it expires/) });
     // Answer 2714 (contracts): on the notice date by default; off tells nobody.
     expect(allSettings(p).find((d) => d.key === 'asset.contract_alert_days')).toMatchObject({ kind: 'radio', value: '0', options: ['off', '0', '7', '15', '30'], helper: expect.stringMatching(/tacit contract renews itself/) });
     // Answer 2714: the warranty alert, 30 days before by default; off tells nobody.

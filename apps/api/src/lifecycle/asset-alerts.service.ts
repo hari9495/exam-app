@@ -173,4 +173,51 @@ export class AssetAlertsService {
     }
     return done;
   }
+
+  /**
+   * The daily licence sweep (answer 2718): the asset managers of a licence's place (company-wide ones for a place-less
+   * licence) are told once per expiry date, a company-set number of days before it (asset.licence_alert_days, 30 by
+   * default; "off" tells nobody). The date told about is kept on the licence, so a changed expiry is told again.
+   */
+  async licenceSweep(): Promise<number> {
+    const today = todayIst();
+    const due = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.$queryRaw<{ id: string; organization_id: string }[]>`
+        SELECT id::text, organization_id::text FROM asset_licences
+        WHERE expires_on BETWEEN ${today}::date AND ${addDays(today, MAX_DAYS)}::date AND expiry_alerted_for IS DISTINCT FROM expires_on
+        LIMIT 2000`,
+    );
+    let sent = 0;
+    for (const org of [...new Set(due.map((r) => r.organization_id))]) {
+      try {
+        const out = await inCompany(this.tenantPrisma, { organizationId: org, isSuperAdmin: false }, async (tx, c) => {
+          const setting = await settingFor(tx, c, 'asset.licence_alert_days', { legalEntityId: '' });
+          if (setting === 'off') return [];
+          const days = Number(setting) || 30;
+          const notes = [];
+          for (const l of await tx.assetLicence.findMany({ where: { organizationId: org, id: { in: due.filter((r) => r.organization_id === org).map((r) => r.id) } } })) {
+            if (!l.expiresOn) continue;
+            const expiresOn = iso(l.expiresOn);
+            if (expiresOn > addDays(today, days)) continue;
+            // Once per expiry date, even if two runs overlap: only the run that moves the mark sends.
+            const n = await tx.assetLicence.updateMany({ where: { organizationId: org, id: l.id, expiresOn: l.expiresOn, OR: [{ expiryAlertedFor: null }, { expiryAlertedFor: { not: l.expiresOn } }] }, data: { expiryAlertedFor: l.expiresOn } });
+            if (!n.count) continue;
+            const to = await assetManagers(tx, org, l, today);
+            await audit(tx, c, 'asset.licence.expiry.alerted', 'asset_licence', l.id, { expiresOn, days, told: to.length });
+            if (to.length) notes.push({ id: l.id, to, text: `The ${[l.software, l.softwareVersion].filter(Boolean).join(' ')} licence (${l.seats} ${l.seats === 1 ? 'seat' : 'seats'}) expires on ${expiresOn}.` });
+          }
+          return notes;
+        });
+        for (const n of out) {
+          await this.notifications
+            .notifySystem({ organizationId: org, isSuperAdmin: false }, n.to, 'asset.licence.expiring', { entityType: 'asset_licence', entityId: n.id, contextText: n.text, linkPath: `/yx/people/assets/licences?open=${n.id}` }, { subject: 'A software licence expires soon', html: `<p>${escapeHtml(n.text)}</p>` })
+            .catch((e: Error) => this.logger.warn(`licence notice: ${e.message}`));
+          sent++;
+        }
+      } catch (e) {
+        this.logger.error(`Licence alerts for ${org} failed: ${(e as Error).message}`);
+      }
+    }
+    return sent;
+  }
 }

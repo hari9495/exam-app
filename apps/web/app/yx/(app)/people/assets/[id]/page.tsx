@@ -30,6 +30,8 @@ export default function YxAssetPage() {
         onOpenTicket: (t) => router.push(`/yx/desk/tickets/${encodeURIComponent(t)}`),
         // Answer 2717: a covering contract opens on People › Asset contracts.
         onOpenContract: (k) => router.push(`/yx/people/assets/contracts?open=${encodeURIComponent(k)}`),
+        // Answer 2718: a licence with a seat on the device opens on People › Software licences.
+        onOpenLicence: (l) => router.push(`/yx/people/assets/licences?open=${encodeURIComponent(l)}`),
         // The update sends the whole asset (tag and place stay as they are; the category as picked), with its version.
         onSave: (x) => write('PUT', `/lifecycle/assets/${encodeURIComponent(id)}`, { ...(a!.categoryId ? { categoryId: a!.categoryId } : { category: a!.category }), tag: a!.tag, legalEntityId: a!.legalEntityId, locationId: a!.locationId, ...x, version: a!.version }),
       }}

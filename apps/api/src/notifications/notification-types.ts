@@ -122,6 +122,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'asset.warranty.ending', group: 'reminders', label: 'An asset warranty ends soon' },
   // IT assets answer 2714 (contracts): to the asset managers of the contract's place.
   { type: 'asset.contract.notice', group: 'reminders', label: 'An asset contract reaches its notice date' },
+  // IT assets answer 2718: to the asset managers of the licence's place.
+  { type: 'asset.licence.expiring', group: 'reminders', label: 'A software licence expires soon' },
   { type: 'exit.deprovisioning.failed', group: 'reminders', label: 'A step after someone left did not go through (HR)' },
   { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
   // HIR-13 (founder decision 6): the manager is told, never asked.

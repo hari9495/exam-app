@@ -130,3 +130,72 @@ export class ContractDto {
   @IsInt()
   version?: number;
 }
+
+/** Answer 2718: a software licence. */
+export class LicenceDto {
+  @trim()
+  @IsString()
+  @Length(1, 120)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  software!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(60)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  softwareVersion?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string | null;
+
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  seats!: number;
+
+  /** Empty: it does not expire. */
+  @IsOptional()
+  @Matches(ISO)
+  expiresOn?: string | null;
+
+  @IsOptional()
+  @Matches(MONEY)
+  cost?: string | null;
+
+  @IsBoolean()
+  allowOverQuota!: boolean;
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+/** Answer 2718: a seat goes to a person (a current employee) or a device (an asset), never both. */
+export class LicenceSeatDto {
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assetId?: string;
+}
+
+export class FreeSeatDto {
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(200)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  reason?: string | null;
+}

@@ -16,7 +16,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
 import type { ExitStep, Handoff } from './types';
-import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitType, ExitWorkspace, LoadState, MyAsset } from './types';
+import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitType, ExitWorkspace, LoadState, MyAsset, MySeat } from './types';
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
 // acknowledge), HR's exit cases and the exit workspace (PPL-19, with "Start exit"), clearance sign-offs (PPL-20) and the
@@ -64,6 +64,8 @@ export interface MyAssetsScreenProps {
   onRetry?: () => void;
   rows: MyAsset[] | null;
   onAcknowledge: (a: MyAsset) => Promise<unknown>;
+  /** IT assets answer 2718: the software licence seats given to me (shown when there are any). */
+  seats?: MySeat[] | null;
 }
 
 export function MyAssetsScreen(p: MyAssetsScreenProps) {
@@ -74,9 +76,15 @@ export function MyAssetsScreen(p: MyAssetsScreenProps) {
     { key: 'condition', header: 'Condition when issued', value: (r) => r.condition, width: 220, optional: true },
     { key: 'ack', header: 'Received', value: (r) => r.acknowledgedAt ?? '', render: (r) => (r.ackNone ? <Badge tone="neutral">Not asked</Badge> : r.acknowledgedAt ? <Badge tone="success">Confirmed</Badge> : <Badge tone="warning">Waiting for confirmation</Badge>), width: 140 },
   ];
+  const seatColumns: TableColumn<MySeat>[] = [
+    { key: 'software', header: 'Software', value: (r) => [r.software, r.softwareVersion].filter(Boolean).join(' '), width: 240, hideable: false },
+    { key: 'given', header: 'Given on', value: (r) => r.givenOn, render: (r) => dateText(r.givenOn), width: 130 },
+    { key: 'expires', header: 'Licence expires', value: (r) => r.expiresOn ?? '', render: (r) => (r.expiresOn ? dateText(r.expiresOn) : 'Does not expire'), width: 150 },
+  ];
   return (
     <LivePage title="My assets" description="Company things you hold. Confirm what you received; hand them back when you leave." state={p.state} onRetry={p.onRetry} what="your assets">
       {p.rows && (
+        <div className="yx-set-stack">
         <DataTable
           label="My assets"
           columns={columns}
@@ -105,6 +113,8 @@ export function MyAssetsScreen(p: MyAssetsScreenProps) {
             )
           }
         />
+        {p.seats && p.seats.length > 0 && <DataTable label="My software licences" columns={seatColumns} rows={p.seats} getRowId={(r) => r.seatId} rowNoun={['licence', 'licences']} cardSummary />}
+        </div>
       )}
     </LivePage>
   );

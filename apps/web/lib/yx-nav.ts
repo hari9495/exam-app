@@ -306,6 +306,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ...when(has('asset.view'), L('asset-suppliers', 'Asset suppliers', '/yx/people/assets/suppliers')),
       // Answer 2717: asset contracts.
       ...when(has('asset.view'), L('asset-contracts', 'Asset contracts', '/yx/people/assets/contracts')),
+      // Answer 2718: software licences.
+      ...when(has('asset.view'), L('asset-licences', 'Software licences', '/yx/people/assets/licences')),
       ...when(has('succession.manage'), L('succession', 'Succession', '/yx/people/succession')),
     ]),
     // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
@@ -574,6 +576,7 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-assets', 'IT assets', '/yx/people/assets')),
           ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-suppliers', 'IT suppliers', '/yx/people/assets/suppliers')),
           ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-contracts', 'IT contracts', '/yx/people/assets/contracts')),
+          ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-licences', 'IT licences', '/yx/people/assets/licences')),
           // Helpdesk plan item 4: buildings, areas and equipment (the facilities desks' staff; their admins edit).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-facilities', 'Buildings and equipment', '/yx/desk/facilities')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),

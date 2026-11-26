@@ -375,6 +375,8 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Warranty', key: 'asset.warranty_alert_days', synonyms: ['warranty', 'warranty alert'] },
       // Answer 2714 (contracts).
       { section: 'Contracts', key: 'asset.contract_alert_days', synonyms: ['contract', 'notice', 'renewal'] },
+      // Answer 2718.
+      { section: 'Licences', key: 'asset.licence_alert_days', synonyms: ['licence', 'license', 'software', 'expiry'] },
     ],
   },
   // Settings S-7 (answers 1321, 1561, 1564): the settings that were on Company rules and Access and privacy.
