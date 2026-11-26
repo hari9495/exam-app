@@ -4,6 +4,7 @@ import { LearningAssignService } from '../learning/learning-assign.service';
 import { SpeakupService } from '../speakup/speakup.service';
 import { CompanyDocsService } from '../library/company-docs.service';
 import { ReportSchedulesService } from '../library/report-schedules.service';
+import { AssetAlertsService } from '../lifecycle/asset-alerts.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -99,6 +100,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     speakup: SpeakupService,
     companyDocs: CompanyDocsService,
     reportSchedules: ReportSchedulesService,
+    assetAlerts: AssetAlertsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -157,6 +159,11 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'speakup-ic-terms': () => speakup.remindIcTerms(),
       'company-docs-expiry': () => companyDocs.remindExpiring(),
       'report-schedules': () => reportSchedules.sendDue(),
+      // IT assets answer 2714.
+      'asset-warranty-alerts': () => assetAlerts.warrantySweep(),
+      'asset-contract-alerts': () => assetAlerts.contractSweep(),
+      'asset-licence-alerts': () => assetAlerts.licenceSweep(),
+      'asset-booking-alerts': () => assetAlerts.bookingSweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

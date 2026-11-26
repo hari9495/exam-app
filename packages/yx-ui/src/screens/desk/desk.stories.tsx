@@ -78,6 +78,7 @@ export const SetupRatingReasons: S = { name: 'Desk set-up · Requesters · reaso
 // Answer 1646: the message the help centre and portal show while the desk is closed.
 export const SetupClosedMessage: S = { name: 'Desk set-up · Requesters · message while closed', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, closedMessage: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open." } }} />) };
 // Answers 1641, 1650: the desk's own ticket fields (a drop-down narrowing the next; who sees each).
+export const SetupGroupRate: S = { name: 'Desk set-up · Groups · team hourly rate (IT desk, answer 2719)', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="groups" detail={{ ...setupProps.detail!, canSetUp: true }} />), play: play(pressFirst('Edit')) };
 export const SetupFields: S = { name: 'Desk set-up · Fields', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="fields" detail={{ ...setupProps.detail!, fields: SAMPLE_FIELDS }} onSaveField={noop} />) };
 export const SetupFieldEdit: S = { name: 'Desk set-up · Fields · a drop-down narrowed by another', render: SetupFields.render, play: play(press('Edit Floor')) };
 export const SetupFieldNewMissing: S = { name: 'Desk set-up · Fields · Save pressed with nothing filled', render: SetupFields.render, play: play(press('New field'), press('Save field')) };

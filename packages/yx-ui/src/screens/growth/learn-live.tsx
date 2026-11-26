@@ -1,7 +1,7 @@
 // Learning, wired to the API (the core): My learning and catalogue (LRN-01), the course player (LRN-02), the courses
 // list and course builder (LRN-03), assignment rules (LRN-07), the compliance dashboard (LRN-08) and the manager's
 // team view. Each keeps its design's layout and words; what the core does not have yet is left out, never faked.
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PlainTable } from '../../components/plain-table';
 import { PoshCountsCard, type PoshCounts } from './learn-skills-live';
 import { ArrowDown, ArrowUp, Award, BookOpen, CheckCircle2, ClipboardCheck, Download, ExternalLink, FileText, Film, Package, Play, Plus, Trash2 } from 'lucide-react';
@@ -27,14 +27,16 @@ import { formatDate } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { GrowthFrame, ProgressRing } from './growth-kit';
 import { complianceCell, enrol as seatFor } from './growth-logic';
-import { DeclineSheet, NominateSheet, type SessionOption } from './learn-sessions-live';
+import { EnrolmentSheet } from './learn-me';
+import type { ExternalInput, SessionOption } from './learn-enrol-live';
 import type { Course, CourseType } from './learn-me';
+import { acceptScormMessage } from './scorm-bridge';
 import type { LoadState } from './perf-goals';
 import './growth.css';
 
 const day = (iso: string | null | undefined) => (iso ? new Date(`${iso}T00:00:00`) : null);
 const TYPE_ICON: Record<string, typeof Film> = { Classroom: BookOpen, Virtual: Film, 'Self-paced': Film, SCORM: Package, 'Assessment only': ClipboardCheck };
-const KIND_ICON = { Video: Film, PDF: FileText, Link: ExternalLink } as const;
+const KIND_ICON = { Video: Film, PDF: FileText, Link: ExternalLink, SCORM: Package } as const;
 
 function Loading({ state, onRetry, what, children }: { state: LoadState; onRetry?: () => void; what: string; children: () => ReactNode }) {
   if (state === 'loading') return <Skeleton height={320} />;
@@ -72,13 +74,7 @@ export interface LiveExternal {
   status: 'Requested' | 'Approved';
   requested: string;
 }
-export interface ExternalInput {
-  title: string;
-  provider: string;
-  cost: number;
-  reason: string;
-  acceptBond: boolean;
-}
+export type { ExternalInput } from './learn-enrol-live';
 export interface LiveMyLearning {
   state: LoadState;
   onRetry: () => void;
@@ -309,181 +305,35 @@ export function LiveMyLearningScreen({ live }: { live: LiveMyLearning }) {
           </Tabs>
         )}
       </Loading>
-      {sheet && <EnrolSheet course={sheet} onClose={() => setSheet(null)} onEnrol={live.onEnrol} onSessions={live.onSessions} />}
-      {declining && live.onDecline && <DeclineSheet course={declining.course.title} mandatory={Boolean(declining.course.mandatory)} onClose={() => setDeclining(null)} onDecline={(reason) => live.onDecline!(declining.id, reason)} />}
-      {nominating && live.onNominate && <NominateSheet title={`Nominate for ${nominating.course.title}`} course={nominating.course.title} sessions={nominating.sessions} people={live.team ?? []} mandatory={Boolean(nominating.course.mandatory)} onClose={() => setNominating(null)} onNominate={(ids, sessionId) => live.onNominate!(nominating.course, sessionId!, ids)} />}
-      {asking && live.onExternal && <ExternalSheet onClose={() => setAsking(false)} onSend={live.onExternal} />}
+      {/* LRN-06: the designed enrolment sheet, in each of its modes. */}
+      {sheet && <EnrolmentSheet live={{ mode: 'self', course: sheet, onClose: () => setSheet(null), onSessions: live.onSessions, onEnrol: (opts) => live.onEnrol(sheet, opts) }} />}
+      {declining && live.onDecline && <EnrolmentSheet live={{ mode: 'decline', course: declining.course, onClose: () => setDeclining(null), onDecline: (reason) => live.onDecline!(declining.id, reason) }} />}
+      {nominating && live.onNominate && <EnrolmentSheet live={{ mode: 'nominate', course: nominating.course, sessions: nominating.sessions, people: live.team ?? [], onClose: () => setNominating(null), onNominate: (ids, sessionId) => live.onNominate!(nominating.course, sessionId!, ids) }} />}
+      {asking && live.onExternal && <EnrolmentSheet live={{ mode: 'external', onClose: () => setAsking(false), onSend: live.onExternal }} />}
     </GrowthFrame>
-  );
-}
-
-/** Courses above this carry a 12-month training bond (LRN-06; the design's threshold). */
-export const BOND_ABOVE = 25000;
-
-/** LRN-06 "self": enrol in a course, or ask when it needs approval; the bond is accepted first above the threshold. */
-function EnrolSheet({ course, onClose, onEnrol, onSessions }: { course: Course; onClose: () => void; onEnrol: LiveMyLearning['onEnrol']; onSessions?: LiveMyLearning['onSessions'] }) {
-  const [bond, setBond] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const sessionCourse = course.type === 'Classroom' || course.type === 'Virtual';
-  const [sessions, setSessions] = useState<SessionOption[] | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  useEffect(() => {
-    if (sessionCourse && onSessions) void onSessions(course.id).then((xs) => (setSessions(xs), setSessionId(xs[0]?.id ?? null))).catch(() => setSessions([]));
-  }, [course.id, sessionCourse, onSessions]);
-  const picked = sessions?.find((x) => x.id === sessionId);
-  const seat = picked ? seatFor({ seats: picked.seats, enrolled: Array.from({ length: picked.enrolled }, (_, i) => `x${i}`), waitlist: Array.from({ length: picked.waitlist }, (_, i) => `w${i}`) }, 'me') : null;
-  const needsBond = course.cost > BOND_ABOVE;
-  const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={`Enrol in ${course.title}`}
-      footer={
-        <div className="yx-growth-foot">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={(needsBond && !bond) || (sessionCourse && !sessionId)}
-            loading={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await onEnrol(course, { acceptBond: needsBond && bond, ...(sessionId ? { sessionId } : {}) });
-                onClose();
-              } catch {
-                // The page has said what went wrong; the sheet stays open to try again.
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {course.approval ? 'Send request' : 'Enrol'}
-          </Button>
-        </div>
-      }
-    >
-      <div className="yx-growth-stack">
-        <DescriptionList items={[{ label: 'Course', value: course.title }, ...(sessionCourse ? [] : [{ label: 'Session', value: 'Self-paced' }]), { label: 'Cost per person', value: course.cost ? inr(course.cost) : 'No cost' }]} />
-        {sessionCourse &&
-          (sessions && sessions.length === 0 ? (
-            <InlineAlert tone="info">No session is scheduled yet. L&amp;D schedules sessions; ask them when the next one is.</InlineAlert>
-          ) : (
-            <FormField label="Session" required>
-              <Select value={sessionId} onChange={setSessionId} options={(sessions ?? []).map((x) => ({ value: x.id, label: `${x.label} · ${x.enrolled} of ${x.seats} seats` }))} placeholder="Choose a session" />
-            </FormField>
-          ))}
-        {needsBond && (
-          <Card title="Training bond">
-            <Text>
-              Courses above {inr(BOND_ABOVE)} have a 12-month service agreement. If you leave within 12 months, a pro-rata share of {inr(course.cost)} is recovered in your final settlement, after HR confirms.
-            </Text>
-            <div className="yx-growth-stack">
-              <Checkbox checked={bond} onChange={setBond} label="I accept the training bond terms" />
-            </div>
-          </Card>
-        )}
-        <div className="yx-growth-effect" aria-live="polite">
-          <span className="yx-growth-effect__title">What happens</span>
-          <ul>
-            {seat && !course.approval && <li>You: {seat.result === 'Waitlisted' ? `Waitlist, position ${'position' in seat ? seat.position : ''}` : 'Enrolled'}</li>}
-            <li>{course.approval ? 'Goes to your manager, then L&D for approval.' : sessionCourse && seat?.result === 'Waitlisted' ? 'You get a seat when one frees up, and you’re told.' : 'You’re enrolled straight away.'}</li>
-            {course.certificate && <li>A certificate is issued on completion.</li>}
-          </ul>
-        </div>
-      </div>
-    </Drawer>
-  );
-}
-
-/** LRN-06 external: a course or certification outside the catalogue; the bond above the threshold. */
-function ExternalSheet({ onClose, onSend }: { onClose: () => void; onSend: (input: ExternalInput) => Promise<void> }) {
-  const [title, setTitle] = useState('');
-  const [provider, setProvider] = useState('');
-  const [cost, setCost] = useState<number | null>(null);
-  const [reason, setReason] = useState('');
-  const [bond, setBond] = useState(false);
-  const [errors, setErrors] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const needsBond = (cost ?? 0) > BOND_ABOVE;
-  const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
-  const ok = title.trim().length >= 3 && provider.trim().length >= 2 && cost !== null && reason.trim().length >= 10;
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title="Request external training"
-      footer={
-        <div className="yx-growth-foot">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={needsBond && !bond}
-            loading={busy}
-            onClick={async () => {
-              if (!ok) return setErrors(true);
-              setBusy(true);
-              try {
-                await onSend({ title: title.trim(), provider: provider.trim(), cost: cost ?? 0, reason: reason.trim(), acceptBond: needsBond && bond });
-                onClose();
-              } catch {
-                // The page has said what went wrong; the sheet stays open.
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Send request
-          </Button>
-        </div>
-      }
-    >
-      <div className="yx-growth-stack">
-        <FormField label="Course or certification" required error={errors && title.trim().length < 3 ? 'Name the course or certification.' : null}>
-          <TextField value={title} onChange={setTitle} />
-        </FormField>
-        <FieldRow>
-          <FormField label="Provider" required error={errors && provider.trim().length < 2 ? 'Name the provider.' : null}>
-            <TextField value={provider} onChange={setProvider} />
-          </FormField>
-          <FormField label="Cost" required helper="Fees only. Travel goes on an expense claim." error={errors && cost === null ? 'Enter the fees (0 if free).' : null}>
-            <CurrencyField value={cost} onChange={setCost} />
-          </FormField>
-        </FieldRow>
-        <FormField label="Why this helps your work" required helper="At least 10 characters." error={errors && reason.trim().length < 10 ? 'Say how it helps your work.' : null}>
-          <TextArea value={reason} onChange={setReason} rows={3} />
-        </FormField>
-        {needsBond && (
-          <Card title="Training bond">
-            <Text>
-              Courses above {inr(BOND_ABOVE)} have a 12-month service agreement. If you leave within 12 months, a pro-rata share of {inr(cost ?? 0)} is recovered in your final settlement, after HR confirms.
-            </Text>
-            <div className="yx-growth-stack">
-              <Checkbox checked={bond} onChange={setBond} label="I accept the training bond terms" />
-            </div>
-          </Card>
-        )}
-        <div className="yx-growth-effect" aria-live="polite">
-          <span className="yx-growth-effect__title">What happens</span>
-          <ul>
-            <li>Goes to your manager, then L&amp;D for approval.</li>
-          </ul>
-        </div>
-      </div>
-    </Drawer>
   );
 }
 
 /* ================================================================== LRN-02 · Course player */
 
+export interface LiveScormState {
+  version: '1.2' | '2004';
+  /** What the package reports. */
+  status: 'incomplete' | 'completed' | 'failed';
+  score: string | null;
+  /** The package on the content origin (signed, short-lived); null when it cannot play (not set up, or not open yet). */
+  launchUrl: string | null;
+}
 export interface LivePlayerItem {
   id: string;
   title: string;
-  kind: 'Video' | 'PDF' | 'Link';
+  kind: 'Video' | 'PDF' | 'Link' | 'SCORM';
   minutes: number;
   required: boolean;
   done: boolean;
   url: string | null;
+  /** Answer 2781: a SCORM package's state and launch link. */
+  scorm?: LiveScormState | null;
 }
 export interface LivePlayer {
   state: LoadState;
@@ -493,12 +343,34 @@ export interface LivePlayer {
   onOpenItem: (item: LivePlayerItem) => void;
   onDone: (item: LivePlayerItem) => Promise<void>;
   onDownload: (certificateId: string) => void;
+  /** Answer 2781: a commit from the playing SCORM package (allowed fields only); returns what the package now reports. */
+  onScorm?: (item: LivePlayerItem, cmi: Record<string, string>) => Promise<Pick<LiveScormState, 'status' | 'score'> | null>;
 }
 
 export function LiveCoursePlayerScreen({ live }: { live: LivePlayer }) {
   const d = live.data;
   const [cur, setCur] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The package playing: its launch link is kept while it plays, so a reload of the course never restarts it.
+  const [playing, setPlaying] = useState<{ id: string; url: string; version: '1.2' | '2004' } | null>(null);
+  const [reported, setReported] = useState<Record<string, Pick<LiveScormState, 'status' | 'score'>>>({});
+  const frame = useRef<HTMLIFrameElement>(null);
+  const onScorm = live.onScorm;
+  const items0 = d?.items;
+  useEffect(() => {
+    if (!playing || !onScorm) return;
+    const it = items0?.find((i) => i.id === playing.id);
+    if (!it) return;
+    // Commits are saved one after another, in the order the package sent them.
+    let queue: Promise<unknown> = Promise.resolve();
+    const listen = (ev: MessageEvent) => {
+      const cmi = acceptScormMessage(ev, frame.current?.contentWindow, playing.url, playing.id, playing.version);
+      if (!cmi) return;
+      queue = queue.then(() => onScorm(it, cmi).then((r) => r && setReported((x) => ({ ...x, [it.id]: r }))).catch(() => undefined));
+    };
+    window.addEventListener('message', listen);
+    return () => window.removeEventListener('message', listen);
+  }, [playing, onScorm, items0]);
   const items = d?.items ?? [];
   const item = items.find((i) => i.id === cur) ?? items.find((i) => !i.done) ?? items[0];
   const req = items.filter((i) => i.required);
@@ -506,7 +378,8 @@ export function LiveCoursePlayerScreen({ live }: { live: LivePlayer }) {
   const pct = Math.round((doneReq / Math.max(1, req.length)) * 100);
   const completed = d?.enrolment.status === 'Completed';
 
-  const stage = !d || !item ? null : completed ? (
+  const scorm = item?.scorm ? { ...item.scorm, ...reported[item.id] } : null;
+  const stage = !d || !item ? null : completed && item.kind !== 'SCORM' ? (
     <MilestoneMoment
       title={`You completed ${d.course.title}`}
       description={d.certificate ? `Your certificate is issued${d.certificate.expires ? `, valid until ${formatDate(day(d.certificate.expires))}` : ''}.` : 'Well done.'}
@@ -514,18 +387,32 @@ export function LiveCoursePlayerScreen({ live }: { live: LivePlayer }) {
     />
   ) : (
     <div className="yx-growth-stack">
-      <div className="yx-growth-player__stage" role="region" aria-label={`${item.kind}: ${item.title}`}>
-        <Icon icon={KIND_ICON[item.kind]} size="md" />
-        <strong>{item.title}</strong>
-        <span>{item.kind === 'Video' ? `Video · ${item.minutes} min` : `${item.kind} · ${item.minutes} min`}</span>
-        <Button icon={item.kind === 'Video' ? Play : ExternalLink} onClick={() => live.onOpenItem(item)}>
-          {item.kind === 'Video' ? 'Play' : 'Open'}
-        </Button>
-      </div>
+      {item.kind === 'SCORM' && playing?.id === item.id ? (
+        <iframe ref={frame} className="yx-growth-player__frame" title={`SCORM package: ${item.title}`} src={playing.url} sandbox="allow-scripts allow-forms" referrerPolicy="no-referrer" />
+      ) : (
+        <div className="yx-growth-player__stage" role="region" aria-label={`${item.kind}: ${item.title}`}>
+          <Icon icon={KIND_ICON[item.kind]} size="md" />
+          <strong>{item.title}</strong>
+          <span>{item.kind === 'SCORM' ? 'SCORM package runs in a sandboxed frame' : item.kind === 'Video' ? `Video · ${item.minutes} min` : `${item.kind} · ${item.minutes} min`}</span>
+          <Button
+            icon={item.kind === 'Video' ? Play : ExternalLink}
+            disabled={item.kind === 'SCORM' && !scorm?.launchUrl}
+            onClick={() => (item.kind === 'SCORM' ? scorm?.launchUrl && setPlaying({ id: item.id, url: scorm.launchUrl, version: scorm.version }) : live.onOpenItem(item))}
+          >
+            {item.kind === 'Video' ? 'Play' : 'Open'}
+          </Button>
+        </div>
+      )}
+      {item.kind === 'SCORM' && scorm && (
+        <InlineAlert tone={scorm.status === 'failed' ? 'danger' : scorm.status === 'completed' ? 'success' : 'info'} title={`Package reports: ${scorm.status}${scorm.score ? ` · score ${scorm.score}` : ''}`}>
+          Completion and score come from the package.{' '}
+          {scorm.status === 'failed' ? 'Retake the package to complete this item.' : scorm.status === 'completed' ? 'This item is done.' : scorm.launchUrl || d.enrolment.status === 'Requested' ? 'Finish the last screen of the package to complete it. You can stop and carry on later where you left off.' : 'The SCORM player is not set up on this server yet. Tell your admin.'}
+        </InlineAlert>
+      )}
       {d.enrolment.status === 'Requested' ? (
         <InlineAlert tone="info" title="Waiting for approval">You can start once your request is approved.</InlineAlert>
       ) : (
-        !item.done && (
+        !item.done && item.kind !== 'SCORM' && (
           <Button
             icon={CheckCircle2}
             loading={busy}
@@ -740,7 +627,9 @@ export function CoursesListScreen({ rows: sample, live }: { rows?: CourseRow[]; 
 export interface BuilderLiveItem {
   id: string;
   title: string;
-  kind: 'PDF' | 'Video' | 'Link';
+  kind: 'PDF' | 'Video' | 'Link' | 'SCORM';
+  /** Answer 2781: a SCORM package's version, read from its manifest. */
+  scormVersion?: string | null;
   minutes: number;
   required: boolean;
   url: string | null;
@@ -752,7 +641,7 @@ export interface LiveBuilder {
   data: { course: Course & { status: CourseRow['status']; version: number; description: string | null; durationMinutes: number; certificateMonths: number | null; skillLevels?: number[] }; items: BuilderLiveItem[] } | null;
   onSave: (details: CourseDetails) => Promise<void>;
   onStatus: (status: 'published' | 'retired') => Promise<void>;
-  onAddItem: (input: { title: string; kind: 'pdf' | 'video' | 'link'; minutes: number; required: boolean; url?: string }, file?: File) => Promise<void>;
+  onAddItem: (input: { title: string; kind: 'pdf' | 'video' | 'link' | 'scorm'; minutes: number; required: boolean; url?: string }, file?: File) => Promise<void>;
   onItem: (item: BuilderLiveItem, change: { required?: boolean; move?: 'up' | 'down' }) => Promise<void>;
   onRemove: (item: BuilderLiveItem) => Promise<void>;
   onBack: () => void;
@@ -779,7 +668,7 @@ function detailsOf(c: NonNullable<LiveBuilder['data']>['course']): CourseDetails
 export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
   const d = live.data;
   const [details, setDetails] = useState<CourseDetails | null>(null);
-  const [adding, setAdding] = useState<'file' | 'link' | null>(null);
+  const [adding, setAdding] = useState<'file' | 'link' | 'scorm' | null>(null);
   const [removing, setRemoving] = useState<BuilderLiveItem | null>(null);
   // Levels are kept by skill name (not position), so editing the names never moves a level to another skill.
   const [levelMap, setLevelMap] = useState<Record<string, number>>({});
@@ -842,7 +731,7 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
                 <TabsContent value="content">
                   <div className="yx-growth-stack">
                     {items.length === 0 ? (
-                      <EmptyState compact title="No content yet" description="Add a video, a PDF or a link. Mark the ones every learner must finish as required." />
+                      <EmptyState compact title="No content yet" description="Add a video, a PDF, a SCORM package or a link. Mark the ones every learner must finish as required." />
                     ) : (
                       <ol className="yx-growth-list">
                         {items.map((it, i) => (
@@ -851,7 +740,8 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
                             <div className="yx-growth-list__main">
                               <span className="yx-growth-list__title">{it.title}</span>
                               <span className="yx-growth-meta">
-                                {it.kind} · {it.minutes} min{it.file ? ` · ${it.file}` : it.url ? ` · ${it.url}` : ''}
+                                {it.kind}
+                                {it.scormVersion ? ` ${it.scormVersion}` : ''} · {it.minutes} min{it.file ? ` · ${it.file}` : it.url ? ` · ${it.url}` : ''}
                               </span>
                             </div>
                             <Checkbox checked={it.required} onChange={(c) => void live.onItem(it, { required: c })} label="Required" />
@@ -865,6 +755,9 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
                     <div className="yx-growth-row">
                       <Button icon={Plus} onClick={() => setAdding('file')}>
                         Add video or PDF
+                      </Button>
+                      <Button icon={Plus} onClick={() => setAdding('scorm')}>
+                        Upload SCORM package
                       </Button>
                       <Button icon={Plus} onClick={() => setAdding('link')}>
                         Add link
@@ -947,7 +840,7 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
   );
 }
 
-function AddItemDialog({ kind, onClose, onAdd }: { kind: 'file' | 'link' | null; onClose: () => void; onAdd: LiveBuilder['onAddItem'] }) {
+function AddItemDialog({ kind, onClose, onAdd }: { kind: 'file' | 'link' | 'scorm' | null; onClose: () => void; onAdd: LiveBuilder['onAddItem'] }) {
   const [title, setTitle] = useState('');
   const [minutes, setMinutes] = useState<number | null>(10);
   const [required, setRequired] = useState(true);
@@ -955,13 +848,13 @@ function AddItemDialog({ kind, onClose, onAdd }: { kind: 'file' | 'link' | null;
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState(false);
   const reset = () => (setTitle(''), setMinutes(10), setRequired(true), setUrl(''), setFile(null), setErrors(false));
-  const fileKind = file?.name.toLowerCase().endsWith('.mp4') ? 'video' : 'pdf';
+  const fileKind = kind === 'scorm' ? 'scorm' : file?.name.toLowerCase().endsWith('.mp4') ? 'video' : 'pdf';
   const ok = title.trim().length >= 2 && (kind === 'link' ? /^https:\/\/\S+$/i.test(url.trim()) : Boolean(file));
   return (
     <Dialog
       open={kind !== null}
       onOpenChange={(o) => !o && (onClose(), reset())}
-      title={kind === 'link' ? 'Add a link' : 'Add a video or PDF'}
+      title={kind === 'link' ? 'Add a link' : kind === 'scorm' ? 'Upload a SCORM package' : 'Add a video or PDF'}
       size="md"
       footer={
         <>
@@ -988,9 +881,13 @@ function AddItemDialog({ kind, onClose, onAdd }: { kind: 'file' | 'link' | null;
           <FormField label="Link" required helper="An https:// address. It opens in a new tab." error={errors && !/^https:\/\/\S+$/i.test(url.trim()) ? 'Enter a link that starts with https://.' : null}>
             <TextField value={url} onChange={setUrl} placeholder="https://" />
           </FormField>
+        ) : kind === 'scorm' ? (
+          <FormField label="Package" required helper="A SCORM 1.2 or 2004 zip, as your authoring tool exported it. Learners can open it once every file has passed the virus check." error={errors && !file ? 'Choose the zip.' : null}>
+            <FileUpload upload={async () => undefined} accept={['.zip']} maxSize={200 * 1024 * 1024} multiple={false} onItemsChange={(xs) => setFile(xs.find((x) => x.status === 'done')?.file ?? null)} />
+          </FormField>
         ) : (
           <FormField label="File" required helper="A PDF up to 20 MB or an MP4 video up to 100 MB." error={errors && !file ? 'Choose the file.' : null}>
-            <FileUpload upload={async (f) => setFile(f)} accept={['.pdf', '.mp4']} maxSize={100 * 1024 * 1024} multiple={false} onItemsChange={(xs) => !xs.some((x) => x.status === 'done') && setFile(null)} />
+            <FileUpload upload={async () => undefined} accept={['.pdf', '.mp4']} maxSize={100 * 1024 * 1024} multiple={false} onItemsChange={(xs) => setFile(xs.find((x) => x.status === 'done')?.file ?? null)} />
           </FormField>
         )}
         <FormField label="Time it takes">

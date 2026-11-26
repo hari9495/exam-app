@@ -3344,6 +3344,28 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
   ],
   "service_desk_admin": [
     [
+      "desk.budget.manage",
+      "desk.catalog.manage",
+      "desk.channel.manage",
+      "desk.customer.manage",
+      "desk.desk.create",
+      "desk.directory.manage",
+      "desk.integration.manage",
+      "desk.kb.publish",
+      "desk.kb.view_internal",
+      "desk.lifecycle.manage",
+      "desk.mailbox.manage",
+      "desk.member.manage",
+      "desk.portal.manage",
+      "desk.report.manage",
+      "desk.report.view",
+      "desk.rule.manage",
+      "desk.settings.manage",
+      "desk.sla.manage",
+      "desk.survey.manage",
+      "payroll.equity.own"
+    ],
+    [
       "desk.catalog.manage",
       "desk.channel.manage",
       "desk.customer.manage",

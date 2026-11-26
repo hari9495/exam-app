@@ -5,7 +5,8 @@ import { ARTICLES, MACROS, TICKETS, TICKET_ACTIVITY, TICKET_MESSAGES } from './h
 import { TODAY } from '../_kit/data';
 import { liveTicket } from './helpdesk-ticket-live-samples';
 import { AGENT_TICKET_FIELDS, LEAD_TICKET_FIELDS } from '../desk/ticket-fields-sample';
-import { DESK, DETAIL, TICKET, WORK } from '../desk/data';
+import { COSTS, DESK, DETAIL, TICKET, WORK } from '../desk/data';
+import { play, press, pressFirst } from '../_kit/story-play';
 import { DOCS_VIEW, HR_SUMMARY, KB_LINKS, PICKS, SEQUENCES, SEQUENCE_RUNS, SHARES, TICKET_REQUEST } from '../desk/esm-data';
 import { RequestPanel } from '../desk/request-panel';
 import { TicketEsmRail } from '../desk/esm2';
@@ -121,6 +122,10 @@ export const ResolvedRated: S = { name: 'Resolved · closes on, the rating', ren
 export const OutsideHours: S = { name: 'Raised outside hours', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, raisedOutsideHours: true } })} /> };
 // Answer 1661: an IT desk's agent sets or changes the device a ticket is about (any company device, by tag or name).
 export const Application: S = { name: 'IT ticket · application set by an IT agent (answer 2057)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, app: { id: 'a1', name: 'Tally Prime' }, appOptions: [{ id: 'a1', name: 'Tally Prime' }, { id: 'a2', name: 'Attendance devices' }] }, onSetApp: async () => undefined })} /> };
+export const Costs: S = { name: 'IT ticket · costs: time at the team rate, fixed and material (answer 2719)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, costs: COSTS } })} /> };
+export const CostsAddTooEarly: S = { name: 'IT ticket · costs · Add cost pressed with nothing filled', render: Costs.render, play: play(press('Add cost')) };
+export const CostsTakeOff: S = { name: 'IT ticket · costs · take a cost off (reason asked)', render: Costs.render, play: play(pressFirst('Take off')) };
+export const CostsNoRate: S = { name: 'IT ticket · costs · team has no hourly rate', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, costs: { ...COSTS, hourlyRate: null, timeCost: '0.00', uncostedMinutes: 45, lines: [], total: '0.00' } } })} /> };
 export const Device: S = { name: 'IT ticket · device set by an IT agent', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, device: { id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, canSetDevice: true }, onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }], onSetDevice: async () => undefined })} /> };
 // Answers 1641, 1650: the desk's own fields on the ticket: a team lead sees and sets every field, a first-line agent
 // not the team-lead-only one; someone who only reads sees the values.

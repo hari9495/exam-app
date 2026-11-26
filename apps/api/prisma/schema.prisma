@@ -4176,6 +4176,8 @@ model SdGroup {
   version            Int      @default(1)
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// GLPI 7 (answer 2719): the team's cost of an hour of ticket work (null: its time is not costed).
+  hourlyRate         Decimal? @map("hourly_rate") @db.Decimal(10, 2)
 
   @@map("sd_groups")
 }
@@ -4456,8 +4458,48 @@ model SdTimeEntry {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedBy      String?  @map("updated_by") @db.Uuid
+  /// GLPI 7 (answer 2719): the ticket team's hourly rate when the time was logged, and the department it is charged to.
+  hourlyRate     Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+  departmentId   String?  @map("department_id") @db.Uuid
 
   @@map("sd_time_entries")
+}
+
+/// GLPI 7 (answer 2719): a fixed or material cost on an IT ticket (a change too), charged to a department.
+model SdCostLine {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  ticketId       String    @map("ticket_id") @db.Uuid
+  /// fixed | material
+  kind           String    @db.VarChar(10)
+  description    String    @db.VarChar(200)
+  amount         Decimal   @db.Decimal(12, 2)
+  costOn         DateTime  @map("cost_on") @db.Date
+  departmentId   String?   @map("department_id") @db.Uuid
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  removedBy      String?   @map("removed_by") @db.Uuid
+  removeReason   String?   @map("remove_reason") @db.VarChar(300)
+
+  @@index([organizationId, ticketId], map: "sd_cost_lines_ticket_idx")
+  @@index([organizationId, costOn], map: "sd_cost_lines_on_idx")
+  @@map("sd_cost_lines")
+}
+
+/// GLPI 7 (answer 2719): a department's IT budget for a financial year (April's year).
+model SdItBudget {
+  organizationId String   @map("organization_id") @db.Uuid
+  departmentId   String   @map("department_id") @db.Uuid
+  year           Int
+  amount         Decimal  @db.Decimal(14, 2)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([departmentId, year])
+  @@index([organizationId, year], map: "sd_it_budgets_org_idx")
+  @@map("sd_it_budgets")
 }
 
 model SdCannedResponse {
@@ -7980,6 +8022,14 @@ model Asset {
   model          String?   @db.VarChar(100)
   invoiceNumber  String?   @map("invoice_number") @db.VarChar(60)
   warrantyMonths Int?      @map("warranty_months") @db.SmallInt
+  /// IT assets part 1 (answer 2712): the company category it belongs to (`category` keeps the text for history).
+  categoryId     String?   @map("category_id") @db.Uuid
+  /// Answer 2714: the warranty end its managers were told about (once per warranty end).
+  warrantyAlertedFor DateTime? @map("warranty_alerted_for") @db.Date
+  /// IT assets part 3 (answer 2716): the IT and Admin supplier it came from.
+  supplierId     String?   @map("supplier_id") @db.Uuid
+  /// IT assets part 5 (answer 2715): employees may book it (only an in-stock asset is made bookable).
+  bookable       Boolean   @default(false)
   version        Int       @default(1)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -7987,6 +8037,175 @@ model Asset {
 
   @@unique([organizationId, id])
   @@map("assets")
+}
+
+/// IT assets part 1 (answer 2712): the company's asset categories (Settings 2.8); retired, never deleted.
+model AssetCategory {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  name            String    @db.VarChar(40)
+  trackedBy       String?   @map("tracked_by") @db.VarChar(40)
+  defaultRecovery Decimal?  @map("default_recovery") @db.Decimal(14, 2)
+  usefulLifeYears Int?      @map("useful_life_years") @db.SmallInt
+  /// Answer 2713: straight_line (over the useful life) or declining (at depreciationRate % a year).
+  depreciationMethod String   @default("straight_line") @map("depreciation_method") @db.VarChar(16)
+  depreciationRate   Decimal? @map("depreciation_rate") @db.Decimal(5, 2)
+  /// Answer 2720: an optional tag pattern: PREFIX-[YEAR-]counter padded to tagDigits (LAP-2026-0042).
+  tagPrefix       String?   @map("tag_prefix") @db.VarChar(12)
+  tagYear         Boolean   @default(false) @map("tag_year")
+  tagDigits       Int       @default(4) @map("tag_digits") @db.SmallInt
+  retiredAt       DateTime? @map("retired_at") @db.Timestamptz(3)
+  version         Int       @default(1)
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("asset_categories")
+}
+
+/// IT assets part 3 (answer 2716): the IT and Admin supplier list (separate from staffing vendors and contractors);
+/// contacts is [{ name, email, phone }] (up to 5); retired, never deleted.
+model ItSupplier {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(150)
+  gstin          String?   @db.VarChar(15)
+  contacts       Json      @default("[]")
+  notes          String?   @db.VarChar(500)
+  retiredAt      DateTime? @map("retired_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("it_suppliers")
+}
+
+/// IT assets part 3 (answer 2717): an asset contract. endsOn = startsOn + months x (renewals + 1) - 1 day; a tacit contract
+/// renews itself for the same length when its end passes, an express one ends. noticeAlertedFor: the end date whose
+/// notice its owners were told about (answer 2714).
+model AssetContract {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  kind             String    @db.VarChar(16)
+  number           String    @db.VarChar(60)
+  supplierId       String    @map("supplier_id") @db.Uuid
+  legalEntityId    String?   @map("legal_entity_id") @db.Uuid
+  locationId       String?   @map("location_id") @db.Uuid
+  startsOn         DateTime  @map("starts_on") @db.Date
+  months           Int       @db.SmallInt
+  renewal          String    @db.VarChar(8)
+  noticeDays       Int       @default(0) @map("notice_days") @db.SmallInt
+  supportHours     String?   @map("support_hours") @db.VarChar(120)
+  value            Decimal?  @db.Decimal(14, 2)
+  assetCap         Int?      @map("asset_cap") @db.SmallInt
+  renewals         Int       @default(0) @db.SmallInt
+  endsOn           DateTime  @map("ends_on") @db.Date
+  status           String    @default("active") @db.VarChar(8)
+  noticeAlertedFor DateTime? @map("notice_alerted_for") @db.Date
+  version          Int       @default(1)
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([status, endsOn])
+  @@map("asset_contracts")
+}
+
+/// Answer 2717: the assets a contract covers.
+model AssetContractAsset {
+  organizationId String   @map("organization_id") @db.Uuid
+  contractId     String   @map("contract_id") @db.Uuid
+  assetId        String   @map("asset_id") @db.Uuid
+  addedBy        String?  @map("added_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([contractId, assetId])
+  @@index([organizationId, assetId])
+  @@map("asset_contract_assets")
+}
+
+/// IT assets part 4 (answer 2718): a software licence with its seats (counted; no install scan). A place-less licence is
+/// company-wide. expiryAlertedFor: the expiry date its asset managers were told about.
+model AssetLicence {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  software         String    @db.VarChar(120)
+  softwareVersion  String?   @map("software_version") @db.VarChar(60)
+  supplierId       String?   @map("supplier_id") @db.Uuid
+  legalEntityId    String?   @map("legal_entity_id") @db.Uuid
+  locationId       String?   @map("location_id") @db.Uuid
+  seats            Int
+  expiresOn        DateTime? @map("expires_on") @db.Date
+  cost             Decimal?  @db.Decimal(14, 2)
+  allowOverQuota   Boolean   @default(false) @map("allow_over_quota")
+  expiryAlertedFor DateTime? @map("expiry_alerted_for") @db.Date
+  version          Int       @default(1)
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([expiresOn])
+  @@map("asset_licences")
+}
+
+/// Answer 2718: a seat of a licence, given to a person or a device (an asset); freed, never deleted.
+model AssetLicenceSeat {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  licenceId      String    @map("licence_id") @db.Uuid
+  personId       String?   @map("person_id") @db.Uuid
+  assetId        String?   @map("asset_id") @db.Uuid
+  givenOn        DateTime  @map("given_on") @db.Date
+  givenBy        String?   @map("given_by") @db.Uuid
+  freedOn        DateTime? @map("freed_on") @db.Date
+  freedBy        String?   @map("freed_by") @db.Uuid
+  freeReason     String?   @map("free_reason") @db.VarChar(200)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, personId])
+  @@index([organizationId, assetId])
+  @@map("asset_licence_seats")
+}
+
+/// IT assets part 5 (answer 2715): a booking of a bookable asset by an employee for themselves. A repeat is one row per
+/// occurrence sharing seriesId. pending (waits for IT when the company asks for approval), booked, declined, cancelled,
+/// out (handed over: assignmentId is the register's issue) and returned. Live bookings never overlap (database).
+model AssetBooking {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  assetId          String    @map("asset_id") @db.Uuid
+  personId         String    @map("person_id") @db.Uuid
+  seriesId         String?   @map("series_id") @db.Uuid
+  startsOn         DateTime  @map("starts_on") @db.Date
+  endsOn           DateTime  @map("ends_on") @db.Date
+  status           String    @db.VarChar(10)
+  purpose          String?   @db.VarChar(200)
+  decidedBy        String?   @map("decided_by") @db.Uuid
+  decidedAt        DateTime? @map("decided_at") @db.Timestamptz(3)
+  declineReason    String?   @map("decline_reason") @db.VarChar(300)
+  cancelledBy      String?   @map("cancelled_by") @db.Uuid
+  cancelReason     String?   @map("cancel_reason") @db.VarChar(300)
+  assignmentId     String?   @map("assignment_id") @db.Uuid
+  dueRemindedAt    DateTime? @map("due_reminded_at") @db.Timestamptz(3)
+  overdueAlertedAt DateTime? @map("overdue_alerted_at") @db.Timestamptz(3)
+  createdBy        String?   @map("created_by") @db.Uuid
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id], map: "asset_bookings_org_id_key")
+  @@index([organizationId, personId], map: "asset_bookings_person_idx")
+  @@index([organizationId, assetId], map: "asset_bookings_asset_idx")
+  @@index([organizationId, seriesId], map: "asset_bookings_series_idx")
+  @@index([endsOn], map: "asset_bookings_ends_idx")
+  @@map("asset_bookings")
 }
 
 model AssetAssignment {
@@ -8021,6 +8240,8 @@ model ClearanceItem {
   recoveryAmount    Decimal?  @map("recovery_amount") @db.Decimal(14, 2)
   recoveryReason    String?   @map("recovery_reason") @db.VarChar(300)
   assetAssignmentId String?   @map("asset_assignment_id") @db.Uuid
+  /// IT assets part 4 (answer 2718): a leaver's licence seat; clearing the item frees it.
+  licenceSeatId     String?   @map("licence_seat_id") @db.Uuid
   signedOffBy       String?   @map("signed_off_by") @db.Uuid
   signedOffAt       DateTime? @map("signed_off_at") @db.Timestamptz(3)
   /// PPL-20: an open item the owner marked blocked, with the reason (cleared when it is signed off or waived).
@@ -15564,12 +15785,15 @@ model LearningCourseItem {
   courseId       String   @map("course_id") @db.Uuid
   position       Int
   title          String   @db.VarChar(200)
-  /// pdf · video · link
+  /// pdf · video · link · scorm
   kind           String   @db.VarChar(10)
   minutes        Int      @default(0)
   required       Boolean  @default(true)
   fileId         String?  @map("file_id") @db.Uuid
   url            String?  @db.VarChar(1000)
+  /// Answer 2781: SCORM packages: 1.2 or 2004, and the launch file inside the package.
+  scormVersion   String?  @map("scorm_version") @db.VarChar(4)
+  scormLaunch    String?  @map("scorm_launch") @db.VarChar(1000)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([organizationId, courseId, position], map: "learning_course_items_course_idx")
@@ -15629,6 +15853,31 @@ model LearningEnrolment {
 
   @@index([organizationId, employeeId], map: "learning_enrolments_employee_idx")
   @@map("learning_enrolments")
+}
+
+/// Answer 2781: one unpacked file of a SCORM item (stored and scanned like every upload), by its path in the package.
+model LearningScormFile {
+  organizationId String @map("organization_id") @db.Uuid
+  itemId         String @map("item_id") @db.Uuid
+  path           String @db.VarChar(1000)
+  fileId         String @map("file_id") @db.Uuid
+
+  @@id([itemId, path])
+  @@index([organizationId, itemId], map: "learning_scorm_files_org_idx")
+  @@map("learning_scorm_files")
+}
+
+/// Answer 2781: what a SCORM package reported for one enrolment (allowed cmi fields only), so the learner can resume.
+model LearningScormAttempt {
+  organizationId String   @map("organization_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  itemId         String   @map("item_id") @db.Uuid
+  cmi            Json     @default("{}")
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([enrolmentId, itemId])
+  @@index([organizationId, enrolmentId], map: "learning_scorm_attempts_org_idx")
+  @@map("learning_scorm_attempts")
 }
 
 model LearningItemProgress {

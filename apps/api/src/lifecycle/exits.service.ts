@@ -574,11 +574,13 @@ export class ExitsService implements OnModuleInit {
   /**
    * One clearance item per asset the leaver still holds (returning it clears the item). Founder queue 28 Oct 2026: it
    * goes to the IT and Admin team (the team on the exit checklist's IT, else Admin, task); without one, to whoever issued
-   * the asset, else the case owner.
+   * the asset, else the case owner. IT assets answer 2718: likewise one IT item per licence seat they hold (clearing it
+   * frees the seat).
    */
   async assetItemsIn(tx: Tx, org: string, exitCaseId: string, personId: string, owner: string | null) {
     const open = await tx.assetAssignment.findMany({ where: { organizationId: org, personId, returnedOn: null } });
-    if (!open.length) return;
+    const seats = await tx.assetLicenceSeat.findMany({ where: { organizationId: org, personId, freedOn: null } });
+    if (!open.length && !seats.length) return;
     const journey = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: exitCaseId }, select: { id: true } });
     const team = journey
       ? ((await tx.journeyTask.findFirst({ where: { organizationId: org, journeyId: journey.id, ownerType: { in: ['it', 'admin'] }, assigneeGroupId: { not: null } }, orderBy: { ownerType: 'desc' }, select: { assigneeGroupId: true } }))?.assigneeGroupId ?? null)
@@ -589,6 +591,13 @@ export class ExitsService implements OnModuleInit {
       const keeper = x.issuedBy ?? owner;
       const to = team ? { ownerUserId: null, ownerGroupId: team } : keeper ? { ownerUserId: keeper, ownerGroupId: null } : null;
       if (to) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId, department: 'asset', title: `Return ${asset.name} (${asset.tag})`.slice(0, 150), ...to, assetAssignmentId: x.id } });
+    }
+    for (const x of seats) {
+      if (await tx.clearanceItem.findFirst({ where: { organizationId: org, exitCaseId, licenceSeatId: x.id }, select: { id: true } })) continue;
+      const l = await tx.assetLicence.findFirstOrThrow({ where: { organizationId: org, id: x.licenceId }, select: { software: true, softwareVersion: true } });
+      const keeper = x.givenBy ?? owner;
+      const to = team ? { ownerUserId: null, ownerGroupId: team } : keeper ? { ownerUserId: keeper, ownerGroupId: null } : null;
+      if (to) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId, department: 'it', title: `Free the ${[l.software, l.softwareVersion].filter(Boolean).join(' ')} licence seat`.slice(0, 150), ...to, licenceSeatId: x.id } });
     }
   }
 

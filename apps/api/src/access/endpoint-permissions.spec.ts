@@ -105,7 +105,7 @@ const IMPLICIT: Record<string, string[]> = {
   // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
   // G4: the report library (entries follow their area's keys) and company documents (the service decides per folder).
   LibraryController: ['reports', 'favourite', 'documents', 'file', 'schedulesList', 'schedule', 'endSchedule'],
-  LearningController: ['me', 'mySkills', 'teamSkills', 'personSkills', 'assessSkill', 'decideSkill', 'addOwnSkill', 'raiseTeamNeed', 'feedbackDue', 'react', 'checks', 'check', 'roles', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'itemFile', 'certificatePdf', 'team', 'person'],
+  LearningController: ['me', 'mySkills', 'teamSkills', 'personSkills', 'assessSkill', 'decideSkill', 'addOwnSkill', 'raiseTeamNeed', 'feedbackDue', 'react', 'checks', 'check', 'roles', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'scormSave', 'itemFile', 'certificatePdf', 'team', 'person'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   // counts: the record's Performance tab, counts only; the service checks who may ask.
   PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions', 'myNotes', 'addNote', 'editNote', 'deleteNote'], // batch F item 32: the author alone (service and RLS)
@@ -144,7 +144,7 @@ const IMPLICIT: Record<string, string[]> = {
   MyEngageController: ['announcements', 'acknowledge', 'feed', 'spaces', 'post', 'like', 'comments', 'comment', 'reportPost', 'reportComment', 'kudosOptions', 'giveKudos', 'wall', 'vote', 'mySurveys', 'toTake', 'answer', 'teamSurveys', 'teamResults', 'myPlan', 'savePlan', 'celebrationsToday', 'myCelebrations', 'setMyCelebrations'],
   SurveysController: [],
   ModerationController: [],
-  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets'],
+  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets', 'myBookings', 'freeAssets', 'bookAsset', 'cancelMyBooking'], // IT assets answer 2715: one's own asset bookings (bookable assets only)
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {

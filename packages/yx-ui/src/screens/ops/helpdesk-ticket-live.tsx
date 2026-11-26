@@ -25,12 +25,12 @@ import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, PriorityBadge, STATE_LABEL, StatusBadge, TicketFlags, fillCanned, when } from '../desk/desk-kit';
 import { FileList } from '../desk/help';
 import { InsertArticleButton, articleLinkHtml, type ArticleOption } from '../desk/ticket-kb';
-import { ConvertDialog, PeoplePanel, PriorityDialog, RequesterPanel, SourceCard, TagEditor, TimePanel, eventText } from '../desk/ticket';
+import { ConvertDialog, CostsPanel, PeoplePanel, PriorityDialog, RequesterPanel, SourceCard, TagEditor, TimePanel, eventText } from '../desk/ticket';
 import { LivePicker } from '../desk/service-form';
 import { TicketFieldsPanel } from '../desk/ticket-fields';
 import { TicketPlaceCard } from '../desk/facilities';
 import type { PickOption } from '../desk/esm-types';
-import type { Attachment, CannedResponse, DeskDetail, LoadState, Person, Presence, RequesterContext, TicketChange, TicketDetail, TicketWork, TimelineEntry } from '../desk/types';
+import type { Attachment, CannedResponse, CostLineInput, DeskDetail, LoadState, Person, Presence, RequesterContext, TicketChange, TicketDetail, TicketWork, TimelineEntry } from '../desk/types';
 import { OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
 
 export interface LiveTicket {
@@ -54,6 +54,9 @@ export interface LiveTicket {
   onUpload: (file: File) => Promise<Attachment>;
   onOpenFile: (attachmentId: string) => Promise<void>;
   onAddTime: (minutes: number, note: string) => Promise<void>;
+  /** GLPI 7 (answer 2719): cost lines on an IT ticket. */
+  onAddCost: (line: CostLineInput) => Promise<void>;
+  onRemoveCost: (lineId: string, reason: string) => Promise<void>;
   onRunScenario: (scenarioId: string) => Promise<void>;
   onConvert: (typeId: string, reason: string) => Promise<void>;
   onAddCollaborator: (userId: string) => Promise<void>;
@@ -449,6 +452,17 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
             <Card title="Time spent">
               <TimePanel ticket={t} work={work} busy={busy === 'time'} onAdd={(m, n) => void run('time', async () => (await live.onAddTime(m, n), toast({ tone: 'success', title: 'Time logged.' })))} />
             </Card>
+            {t.costs && (
+              <Card title="Costs">
+                <CostsPanel
+                  costs={t.costs}
+                  work={work}
+                  busy={busy === 'cost'}
+                  onAdd={(line) => run('cost', async () => (await live.onAddCost(line), toast({ tone: 'success', title: 'Cost added.' })))}
+                  onRemove={(id, reason) => run('uncost', async () => (await live.onRemoveCost(id, reason), toast({ tone: 'success', title: 'Cost taken off.' })))}
+                />
+              </Card>
+            )}
           </>
         }
       />

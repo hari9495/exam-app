@@ -337,7 +337,7 @@ export function docRows(docs: QueueDocument[], today: string): RecordDoc[] {
 export function assetRows(rows: AssetRow[], employeeId: string) {
   return rows
     .filter((a) => a.holder?.employeeId === employeeId)
-    .map((a) => ({ tag: a.tag, name: a.name, issued: day(a.holder!.issuedOn), condition: a.holder!.condition, ack: a.holder!.acknowledged ? 'Acknowledged' : 'Waiting' }));
+    .map((a) => ({ tag: a.tag, name: a.name, issued: day(a.holder!.issuedOn), condition: a.holder!.condition, ack: a.holder!.ackNone ? 'Not asked' : a.holder!.acknowledged ? 'Acknowledged' : 'Waiting' }));
 }
 
 /** PPL-42: a re-check from the re-verification rules (the manager gets no document name). */

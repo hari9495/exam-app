@@ -65,7 +65,7 @@ const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successo
 // Learning: courses, rules, enrolments, progress, certificates and the reminder log.
 const LEARNING_SUPPORT_EXCLUDED = ['learning_courses', 'learning_course_items', 'learning_rules', 'learning_enrolments', 'learning_item_progress', 'learning_certificates', 'learning_reminders', 'learning_external_requests',
   'learning_trainers', 'learning_sessions', 'learning_session_slots', 'learning_attendance', 'learning_feedback',
-    'learning_skill_levels', 'learning_skill_suggestions', 'learning_needs', 'learning_budgets',
+    'learning_skill_levels', 'learning_skill_suggestions', 'learning_needs', 'learning_budgets', 'learning_scorm_files', 'learning_scorm_attempts',
     // G4: report favourites and company documents.
     'report_favourites', 'company_doc_folders', 'company_documents', 'report_schedules'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
@@ -90,6 +90,10 @@ const LATER_SUPPORT_EXCLUDED = [
   'positions', 'position_versions', 'position_changes',
   // Enterprise E5 (O17): a pay group's own cut-off and release dates for one period.
   'pay_group_period_dates',
+  // IT assets part 1 (answer 2712): the company's asset categories.
+  'asset_categories',
+  // IT assets part 3 (answers 2716, 2717): the IT and Admin supplier list.
+  'it_suppliers', 'asset_contracts', 'asset_contract_assets', 'asset_licences', 'asset_licence_seats', 'asset_bookings',
   // Expenses cards; performance market rates, coach and disputes.
   'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
   'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots',
@@ -108,7 +112,9 @@ const LATER_SUPPORT_EXCLUDED = [
   // Batch G2 items 74 and 75: surveys, invitations, anonymous responses, action plans, poll votes.
   'eng_surveys', 'eng_survey_invites', 'eng_survey_responses', 'eng_action_plans', 'eng_poll_votes',
   // Batch G2 item 76: personal celebration opt-outs.
-  'eng_celebration_optouts'];
+  'eng_celebration_optouts',
+  // GLPI 7 (answer 2719): IT ticket cost lines and departments' IT budgets.
+  'sd_cost_lines', 'sd_it_budgets'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

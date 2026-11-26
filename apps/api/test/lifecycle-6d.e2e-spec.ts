@@ -273,7 +273,8 @@ describe('Lifecycle batch 6d', () => {
     const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: emp.mgr, exitType: 'retirement', lwd: fri, reasonText: 'Retires' }).expect(201)).body;
     let h = (await api('hr', 'get', `/lifecycle/exits/${k.id}/handoff`).expect(200)).body;
     expect(h.current).toMatchObject({ revision: 1, cause: 'accepted', lwd: fri, wagesDueBy: addDays(fri, 5) });
-    expect(h.current.recoveries).toEqual([expect.objectContaining({ source: 'asset', amount: '50000.00', status: 'open' })]);
+    // Settings 2.8 (answer 2712): the possible recovery starts from the Laptop category's default, not the cost.
+    expect(h.current.recoveries).toEqual([expect.objectContaining({ source: 'asset', amount: '45000.00', status: 'open' })]);
     await api('hr', 'post', `/lifecycle/assets/${asset}/return`).send({ returnedOn: today, condition: 'Good', status: 'in_stock' }).expect(200);
     h = (await api('hr', 'get', `/lifecycle/exits/${k.id}/handoff`).expect(200)).body;
     expect(h.current).toMatchObject({ revision: 2, cause: 'asset_returned', wagesDueBy: addDays(fri, 5), recoveries: [] });

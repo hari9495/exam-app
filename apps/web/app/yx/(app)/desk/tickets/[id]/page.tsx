@@ -146,6 +146,13 @@ export default function YxDeskTicketPage() {
         onAddTime: async (minutes, note) => {
           await write(`${path}/time-entries`, 'POST', { minutes, ...(note ? { note } : {}) });
         },
+        // GLPI 7 (answer 2719): fixed and material costs on an IT ticket.
+        onAddCost: async (line) => {
+          await write(`${path}/costs`, 'POST', line);
+        },
+        onRemoveCost: async (lineId, reason) => {
+          await write(`${path}/costs/${encodeURIComponent(lineId)}/remove`, 'POST', { reason });
+        },
         onRunScenario: async (scenarioId) => {
           await write(`${path}/scenarios/${encodeURIComponent(scenarioId)}`, 'POST', { version });
         },

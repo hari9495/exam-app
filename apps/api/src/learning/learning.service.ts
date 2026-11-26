@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
+import { readFile } from 'fs/promises';
+import { basename, dirname, join } from 'path';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -14,15 +16,20 @@ import { settingFor } from '../people/probation';
 import { addMonths, durationText, progressPct, shownStatus } from './learning-rules';
 import { placeInSession } from './session-place';
 import { COURSE_SKILL_LEVEL, courseSkills, suggestFromCourse } from './learning-skills.service';
+import { companyOriginPattern } from '../auth/company-scope';
+import { DEFAULT_LIMITS, MAX_ZIP_MB, ScormRefused, type ScormVersion, TOKEN_HOURS, bridgeScript, cleanCmi, contentHeaders, contentOrigin, injectBridge, mimeOf, readToken, scormDone, scormShown, signToken, startValues, unpackScorm } from './scorm';
 
 // Learning for the learner and L&D (LRN-01 My learning and catalogue, LRN-02 course player, LRN-03 course builder):
 // published courses are the company's catalogue; a person enrols (or asks, when the course needs approval), works
 // through the items, and completes when every required item is done; a course with a certificate issues one with a
-// public verify code. L&D (learning.manage) builds courses: content items (PDF, MP4 video, link), required or not,
-// in order; publishing needs at least one required item.
+// public verify code. L&D (learning.manage) builds courses: content items (PDF, MP4 video, link, SCORM package),
+// required or not, in order; publishing needs at least one required item. A SCORM item completes when the package
+// says so (answer 2781): it plays from the separate content origin and only its allowed cmi fields are kept.
 
 const TYPE_LABEL: Record<string, string> = { self_paced: 'Self-paced', classroom: 'Classroom', virtual: 'Virtual', scorm: 'SCORM', assessment: 'Assessment only' };
-const KIND_LABEL: Record<string, 'PDF' | 'Video' | 'Link'> = { pdf: 'PDF', video: 'Video', link: 'Link' };
+const KIND_LABEL: Record<string, 'PDF' | 'Video' | 'Link' | 'SCORM'> = { pdf: 'PDF', video: 'Video', link: 'Link', scorm: 'SCORM' };
+/** Answer 2781: the SCORM upload limits, company settings (defaults in scorm.ts). */
+const SCORM_SETTINGS = { maxZipMb: 'learning.scorm.max_zip_mb', maxUnzippedMb: 'learning.scorm.max_unzipped_mb', maxFiles: 'learning.scorm.max_files', maxRatio: 'learning.scorm.max_ratio' } as const;
 /** Courses that cost more than this carry a 12-month training bond the person accepts when asking (LRN-06). */
 export const BOND_ABOVE = 25000;
 const REQUEST_TYPE = 'learning.enrolment';
@@ -97,8 +104,8 @@ export class LearningService implements OnModuleInit {
     return buildViewer(this.prisma, this.tenantPrisma, user, LEARNING_KEYS);
   }
 
-  private run<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>) {
-    return inCompany(this.tenantPrisma, ctx, fn);
+  private run<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>, options?: { timeout?: number }) {
+    return inCompany(this.tenantPrisma, ctx, fn, options);
   }
 
   private manager(v: Viewer) {
@@ -323,17 +330,28 @@ export class LearningService implements OnModuleInit {
   }
 
   /** LRN-02: my enrolment with the course outline, what is done, and the certificate once complete. */
-  player(ctx: TenantContext, enrolmentId: string) {
+  player(ctx: TenantContext, enrolmentId: string, origin?: string) {
     return this.run(ctx, async (tx, c) => {
       const e = await this.mine(tx, c, enrolmentId);
       const course = await tx.learningCourse.findFirstOrThrow({ where: { organizationId: c.organizationId, id: e.courseId } });
       const items = await tx.learningCourseItem.findMany({ where: { organizationId: c.organizationId, courseId: course.id }, orderBy: { position: 'asc' } });
       const done = new Set((await tx.learningItemProgress.findMany({ where: { organizationId: c.organizationId, enrolmentId: e.id } })).map((p) => p.itemId));
       const cert = await tx.learningCertificate.findUnique({ where: { enrolmentId: e.id } });
+      const attempts = await tx.learningScormAttempt.findMany({ where: { organizationId: c.organizationId, enrolmentId: e.id } });
+      // A package plays only while the enrolment is open, from the content origin, for the app page that asked.
+      const app = appOrigin(origin);
+      const content = contentOrigin();
+      const playable = ['enrolled', 'in_progress', 'completed'].includes(e.status);
+      const scorm = (i: (typeof items)[number]) => {
+        if (i.kind !== 'scorm') return null;
+        const shown = scormShown(i.scormVersion as ScormVersion, (attempts.find((a) => a.itemId === i.id)?.cmi ?? {}) as Record<string, string>);
+        const token = playable && app && content ? signToken({ o: c.organizationId, i: i.id, e: e.id, a: app, x: Date.now() + TOKEN_HOURS * 3600_000 }) : null;
+        return { version: i.scormVersion, ...shown, launchUrl: token ? `${content}/api/v1/scorm/${token}/${encodePath(i.scormLaunch!)}` : null };
+      };
       return {
         enrolment: { id: e.id, status: shownStatus({ status: e.status, dueOn: iso(e.dueOn) }, todayIst()), due: iso(e.dueOn), version: e.version },
         course: this.courseView(course, await this.company(tx, c)),
-        items: items.map((i) => ({ id: i.id, title: i.title, kind: KIND_LABEL[i.kind], minutes: i.minutes, required: i.required, done: done.has(i.id), url: i.kind === 'link' ? i.url : null })),
+        items: items.map((i) => ({ id: i.id, title: i.title, kind: KIND_LABEL[i.kind], minutes: i.minutes, required: i.required, done: done.has(i.id), url: i.kind === 'link' ? i.url : null, scorm: scorm(i) })),
         certificate: cert ? { id: cert.id, issued: iso(cert.issuedOn), expires: iso(cert.expiresOn) } : null,
       };
     });
@@ -354,17 +372,89 @@ export class LearningService implements OnModuleInit {
       if (e.status === 'cancelled') throw new ConflictException('This enrolment was cancelled.');
       const item = await tx.learningCourseItem.findFirst({ where: { organizationId: c.organizationId, id: itemId, courseId: e.courseId } });
       if (!item) throw new NotFoundException('No such item in this course.');
-      if (e.status === 'completed') return { completed: true, certificateId: (await tx.learningCertificate.findUnique({ where: { enrolmentId: e.id } }))?.id ?? null };
-      await tx.learningItemProgress.upsert({ where: { enrolmentId_itemId: { enrolmentId: e.id, itemId } }, create: { organizationId: c.organizationId, enrolmentId: e.id, itemId }, update: {} });
-      const required = await tx.learningCourseItem.findMany({ where: { organizationId: c.organizationId, courseId: e.courseId, required: true }, select: { id: true } });
-      const done = await tx.learningItemProgress.count({ where: { organizationId: c.organizationId, enrolmentId: e.id, itemId: { in: required.map((r) => r.id) } } });
-      // A classroom or virtual course completes only by attending its session (confirmed attendance), never by its items.
-      const { type } = await tx.learningCourse.findFirstOrThrow({ where: { organizationId: c.organizationId, id: e.courseId }, select: { type: true } });
-      if (type === 'self_paced' && required.length && done >= required.length) return { completed: true, certificateId: await this.completeIn(tx, c, e.id) };
-      // Optimistic: one change at a time on the enrolment.
-      const moved = await tx.learningEnrolment.updateMany({ where: { id: e.id, version: e.version }, data: { status: 'in_progress', startedAt: e.startedAt ?? new Date(), version: { increment: 1 } } });
-      if (!moved.count) throw new ConflictException('This course changed. Reload it.');
-      return { completed: false, certificateId: null };
+      if (item.kind === 'scorm') throw new BadRequestException('A SCORM package completes itself when you finish it in the player.');
+      return this.itemDone(tx, c, e, itemId);
+    });
+  }
+
+  /** The shared path of an item done (marked by the learner, or reported by a SCORM package): progress, then completion. */
+  private async itemDone(tx: Tx, c: CompanyContext, e: Prisma.LearningEnrolmentGetPayload<object>, itemId: string) {
+    if (e.status === 'completed') return { completed: true, certificateId: (await tx.learningCertificate.findUnique({ where: { enrolmentId: e.id } }))?.id ?? null };
+    await tx.learningItemProgress.upsert({ where: { enrolmentId_itemId: { enrolmentId: e.id, itemId } }, create: { organizationId: c.organizationId, enrolmentId: e.id, itemId }, update: {} });
+    const required = await tx.learningCourseItem.findMany({ where: { organizationId: c.organizationId, courseId: e.courseId, required: true }, select: { id: true } });
+    const done = await tx.learningItemProgress.count({ where: { organizationId: c.organizationId, enrolmentId: e.id, itemId: { in: required.map((r) => r.id) } } });
+    // A classroom or virtual course completes only by attending its session (confirmed attendance), never by its items.
+    const { type } = await tx.learningCourse.findFirstOrThrow({ where: { organizationId: c.organizationId, id: e.courseId }, select: { type: true } });
+    if (type === 'self_paced' && required.length && done >= required.length) return { completed: true, certificateId: await this.completeIn(tx, c, e.id) };
+    // Optimistic: one change at a time on the enrolment.
+    const moved = await tx.learningEnrolment.updateMany({ where: { id: e.id, version: e.version }, data: { status: 'in_progress', startedAt: e.startedAt ?? new Date(), version: { increment: 1 } } });
+    if (!moved.count) throw new ConflictException('This course changed. Reload it.');
+    return { completed: false, certificateId: null };
+  }
+
+  /**
+   * Answer 2781: a commit from a SCORM package (through the app's bridge): only the allowed cmi fields of its version
+   * are kept (merged with what was saved); when the package says it is finished, the item is done the usual way.
+   */
+  scormSave(ctx: TenantContext, enrolmentId: string, itemId: string, input: unknown) {
+    return this.run(ctx, async (tx, c) => {
+      const e = await this.mine(tx, c, enrolmentId);
+      if (!['enrolled', 'in_progress', 'completed'].includes(e.status)) throw new ConflictException('This course is not open for you to work on.');
+      const item = await tx.learningCourseItem.findFirst({ where: { organizationId: c.organizationId, id: itemId, courseId: e.courseId, kind: 'scorm' } });
+      if (!item) throw new NotFoundException('No such package in this course.');
+      const version = item.scormVersion as ScormVersion;
+      let clean: Record<string, string>;
+      try {
+        clean = cleanCmi(version, input);
+      } catch (err) {
+        if (err instanceof ScormRefused) throw new BadRequestException(err.message);
+        throw err;
+      }
+      const key = { enrolmentId_itemId: { enrolmentId: e.id, itemId } };
+      const before = ((await tx.learningScormAttempt.findUnique({ where: key }))?.cmi ?? {}) as Record<string, string>;
+      const cmi = { ...before, ...clean };
+      await tx.learningScormAttempt.upsert({ where: key, create: { organizationId: c.organizationId, enrolmentId: e.id, itemId, cmi }, update: { cmi, updatedAt: new Date() } });
+      const shown = scormShown(version, cmi);
+      if (scormDone(version, cmi) && !scormDone(version, before)) await audit(tx, c, 'learning.scorm.finished', 'learning_enrolment', e.id, { item: item.title, ...(shown.score ? { score: shown.score } : {}) });
+      if (scormDone(version, cmi)) return { ...shown, ...(await this.itemDone(tx, c, e, itemId)) };
+      // Started: the enrolment shows in progress, as when any item is done.
+      if (e.status === 'enrolled') await tx.learningEnrolment.updateMany({ where: { id: e.id, version: e.version }, data: { status: 'in_progress', startedAt: e.startedAt ?? new Date(), version: { increment: 1 } } });
+      return { ...shown, completed: e.status === 'completed', certificateId: null };
+    });
+  }
+
+  /**
+   * Answer 2781: one file of a package, for the content origin only, with a signed launch token that names the company,
+   * the package and the enrolment. Never a file that has not passed the virus check. HTML pages get the run-time and
+   * bridge first; `__yx/api.js` is that run-time with the learner's saved values.
+   */
+  async scormContent(token: string, path: string, host: string | undefined): Promise<{ status: number; body: Buffer | string; headers: Record<string, string> }> {
+    const content = contentOrigin();
+    const plain = (status: number, body: string) => ({ status, body, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+    // Only on the content origin: on the app's own origin a package could reach the app's cookies and API.
+    if (!content || !host || host.toLowerCase() !== new URL(content).host) return plain(404, 'Not found.');
+    const t = readToken(token);
+    if (!t) return plain(403, 'This link has expired. Open the course again.');
+    return this.tenantPrisma.forTenant({ organizationId: t.o, isSuperAdmin: false }, async (tx) => {
+      const item = await tx.learningCourseItem.findFirst({ where: { organizationId: t.o, id: t.i, kind: 'scorm' } });
+      if (!item) return plain(404, 'Not found.');
+      const version = item.scormVersion as ScormVersion;
+      if (path === '__yx/api.js') {
+        const e = await tx.learningEnrolment.findFirst({ where: { organizationId: t.o, id: t.e, courseId: item.courseId, status: { in: ['enrolled', 'in_progress', 'completed'] } } });
+        if (!e) return plain(404, 'Not found.');
+        const saved = ((await tx.learningScormAttempt.findUnique({ where: { enrolmentId_itemId: { enrolmentId: e.id, itemId: item.id } } }))?.cmi ?? {}) as Record<string, string>;
+        const person = await tx.employee.findFirstOrThrow({ where: { organizationId: t.o, id: e.employeeId }, select: { givenName: true, familyName: true } });
+        const runtime = await scormRuntime(version);
+        const js = Buffer.concat([runtime, Buffer.from(bridgeScript(version, { item: item.id, app: t.a, cmi: startValues(version, saved, { id: e.id, name: [person.familyName, person.givenName].filter(Boolean).join(', ') }) }))]);
+        return { status: 200, body: js, headers: { ...contentHeaders(content, t.a, 'text/javascript'), 'Cache-Control': 'no-store' } };
+      }
+      const row = await tx.learningScormFile.findUnique({ where: { itemId_path: { itemId: item.id, path } } });
+      if (!row) return plain(404, 'Not found.');
+      const file = await tx.file.findFirstOrThrow({ where: { organizationId: t.o, id: row.fileId } });
+      if (file.scanStatus !== 'clean') return plain(403, file.scanStatus === 'infected' ? 'This file failed the virus check.' : 'This file is still being checked for viruses. Try again in a minute.');
+      const data = await this.files.bytes(file);
+      const mime = mimeOf(path);
+      return { status: 200, body: mime === 'text/html' ? injectBridge(data, `/api/v1/scorm/${token}/__yx/api.js`) : data, headers: contentHeaders(content, t.a, mime) };
     });
   }
 
@@ -458,7 +548,7 @@ export class LearningService implements OnModuleInit {
         const files = await tx.file.findMany({ where: { organizationId: c.organizationId, id: { in: items.flatMap((i) => (i.fileId ? [i.fileId] : [])) } }, select: { id: true, fileName: true, scanStatus: true } });
         return {
           course: this.courseView(course, await this.company(tx, c)),
-          items: items.map((i) => ({ id: i.id, title: i.title, kind: KIND_LABEL[i.kind], minutes: i.minutes, required: i.required, url: i.url, file: files.find((f) => f.id === i.fileId)?.fileName ?? null })),
+          items: items.map((i) => ({ id: i.id, title: i.title, kind: KIND_LABEL[i.kind], minutes: i.minutes, required: i.required, url: i.url, file: files.find((f) => f.id === i.fileId)?.fileName ?? null, scormVersion: i.scormVersion })),
         };
       });
     });
@@ -529,9 +619,13 @@ export class LearningService implements OnModuleInit {
   }
 
   /** A link item, or a PDF / MP4 video item with its file (stored and scanned like every upload). */
-  addItem(ctx: TenantContext, user: ScopeUser, courseId: string, dto: { title: string; kind: 'pdf' | 'video' | 'link'; minutes: number; required: boolean; url?: string | null }, file?: { originalname: string; buffer: Buffer }) {
+  addItem(ctx: TenantContext, user: ScopeUser, courseId: string, dto: { title: string; kind: 'pdf' | 'video' | 'link' | 'scorm'; minutes: number; required: boolean; url?: string | null }, file?: { originalname: string; buffer: Buffer }) {
     return this.viewer(user).then((v) => {
       this.manager(v);
+      if (dto.kind === 'scorm') {
+        if (!file) throw new BadRequestException('Choose the SCORM zip to upload.');
+        return this.addScorm(ctx, courseId, dto, file);
+      }
       if (dto.kind === 'link' ? !dto.url || file : !file) throw new BadRequestException(dto.kind === 'link' ? 'Give the link address.' : 'Choose the file to upload.');
       if (dto.kind === 'link' && !/^https:\/\/[^\s]+$/i.test(dto.url!)) throw new BadRequestException('A link must start with https://.');
       let stored: string | null = null;
@@ -539,7 +633,7 @@ export class LearningService implements OnModuleInit {
         const course = await tx.learningCourse.findFirst({ where: { organizationId: c.organizationId, id: courseId, status: { not: 'retired' } } });
         if (!course) throw new NotFoundException('No such course.');
         const last = await tx.learningCourseItem.findFirst({ where: { organizationId: c.organizationId, courseId }, orderBy: { position: 'desc' }, select: { position: true } });
-        const fileId = file && dto.kind !== 'link' ? (await this.files.storeIn(tx, c, { area: 'learning', name: file.originalname, data: file.buffer, allowedMime: [MIME[dto.kind].mime], maxMb: MIME[dto.kind].maxMb, via: 'staff' })).id : null;
+        const fileId = file && dto.kind !== 'link' ? (await this.files.storeIn(tx, c, { area: 'learning', name: file.originalname, data: file.buffer, allowedMime: [MIME[dto.kind as 'pdf' | 'video'].mime], maxMb: MIME[dto.kind as 'pdf' | 'video'].maxMb, via: 'staff' })).id : null;
         stored = fileId;
         const item = await tx.learningCourseItem.create({ data: { organizationId: c.organizationId, courseId, position: (last?.position ?? 0) + 1, title: dto.title.trim(), kind: dto.kind, minutes: dto.minutes, required: dto.required, fileId, url: dto.kind === 'link' ? dto.url!.trim() : null } });
         await audit(tx, c, 'learning.course.item_added', 'learning_course', courseId, { item: item.title, kind: dto.kind });
@@ -549,6 +643,58 @@ export class LearningService implements OnModuleInit {
         return out;
       });
     });
+  }
+
+  /**
+   * Answer 2781: a SCORM zip as an item. Checked against the company's limits (size, unzipped size, file count, ratio,
+   * no path escapes or links), the manifest read for the version and launch file, every file stored and virus-checked
+   * on its own (the zip too). Files are stored before the short transaction that records them.
+   */
+  private async addScorm(ctx: TenantContext, courseId: string, dto: { title: string; minutes: number; required: boolean }, file: { originalname: string; buffer: Buffer }) {
+    const limits = await this.run(ctx, async (tx, c) => {
+      if (!(await tx.learningCourse.count({ where: { organizationId: c.organizationId, id: courseId, status: { not: 'retired' } } }))) throw new NotFoundException('No such course.');
+      const out = { ...DEFAULT_LIMITS };
+      for (const [k, key] of Object.entries(SCORM_SETTINGS) as [keyof typeof SCORM_SETTINGS, string][]) out[k] = Number(await settingFor(tx, c, key, ANY_ENTITY)) || DEFAULT_LIMITS[k];
+      out.maxZipMb = Math.min(out.maxZipMb, MAX_ZIP_MB);
+      return out;
+    });
+    const refused = (err: unknown) => (err instanceof ScormRefused ? new BadRequestException({ statusCode: 400, code: 'FILE_REFUSED', message: `${file.originalname} was not added. ${err.message}` }) : err);
+    const c0 = { organizationId: ctx.organizationId!, isSuperAdmin: false, userId: ctx.userId ?? null } as CompanyContext;
+    const rows: Awaited<ReturnType<FilesService['putExtracted']>>[] = [];
+    const paths: string[] = [];
+    let version: ScormVersion;
+    let launch: string;
+    try {
+      const pkg = await unpackScorm(file.buffer, limits);
+      ({ version, launch } = pkg);
+      for (const f of pkg.files) {
+        rows.push(await this.files.putExtracted(c0, { area: 'learning', name: f.path, data: await f.read(), mime: mimeOf(f.path), via: 'staff' }));
+        paths.push(f.path);
+      }
+    } catch (err) {
+      throw refused(err);
+    }
+    let zipId = '';
+    const out = await this.run(
+      ctx,
+      async (tx, c) => {
+        const course = await tx.learningCourse.findFirst({ where: { organizationId: c.organizationId, id: courseId, status: { not: 'retired' } } });
+        if (!course) throw new NotFoundException('No such course.');
+        zipId = (await this.files.storeIn(tx, c, { area: 'learning', name: file.originalname, data: file.buffer, allowedMime: ['application/zip'], maxMb: limits.maxZipMb, via: 'staff' })).id;
+        await tx.file.createMany({ data: rows });
+        const last = await tx.learningCourseItem.findFirst({ where: { organizationId: c.organizationId, courseId }, orderBy: { position: 'desc' }, select: { position: true } });
+        const item = await tx.learningCourseItem.create({ data: { organizationId: c.organizationId, courseId, position: (last?.position ?? 0) + 1, title: dto.title.trim(), kind: 'scorm', minutes: dto.minutes, required: dto.required, fileId: zipId, scormVersion: version, scormLaunch: launch } });
+        await tx.learningScormFile.createMany({ data: rows.map((r, n) => ({ organizationId: c.organizationId, itemId: item.id, path: paths[n], fileId: r.id })) });
+        await audit(tx, c, 'learning.course.item_added', 'learning_course', courseId, { item: item.title, kind: 'scorm', version, files: rows.length });
+        return { id: item.id, version, files: rows.length };
+      },
+      { timeout: 60_000 },
+    );
+    // Scanned one at a time after the commit; until each is clean it is never served (the hourly sweep retries).
+    void (async () => {
+      for (const id of [zipId, ...rows.map((r) => r.id)]) await this.files.scan(ctx.organizationId!, id).catch(() => undefined);
+    })();
+    return out;
   }
 
   /** Required or not, the title and minutes, or one place up or down. */
@@ -605,6 +751,31 @@ export class LearningService implements OnModuleInit {
       });
     });
   }
+}
+
+/** scorm-again's browser build (it sets window.Scorm12API / Scorm2004API), read once. */
+const RUNTIME = new Map<ScormVersion, Buffer>();
+async function scormRuntime(version: ScormVersion) {
+  if (!RUNTIME.has(version)) {
+    // The package's own folder (its exports hide dist/ and package.json): up from its entry file to the folder named after it.
+    let root = dirname(require.resolve('scorm-again'));
+    while (basename(root) !== 'scorm-again' && dirname(root) !== root) root = dirname(root);
+    RUNTIME.set(version, await readFile(join(root, 'dist', version === '1.2' ? 'scorm12.min.js' : 'scorm2004.min.js')));
+  }
+  return RUNTIME.get(version)!;
+}
+
+/** The app page's origin (the request's Origin) when it is one of the app's own; else the web origin. */
+function appOrigin(origin: string | undefined, env = process.env): string | null {
+  const pattern = companyOriginPattern(env.YX_BASE_DOMAIN);
+  if (origin && (origin === env.WEB_ORIGIN || pattern?.test(origin))) return origin;
+  return env.WEB_ORIGIN ? new URL(env.WEB_ORIGIN).origin : null;
+}
+/** A launch path as a URL path: each part encoded, the query string kept. */
+function encodePath(p: string) {
+  const q = p.indexOf('?');
+  const path = q < 0 ? p : p.slice(0, q);
+  return path.split('/').map(encodeURIComponent).join('/') + (q < 0 ? '' : p.slice(q));
 }
 
 const SOURCE_LABEL: Record<string, string> = { rule: 'Assigned by rule', renewal: 'Assigned by rule', self: 'Self', nominated: 'Nominated' };

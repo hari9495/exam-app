@@ -99,4 +99,12 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'company-docs-expiry', cron: '45 1 * * *' },
   // G4 (2690): scheduled report emails, every 15 minutes (each schedule runs at 07:00 IST on its days).
   { id: 'report-schedules', cron: '*/15 * * * *' },
+  // IT assets answer 2714: warranties ending within the company's days, once per warranty end (07:20 IST).
+  { id: 'asset-warranty-alerts', cron: '50 1 * * *' },
+  // IT assets answers 2717 and 2714: contracts past their end renew (tacit) or end (express); owners told at the notice date (07:25 IST).
+  { id: 'asset-contract-alerts', cron: '55 1 * * *' },
+  // IT assets answer 2718: licences expiring within the company's days, once per expiry date (07:30 IST).
+  { id: 'asset-licence-alerts', cron: '0 2 * * *' },
+  // IT assets answer 2715: the person is reminded the day before a booked asset is due back; IT when overdue (07:35 IST).
+  { id: 'asset-booking-alerts', cron: '5 2 * * *' },
 ];

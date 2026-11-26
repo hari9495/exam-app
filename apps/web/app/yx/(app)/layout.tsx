@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
+import { Bell, CalendarClock, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
 import { AccessibilityMenu, Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
@@ -278,7 +278,7 @@ function Frame({ children }: { children: React.ReactNode }) {
     ) : undefined;
   const meHref = (id: string) => nav.flatMap((a) => a.sections.flatMap((s) => s.items)).find((l) => l.id === id)?.href;
   // The avatar menu holds the personal settings (founder 15 and 26 Oct 2026); the Me side menu is the designed short one.
-  const ICON = { delegation: UserCheck, 'notification-prefs': Bell, 'my-assets': Laptop, 'my-language': Languages, me: ShieldCheck } as const;
+  const ICON = { delegation: UserCheck, 'notification-prefs': Bell, 'my-assets': Laptop, 'my-bookings': CalendarClock, 'my-language': Languages, me: ShieldCheck } as const;
   const account = accountLinks({ support, employee }).map((l) => ({ label: l.label, icon: ICON[l.id as keyof typeof ICON], onSelect: () => go(l.href) }));
   const profileHref = meHref('profile') ?? '/profile';
 

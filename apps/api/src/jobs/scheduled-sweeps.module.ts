@@ -27,6 +27,7 @@ import { AccessModule } from '../access/access.module';
 import { HelpModule } from '../help/help.module';
 import { AssistantModule } from '../help/assistant/assistant.module';
 import { PlatformModule } from '../platform/platform.module';
+import { AssetAlertsService } from '../lifecycle/asset-alerts.service';
 
 // Runs every recurring housekeeping sweep as a cron-driven BullMQ job scheduler (one dispatcher
 // worker), replacing the per-service unref'd setInterval timers. Imports each owning module for its
@@ -69,6 +70,9 @@ import { QuestionsModule } from '../questions/questions.module';
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     { provide: SCHEDULED_SWEEPS_QUEUE, useFactory: createScheduledSweepsQueue, inject: [REDIS_CONNECTION] },
     ScheduledSweepsWorkerService,
+    // IT assets answer 2714 (only the tenant Prisma and notifications, so provided here rather than via LifecycleModule).
+    AssetAlertsService,
   ],
+  exports: [AssetAlertsService],
 })
 export class ScheduledSweepsModule {}

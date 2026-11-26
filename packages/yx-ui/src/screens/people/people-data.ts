@@ -489,14 +489,14 @@ export const DEATH_PAYEES = [
 /* ------------------------------------------------------------------ assets and succession (PPL-25, 26) */
 
 export const ASSETS = [
-  { id: 'a1', tag: 'KF-LAP-0231', type: 'Laptop', name: '14 inch laptop, 16 GB', serial: 'SN-5CD3219XK', location: 'Hosur plant', status: 'Assigned', holder: 'Arjun Kulkarni', cost: 68500, purchased: d(2023, 5, 30) },
-  { id: 'a2', tag: 'KF-LAP-0187', type: 'Laptop', name: '14 inch laptop, 8 GB', serial: 'SN-5CD2208AA', location: 'Hosur plant', status: 'Assigned', holder: 'Meera Iyer', cost: 54200, purchased: d(2022, 8, 11) },
-  { id: 'a3', tag: 'KF-TAB-0044', type: 'Tablet', name: 'Inspection tablet', serial: 'SN-TB44-0192', location: 'Hosur plant', status: 'Assigned', holder: 'Arjun Kulkarni', cost: 24900, purchased: d(2026, 9, 1) },
-  { id: 'a4', tag: 'KF-TAB-0045', type: 'Tablet', name: 'Inspection tablet', serial: 'SN-TB44-0193', location: 'Hosur plant', status: 'In stock', holder: '', cost: 24900, purchased: d(2026, 9, 1) },
-  { id: 'a5', tag: 'KF-PHN-0102', type: 'Phone', name: 'Field sales phone', serial: 'IMEI-XXXX-2231', location: 'Chennai office', status: 'In repair', holder: '', cost: 18900, purchased: d(2024, 2, 14) },
-  { id: 'a6', tag: 'KF-VEH-0007', type: 'Two-wheeler', name: 'Sales two-wheeler', serial: 'TN09 BX 4412', location: 'Chennai office', status: 'Assigned', holder: 'Rahul Sharma', cost: 92000, purchased: d(2023, 1, 20) },
-  { id: 'a7', tag: 'KF-LAP-0099', type: 'Laptop', name: '13 inch laptop', serial: 'SN-5CD1107ZZ', location: 'Bengaluru head office', status: 'Lost', holder: '', cost: 61000, purchased: d(2021, 7, 2) },
-  { id: 'a8', tag: 'KF-LAP-0012', type: 'Laptop', name: '15 inch laptop', serial: 'SN-5CD0002QQ', location: 'Bengaluru head office', status: 'Retired', holder: '', cost: 72000, purchased: d(2019, 3, 15) },
+  { id: 'a1', tag: 'KF-LAP-0231', type: 'Laptop', name: '14 inch laptop, 16 GB', serial: 'SN-5CD3219XK', location: 'Hosur plant', status: 'Assigned', holder: 'Arjun Kulkarni', cost: 68500, purchased: d(2023, 5, 30), warrantyEndsOn: '2026-05-30' as string | null },
+  { id: 'a2', tag: 'KF-LAP-0187', type: 'Laptop', name: '14 inch laptop, 8 GB', serial: 'SN-5CD2208AA', location: 'Hosur plant', status: 'Assigned', holder: 'Meera Iyer', cost: 54200, purchased: d(2022, 8, 11), warrantyEndsOn: '2025-08-11' as string | null },
+  { id: 'a3', tag: 'KF-TAB-0044', type: 'Tablet', name: 'Inspection tablet', serial: 'SN-TB44-0192', location: 'Hosur plant', status: 'Assigned', holder: 'Arjun Kulkarni', cost: 24900, purchased: d(2026, 9, 1), warrantyEndsOn: '2027-09-01' as string | null },
+  { id: 'a4', tag: 'KF-TAB-0045', type: 'Tablet', name: 'Inspection tablet', serial: 'SN-TB44-0193', location: 'Hosur plant', status: 'In stock', holder: '', cost: 24900, purchased: d(2026, 9, 1), warrantyEndsOn: '2027-09-01' as string | null },
+  { id: 'a5', tag: 'KF-PHN-0102', type: 'Phone', name: 'Field sales phone', serial: 'IMEI-XXXX-2231', location: 'Chennai office', status: 'In repair', holder: '', cost: 18900, purchased: d(2024, 2, 14), warrantyEndsOn: '2026-12-14' as string | null },
+  { id: 'a6', tag: 'KF-VEH-0007', type: 'Two-wheeler', name: 'Sales two-wheeler', serial: 'TN09 BX 4412', location: 'Chennai office', status: 'Assigned', holder: 'Rahul Sharma', cost: 92000, purchased: d(2023, 1, 20), warrantyEndsOn: null as string | null },
+  { id: 'a7', tag: 'KF-LAP-0099', type: 'Laptop', name: '13 inch laptop', serial: 'SN-5CD1107ZZ', location: 'Bengaluru head office', status: 'Lost', holder: '', cost: 61000, purchased: d(2021, 7, 2), warrantyEndsOn: '2023-07-02' as string | null },
+  { id: 'a8', tag: 'KF-LAP-0012', type: 'Laptop', name: '15 inch laptop', serial: 'SN-5CD0002QQ', location: 'Bengaluru head office', status: 'Retired', holder: '', cost: 72000, purchased: d(2019, 3, 15), warrantyEndsOn: '2021-03-15' as string | null },
 ];
 
 export const SUCCESSION = [
@@ -702,6 +702,12 @@ export const PAY_ACCESS_ROWS: PayAccessRow[] = [
 
 /** The live popups take the day as yyyy-mm-dd: the sample's TODAY (29 Sep 2026). */
 export const TODAY_KEY = '2026-09-29';
+/** IT assets part 1 (answer 2712): the company's asset categories, as the Add asset picker gets them. */
+export const ASSET_CATEGORY_CHOICES: (Choice & { nextTag?: string | null })[] = [
+  { value: 'cat-laptop', label: 'Laptop', nextTag: 'LAP-2026-0042' },
+  { value: 'cat-phone', label: 'Phone' },
+  { value: 'cat-sim', label: 'SIM' },
+];
 export const ENTITY_CHOICES: Choice[] = [
   { value: 'le-ka', label: 'Kaveri Foods Pvt Ltd' },
   { value: 'le-tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' },

@@ -11,6 +11,9 @@ import { ownOf, reachesPerson } from '../documents/person-access';
 import { EXIT_INTERVIEW_FORM } from './exit-rules';
 import { ExitsService } from './exits.service';
 import { freezeSettlementIn } from './settlement';
+import { settingFor } from '../people/probation';
+import { DeskAccessService, RequestUser, companyOf, visibleTickets } from '../service-desk/desk-access';
+import { STARTER_CATEGORIES, addMonthsIso, netBookValue, nextTag, recoveryAmount, tagHead } from './asset-categories';
 
 // Lifecycle batch 6c (design §10.6): clearance sign-offs (LIFE-3.05), the exit interview (LIFE-3.06) and the shared
 // asset list (LIFE-3.07, D3).
@@ -22,15 +25,21 @@ import { freezeSettlementIn } from './settlement';
 //   assets     asset.view / asset.manage per legal entity or location; one open assignment per asset (database);
 //              the person acknowledges by a click; returning an asset clears its clearance item.
 
-/** A day plus whole months; the 31st becomes the month's last day (warranty ends). */
-export function addMonthsIso(day: string, months: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  const first = new Date(Date.UTC(y, m - 1 + months, 1));
-  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
-  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10);
+/** Answer 2713: how the category depreciates, in words (null: it does not). */
+export function depreciationText(c: { usefulLifeYears: number | null; depreciationMethod: string; depreciationRate: Prisma.Decimal | null } | null): string | null {
+  if (!c) return null;
+  if (c.depreciationMethod === 'declining') return c.depreciationRate ? `Declining balance at ${Number(c.depreciationRate)}% a year` : null;
+  return c.usefulLifeYears ? `Straight line over ${c.usefulLifeYears} ${c.usefulLifeYears === 1 ? 'year' : 'years'}` : null;
 }
 
-const KEYS = ['lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage'] as const;
+/** Does the key reach this place (company-wide, its entity or its location)? A place-less record: company-wide only. */
+export function reachesPlace(v: Viewer, key: string, a: { legalEntityId: string | null; locationId: string | null }) {
+  if (v.actingForOther && key === 'asset.manage') return false;
+  if (tenantWide(v, key)) return true;
+  return (v.scopes.get(key) ?? []).some((s) => (s.type === 'legal_entity' && s.id === a.legalEntityId) || (s.type === 'location' && s.id === a.locationId));
+}
+
+export const ASSET_KEYS = ['lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage', 'asset.finance.view', 'org.settings.manage'] as const;
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -42,7 +51,9 @@ export interface SignOffDto {
   version: number;
 }
 export interface AssetDto {
-  category: string;
+  /** IT assets part 1 (answer 2712): the category from the company list; or its name (older callers). */
+  categoryId?: string | null;
+  category?: string | null;
   name: string;
   tag: string;
   serial?: string | null;
@@ -56,7 +67,25 @@ export interface AssetDto {
   model?: string | null;
   invoiceNumber?: string | null;
   warrantyMonths?: number | null;
+  supplierId?: string | null;
 }
+
+export interface AssetCategoryDto {
+  name: string;
+  trackedBy?: string | null;
+  defaultRecovery?: string | null;
+  usefulLifeYears?: number | null;
+  /** Answer 2720: the tag pattern (no prefix: none). */
+  tagPrefix?: string | null;
+  tagYear?: boolean;
+  tagDigits?: number;
+  /** Answer 2713: straight_line (default) or declining at depreciationRate % a year. */
+  depreciationMethod?: 'straight_line' | 'declining';
+  depreciationRate?: string | null;
+  version?: number;
+}
+/** A company-wide setting (the asset keys are company-wide only, so no place is needed). */
+const companySetting = (tx: Tx, c: CompanyContext, key: 'asset.ack_method' | 'asset.recovery_to_fnf' | 'asset.recovery_basis') => settingFor(tx, c, key, { legalEntityId: '' });
 
 @Injectable()
 export class OffboardingService {
@@ -66,10 +95,11 @@ export class OffboardingService {
     private readonly crypto: OrgSecretsCryptoService,
     private readonly notifications: NotificationsService,
     private readonly exits: ExitsService,
+    private readonly desk: DeskAccessService,
   ) {}
 
   private viewer(user: ScopeUser) {
-    return buildViewer(this.prisma, this.tenantPrisma, user, KEYS);
+    return buildViewer(this.prisma, this.tenantPrisma, user, ASSET_KEYS);
   }
 
   private confidential(tx: Tx) {
@@ -189,6 +219,14 @@ export class OffboardingService {
           await freezeSettlementIn(tx, c, k.id, 'asset_returned');
         }
       }
+      // IT assets answer 2718: clearing a leaver's licence seat item frees the seat (audited on the licence).
+      if (i.licenceSeatId && dto.action === 'clear') {
+        const seat = await tx.assetLicenceSeat.findFirst({ where: { organizationId: org, id: i.licenceSeatId, freedOn: null } });
+        if (seat) {
+          await tx.assetLicenceSeat.update({ where: { id: seat.id }, data: { freedOn: asDate(todayIst()), freedBy: c.userId ?? null, freeReason: (dto.note?.trim() || 'Freed at exit clearance').slice(0, 200), version: { increment: 1 } } });
+          await audit(tx, c, 'asset.licence.seat.freed', 'asset_licence', seat.licenceId, { seatId: seat.id, personId: seat.personId, exitCaseId: k.id });
+        }
+      }
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
       if (dto.recoveryAmount) await freezeSettlementIn(tx, c, k.id, 'recovery');
       await this.maybeClearedIn(tx, c, k.id);
@@ -197,7 +235,7 @@ export class OffboardingService {
   }
 
   /** Every item cleared or waived: the case is "cleared" (the no-dues certificate can then be issued, 6d). */
-  private async maybeClearedIn(tx: Tx, c: CompanyContext, exitCaseId: string) {
+  async maybeClearedIn(tx: Tx, c: CompanyContext, exitCaseId: string) {
     const open = await tx.clearanceItem.count({ where: { organizationId: c.organizationId, exitCaseId, status: 'open' } });
     if (open) return;
     const n = await tx.exitCase.updateMany({ where: { organizationId: c.organizationId, id: exitCaseId, status: 'accepted' }, data: { status: 'cleared', version: { increment: 1 } } });
@@ -280,9 +318,12 @@ export class OffboardingService {
 
   /** Does the key reach this asset's place (company-wide, its entity or its location)? */
   private reachesAsset(v: Viewer, key: string, a: { legalEntityId: string | null; locationId: string | null }) {
-    if (v.actingForOther && key === 'asset.manage') return false;
-    if (tenantWide(v, key)) return true;
-    return (v.scopes.get(key) ?? []).some((s) => (s.type === 'legal_entity' && s.id === a.legalEntityId) || (s.type === 'location' && s.id === a.locationId));
+    return reachesPlace(v, key, a);
+  }
+
+  /** Answer 2711: money on an asset (cost, later net book value) for its place's asset managers and asset.finance.view. */
+  private seesMoney(v: Viewer, a: { legalEntityId: string | null; locationId: string | null }) {
+    return this.reachesAsset(v, 'asset.manage', a) || this.reachesAsset(v, 'asset.finance.view', a);
   }
 
   private async assetOr404(tx: Tx, org: string, v: Viewer, id: string, key: 'asset.view' | 'asset.manage') {
@@ -298,6 +339,10 @@ export class OffboardingService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const rows = (await tx.asset.findMany({ where: { organizationId: org }, orderBy: [{ category: 'asc' }, { tag: 'asc' }], take: 2000 })).filter((a) => this.reachesAsset(v, 'asset.view', a));
+      const cats = new Map((await tx.assetCategory.findMany({ where: { organizationId: org } })).map((x) => [x.id, x]));
+      // Settings 2.8: a leaver's return form offers a recovery for F&F only when the company adds them, starting from the basis.
+      const toFnf = (await companySetting(tx, c, 'asset.recovery_to_fnf')) === 'on';
+      const basis = await companySetting(tx, c, 'asset.recovery_basis');
       const open = await tx.assetAssignment.findMany({ where: { organizationId: org, assetId: { in: rows.map((a) => a.id) }, returnedOn: null } });
       const people = await tx.employee.findMany({ where: { organizationId: org, personId: { in: open.map((o) => o.personId) } } });
       // A holder who is leaving (their asset is on an open clearance item): the return form offers a recovery for F&F.
@@ -309,26 +354,116 @@ export class OffboardingService {
       };
       return {
         today: todayIst(),
+        money: rows.some((a) => this.seesMoney(v, a)),
+        recovery: { toFnf, basis },
         rows: rows.map((a) => {
           const o = open.find((x) => x.assetId === a.id);
           const p = o ? people.find((x) => x.personId === o.personId) : null;
+          const cat = a.categoryId ? cats.get(a.categoryId) : undefined;
+          const manage = this.reachesAsset(v, 'asset.manage', a);
+          const leavingOn = o ? lastDayOf(o.id) : null;
           return {
             id: a.id,
-            category: a.category,
+            categoryId: a.categoryId,
+            category: cat?.name ?? a.category,
             name: a.name,
             tag: a.tag,
             serial: a.serial,
             legalEntityId: a.legalEntityId,
             locationId: a.locationId,
             purchasedOn: a.purchasedOn ? iso(a.purchasedOn) : null,
-            cost: a.cost?.toFixed(2) ?? null,
+            // Answer 2714: the register shows an ended warranty in red.
+            warrantyEndsOn: a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null,
+            // Answer 2711: no cost in the answer for whoever may not see money.
+            ...(this.seesMoney(v, a) ? { cost: a.cost?.toFixed(2) ?? null } : {}),
             status: a.status,
             version: a.version,
-            canManage: this.reachesAsset(v, 'asset.manage', a),
-            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence), leavingOn: lastDayOf(o.id) } : null,
+            canManage: manage,
+            holder: o
+              ? {
+                  assignmentId: o.id,
+                  employeeId: p?.id ?? null,
+                  name: p ? displayName(p) : 'Someone',
+                  issuedOn: iso(o.issuedOn),
+                  condition: o.issueCondition,
+                  acknowledged: Boolean(o.ackEvidence),
+                  ackNone: (o.ackEvidence as { method?: string } | null)?.method === 'none',
+                  leavingOn,
+                  ...(manage && leavingOn ? { recoveryDefault: recoveryAmount(basis, cat?.defaultRecovery, a.cost, cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, todayIst(), cat) : null) } : {}),
+                }
+              : null,
           };
         }),
       };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ categories (Settings 2.8)
+
+  /** All the company's categories; a company with none yet starts from the drawn starter list (answer 2712). */
+  private async categoriesIn(tx: Tx, org: string, userId: string | null) {
+    const rows = await tx.assetCategory.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' } });
+    if (rows.length) return rows;
+    // skipDuplicates: two first readers at once add the list once (one active name per company).
+    await tx.assetCategory.createMany({ data: STARTER_CATEGORIES.map((x) => ({ organizationId: org, ...x, defaultRecovery: x.defaultRecovery ? new Prisma.Decimal(x.defaultRecovery) : null, createdBy: userId })), skipDuplicates: true });
+    return tx.assetCategory.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' } });
+  }
+
+  /** The active categories (Settings 2.8 and the Add asset picker); HR's company-wide settings key changes them. */
+  async categories(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const rows = (await this.categoriesIn(tx, org, c.userId ?? null)).filter((x) => !x.retiredAt);
+      const used = await tx.asset.groupBy({ by: ['categoryId'], where: { organizationId: org, categoryId: { in: rows.map((x) => x.id) } }, _count: { _all: true } });
+      // Answer 2720: the next tag of each pattern, from the tags already made with it this year.
+      const year = todayIst().slice(0, 4);
+      const heads = [...new Set(rows.map((x) => tagHead(x, year)).filter((h): h is string => Boolean(h)))];
+      const tags = heads.length ? (await tx.asset.findMany({ where: { organizationId: org, OR: heads.map((h) => ({ tag: { startsWith: h, mode: 'insensitive' as const } })) }, select: { tag: true } })).map((a) => a.tag) : [];
+      return {
+        canEdit: tenantWide(v, 'org.settings.manage') && !v.actingForOther,
+        rows: rows.map((x) => ({ id: x.id, name: x.name, trackedBy: x.trackedBy, defaultRecovery: x.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: x.usefulLifeYears, depreciationMethod: x.depreciationMethod, depreciationRate: x.depreciationRate?.toFixed(2) ?? null, tagPrefix: x.tagPrefix, tagYear: x.tagYear, tagDigits: x.tagDigits, nextTag: nextTag(x, year, tags), assets: used.find((u) => u.categoryId === x.id)?._count._all ?? 0, version: x.version })),
+      };
+    });
+  }
+
+  async saveCategory(ctx: TenantContext, user: ScopeUser, id: string | null, dto: AssetCategoryDto) {
+    const v = await this.viewer(user);
+    if (!tenantWide(v, 'org.settings.manage') || v.actingForOther) throw new ForbiddenException('Only HR with the company-wide settings key changes asset categories.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await this.categoriesIn(tx, org, c.userId ?? null);
+      const data = { name: dto.name.trim(), trackedBy: dto.trackedBy?.trim() || null, defaultRecovery: dto.defaultRecovery ? new Prisma.Decimal(dto.defaultRecovery) : null, usefulLifeYears: dto.usefulLifeYears ?? null, tagPrefix: dto.tagPrefix?.trim().toUpperCase() || null, tagYear: Boolean(dto.tagYear), tagDigits: dto.tagDigits ?? 4, depreciationMethod: dto.depreciationMethod ?? 'straight_line', depreciationRate: dto.depreciationMethod === 'declining' && dto.depreciationRate ? new Prisma.Decimal(dto.depreciationRate) : null };
+      if (data.depreciationMethod === 'declining' && !data.depreciationRate) throw new BadRequestException('Give the yearly rate for declining balance.');
+      try {
+        if (!id) {
+          const x = await tx.assetCategory.create({ data: { organizationId: org, ...data, createdBy: c.userId ?? null } });
+          await audit(tx, c, 'asset.category.added', 'asset_category', x.id, { name: x.name });
+          return { id: x.id };
+        }
+        const cur = await tx.assetCategory.findFirst({ where: { organizationId: org, id, retiredAt: null } });
+        if (!cur) throw new NotFoundException('No such category.');
+        const n = await tx.assetCategory.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, version: { increment: 1 } } });
+        if (!n.count) throw new ConflictException('Someone else changed this category. Reload it.');
+        await audit(tx, c, 'asset.category.updated', 'asset_category', id, { from: { name: cur.name, trackedBy: cur.trackedBy, defaultRecovery: cur.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: cur.usefulLifeYears, tagPrefix: cur.tagPrefix, tagYear: cur.tagYear, tagDigits: cur.tagDigits, depreciationMethod: cur.depreciationMethod, depreciationRate: cur.depreciationRate?.toFixed(2) ?? null }, to: { ...data, defaultRecovery: data.defaultRecovery?.toFixed(2) ?? null, depreciationRate: data.depreciationRate?.toFixed(2) ?? null } });
+        return { id };
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another category already has that name.');
+        throw e;
+      }
+    });
+  }
+
+  /** Retired, never deleted: it leaves the pickers; assets in it keep it. */
+  async retireCategory(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    if (!tenantWide(v, 'org.settings.manage') || v.actingForOther) throw new ForbiddenException('Only HR with the company-wide settings key changes asset categories.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const n = await tx.assetCategory.updateMany({ where: { organizationId: org, id, retiredAt: null }, data: { retiredAt: new Date(), version: { increment: 1 } } });
+      if (!n.count) throw new NotFoundException('No such category.');
+      await audit(tx, c, 'asset.category.retired', 'asset_category', id, {});
+      return { ok: true };
     });
   }
 
@@ -351,6 +486,9 @@ export class OffboardingService {
   async assetPage(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);
     if (!v.grants.has('asset.view')) throw new ForbiddenException('You cannot see the asset list.');
+    // Answer 2722: the Helpdesk's own ticket visibility (agents of the ticket's desk, collaborators, shares). Someone the
+    // desk refuses for now (e.g. a session without the company's two-step check) sees only the count.
+    const agent = await this.desk.actorOf(user as RequestUser, companyOf(ctx)).catch(() => null);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const a = await this.assetOr404(tx, org, v, id, 'asset.view');
@@ -377,13 +515,30 @@ export class OffboardingService {
         ]),
       ].sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
       const open = spells.find((s) => !s.returnedOn);
+      const cat = a.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: a.categoryId }, select: { name: true, usefulLifeYears: true, depreciationMethod: true, depreciationRate: true } }) : null;
+      const money = this.seesMoney(v, a);
+      const supplier = a.supplierId ? await tx.itSupplier.findFirst({ where: { organizationId: org, id: a.supplierId }, select: { name: true } }) : null;
+      // Answer 2717: the contracts covering it that this viewer sees (asset.view over the contract's place).
+      const covering = (await tx.assetContract.findMany({ where: { organizationId: org, id: { in: (await tx.assetContractAsset.findMany({ where: { organizationId: org, assetId: a.id }, select: { contractId: true } })).map((l) => l.contractId) } }, orderBy: { endsOn: 'desc' } })).filter((k) => reachesPlace(v, 'asset.view', k));
+      const contractSuppliers = new Map((await tx.itSupplier.findMany({ where: { organizationId: org, id: { in: covering.map((k) => k.supplierId) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
+      // Answer 2718: the licence seats on this device, of the licences this viewer sees (asset.view over the licence's place).
+      const deviceSeats = await tx.assetLicenceSeat.findMany({ where: { organizationId: org, assetId: a.id, freedOn: null }, orderBy: { givenOn: 'desc' } });
+      const seatLicences = (await tx.assetLicence.findMany({ where: { organizationId: org, id: { in: deviceSeats.map((x) => x.licenceId) } } })).filter((l) => reachesPlace(v, 'asset.view', l));
+      // Answer 2715: its bookings (past, current and to come), newest first.
+      const bookings = await tx.assetBooking.findMany({ where: { organizationId: org, assetId: a.id }, orderBy: [{ startsOn: 'desc' }, { createdAt: 'desc' }], take: 200 });
+      const bookers = await tx.employee.findMany({ where: { organizationId: org, personId: { in: [...new Set(bookings.map((b) => b.personId))] } } });
       const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
+      // Answer 2722: every viewer of the asset gets how many tickets are about it; only the ones they may see are listed.
+      const ticketCount = await tx.sdTicket.count({ where: { organizationId: org, assetId: a.id } });
+      const seen = agent && ticketCount ? await tx.sdTicket.findMany({ where: { AND: [await visibleTickets(tx, agent), { organizationId: org, assetId: a.id }] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50, select: { id: true, number: true, subject: true, systemState: true, createdAt: true } }) : [];
       return {
         today: todayIst(),
         canManage: this.reachesAsset(v, 'asset.manage', a),
+        money,
         asset: {
           id: a.id,
-          category: a.category,
+          categoryId: a.categoryId,
+          category: cat?.name ?? a.category,
           name: a.name,
           tag: a.tag,
           serial: a.serial,
@@ -395,14 +550,30 @@ export class OffboardingService {
           legalEntity: entity?.name ?? null,
           location: location?.name ?? null,
           purchasedOn: a.purchasedOn ? iso(a.purchasedOn) : null,
-          cost: a.cost?.toFixed(2) ?? null,
+          ...(money ? { cost: a.cost?.toFixed(2) ?? null } : {}),
+          // Answer 2713: the net book value today (money, as the cost) and how it is worked out; a management figure.
+          ...(money ? { netBookValue: cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, todayIst(), cat) : null, depreciation: depreciationText(cat) } : {}),
           invoiceNumber: a.invoiceNumber,
           warrantyMonths: a.warrantyMonths,
           warrantyEndsOn,
+          // Answer 2716: the IT and Admin supplier.
+          supplierId: a.supplierId,
+          supplier: supplier?.name ?? null,
+          bookable: a.bookable,
           version: a.version,
         },
-        holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence) } : null,
+        holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence), ackNone: (open.ackEvidence as { method?: string } | null)?.method === 'none' } : null,
         history,
+        contracts: covering.map((k) => ({ id: k.id, kind: k.kind, number: k.number, supplier: contractSuppliers.get(k.supplierId) ?? 'Unknown supplier', endsOn: iso(k.endsOn), renewal: k.renewal, status: k.status })),
+        licences: deviceSeats.flatMap((x) => {
+          const l = seatLicences.find((y) => y.id === x.licenceId);
+          return l ? [{ id: l.id, seatId: x.id, software: l.software, softwareVersion: l.softwareVersion, expiresOn: l.expiresOn ? iso(l.expiresOn) : null, givenOn: iso(x.givenOn) }] : [];
+        }),
+        bookings: bookings.map((b) => {
+          const p = bookers.find((x) => x.personId === b.personId);
+          return { id: b.id, person: p ? displayName(p) : 'Someone', startsOn: iso(b.startsOn), endsOn: iso(b.endsOn), status: b.status, overdue: b.status === 'out' && iso(b.endsOn) < todayIst() };
+        }),
+        tickets: { count: ticketCount, rows: seen.map((t) => ({ id: t.id, number: t.number, subject: t.subject, state: t.systemState, raisedAt: t.createdAt.toISOString() })) },
       };
     });
   }
@@ -440,18 +611,31 @@ export class OffboardingService {
         const l = await tx.location.findFirst({ where: { organizationId: org, id: place.locationId }, select: { legalEntityId: true } });
         if (!l || l.legalEntityId !== place.legalEntityId) throw new BadRequestException('That location is not in that legal entity.');
       }
-      const data = { category: dto.category.trim(), name: dto.name.trim(), tag: dto.tag.trim(), serial: dto.serial?.trim() || null, ...place, purchasedOn: dto.purchasedOn ? asDate(dto.purchasedOn) : null, cost: dto.cost ? new Prisma.Decimal(dto.cost) : null, maker: dto.maker?.trim() || null, model: dto.model?.trim() || null, invoiceNumber: dto.invoiceNumber?.trim() || null, warrantyMonths: dto.warrantyMonths ?? null };
+      const cur = id ? await this.assetOr404(tx, org, v, id, 'asset.manage') : null;
+      // Answer 2712: the category comes from the company list (an asset may keep a category retired since).
+      const cats = await this.categoriesIn(tx, org, c.userId ?? null);
+      const wanted = dto.category?.trim().toLowerCase();
+      const cat = cats.find((x) => (dto.categoryId ? x.id === dto.categoryId : x.name.toLowerCase() === wanted) && (!x.retiredAt || x.id === cur?.categoryId));
+      if (!cat) throw new BadRequestException('Choose a category from the list in Settings › Assets.');
+      // Answer 2716: a supplier from the IT and Admin list (an asset may keep a supplier retired since); left out: unchanged.
+      if (dto.supplierId) {
+        const sup = await tx.itSupplier.findFirst({ where: { organizationId: org, id: dto.supplierId }, select: { retiredAt: true } });
+        if (!sup || (sup.retiredAt && dto.supplierId !== cur?.supplierId)) throw new BadRequestException('Choose a supplier from the list.');
+      }
+      const data = { categoryId: cat.id, category: cat.name, name: dto.name.trim(), tag: dto.tag.trim(), serial: dto.serial?.trim() || null, ...place, purchasedOn: dto.purchasedOn ? asDate(dto.purchasedOn) : null, cost: dto.cost ? new Prisma.Decimal(dto.cost) : null, maker: dto.maker?.trim() || null, model: dto.model?.trim() || null, invoiceNumber: dto.invoiceNumber?.trim() || null, warrantyMonths: dto.warrantyMonths ?? null, ...(dto.supplierId !== undefined ? { supplierId: dto.supplierId } : {}) };
       try {
         if (!id) {
           const a = await tx.asset.create({ data: { organizationId: org, ...data, createdBy: c.userId ?? null } });
-          await audit(tx, c, 'asset.added', 'asset', a.id, { tag: a.tag, category: a.category });
+          await audit(tx, c, 'asset.added', 'asset', a.id, { tag: a.tag, category: a.category, categoryId: cat.id, supplierId: a.supplierId });
           return { id: a.id };
         }
-        const cur = await this.assetOr404(tx, org, v, id, 'asset.manage');
+        if (!cur) throw new NotFoundException('No such asset.');
         if (dto.status && dto.status !== cur.status && cur.status === 'assigned') throw new ConflictException('Take the asset back before changing its status.');
+        // Answer 2715: a bookable asset with bookings to come stays in stock until they are cancelled.
+        if (dto.status && dto.status !== cur.status && dto.status !== 'in_stock' && (await tx.assetBooking.count({ where: { organizationId: org, assetId: cur.id, status: { in: ['pending', 'booked'] } } }))) throw new ConflictException('This asset has bookings to come. Cancel them before changing its status.');
         const n = await tx.asset.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, ...(dto.status && cur.status !== 'assigned' ? { status: dto.status } : {}), version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this asset. Reload it.');
-        await audit(tx, c, 'asset.updated', 'asset', id, { status: dto.status ?? cur.status });
+        await audit(tx, c, 'asset.updated', 'asset', id, { status: dto.status ?? cur.status, ...(dto.supplierId !== undefined && dto.supplierId !== cur.supplierId ? { supplier: { from: cur.supplierId, to: dto.supplierId } } : {}) });
         return { id };
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another asset already has that tag.');
@@ -465,30 +649,45 @@ export class OffboardingService {
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const a = await this.assetOr404(tx, org, v, assetId, 'asset.manage');
+      // IT assets answer 2715: a bookable asset goes out only through a booking (so a booked one is never issued to someone else).
+      if (a.bookable) throw new ConflictException('This asset is bookable. Hand it over from its booking, or make it not bookable first.');
       if (a.status !== 'in_stock') throw new ConflictException(a.status === 'assigned' ? 'This asset is already with someone. Take it back first.' : 'Only an asset in stock can be issued.');
       const emp = await tx.employee.findFirst({ where: { organizationId: org, id: dto.employeeId } });
       if (!emp || !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('Choose a current employee.');
       if (dto.issuedOn > todayIst()) throw new BadRequestException('The issue date cannot be in the future.');
-      try {
-        const x = await tx.assetAssignment.create({ data: { organizationId: org, assetId, personId: emp.personId, issuedOn: asDate(dto.issuedOn), issueCondition: dto.condition.trim(), issuedBy: c.userId ?? null } });
-        await tx.asset.update({ where: { id: assetId }, data: { status: 'assigned', version: { increment: 1 } } });
-        await audit(tx, c, 'asset.assigned', 'asset', assetId, { assignmentId: x.id, employeeId: emp.id });
-        await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'asset.assigned', payload: { assetId, assignmentId: x.id, personId: emp.personId } } });
-        // Someone already leaving: the asset joins their clearance list.
-        const k = await tx.exitCase.findFirst({ where: { organizationId: org, personId: emp.personId, status: 'accepted' }, select: { id: true } });
-        if (k) await this.exits.assetItemsIn(tx, org, k.id, emp.personId, c.userId ?? null);
-        return { userId: emp.userId, name: a.name };
-      } catch (e) {
-        // The database keeps one open assignment per asset.
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This asset is already with someone. Take it back first.');
-        throw e;
-      }
+      return this.issueIn(tx, c, a, emp, dto.issuedOn, dto.condition);
     });
-    if (res.userId)
-      await this.notifications
-        .notifySystem(ctx, [res.userId], 'asset.assigned', { entityType: 'asset', entityId: assetId, contextText: `${res.name} was issued to you`, linkPath: '/yx/me/assets' }, { subject: 'A company asset was issued to you', html: '<p>A company asset was issued to you. Please confirm you received it in YukthiX.</p>' })
-        .catch(() => undefined);
+    await this.notifyIssued(ctx, assetId, res);
     return { ok: true };
+  }
+
+  /** Records an issue of an in-stock asset to a current employee (the register's Issue, and a booking's hand-over, answer 2715). */
+  async issueIn(tx: Tx, c: CompanyContext, a: { id: string; name: string }, emp: { id: string; personId: string; userId: string | null }, issuedOn: string, condition: string) {
+    const org = c.organizationId;
+    // Settings 2.8: with acknowledgement "None" the person has nothing to confirm (recorded as such).
+    const ackNone = (await companySetting(tx, c, 'asset.ack_method')) === 'none';
+    try {
+      const x = await tx.assetAssignment.create({ data: { organizationId: org, assetId: a.id, personId: emp.personId, issuedOn: asDate(issuedOn), issueCondition: condition.trim(), issuedBy: c.userId ?? null, ...(ackNone ? { ackEvidence: { method: 'none', at: new Date().toISOString() } } : {}) } });
+      await tx.asset.update({ where: { id: a.id }, data: { status: 'assigned', version: { increment: 1 } } });
+      await audit(tx, c, 'asset.assigned', 'asset', a.id, { assignmentId: x.id, employeeId: emp.id });
+      await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'asset.assigned', payload: { assetId: a.id, assignmentId: x.id, personId: emp.personId } } });
+      // Someone already leaving: the asset joins their clearance list.
+      const k = await tx.exitCase.findFirst({ where: { organizationId: org, personId: emp.personId, status: 'accepted' }, select: { id: true } });
+      if (k) await this.exits.assetItemsIn(tx, org, k.id, emp.personId, c.userId ?? null);
+      return { assignmentId: x.id, userId: emp.userId, name: a.name, ackNone };
+    } catch (e) {
+      // The database keeps one open assignment per asset.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This asset is already with someone. Take it back first.');
+      throw e;
+    }
+  }
+
+  /** Tells the person an asset was issued to them (after the transaction). */
+  async notifyIssued(ctx: TenantContext, assetId: string, res: { userId: string | null; name: string; ackNone: boolean }) {
+    if (!res.userId) return;
+    await this.notifications
+      .notifySystem(ctx, [res.userId], 'asset.assigned', { entityType: 'asset', entityId: assetId, contextText: `${res.name} was issued to you`, linkPath: '/yx/me/assets' }, { subject: 'A company asset was issued to you', html: res.ackNone ? '<p>A company asset was issued to you. You can see it in YukthiX under My assets.</p>' : '<p>A company asset was issued to you. Please confirm you received it in YukthiX.</p>' })
+      .catch(() => undefined);
   }
 
   async takeBack(ctx: TenantContext, user: ScopeUser, assetId: string, dto: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost'; recoveryAmount?: string | null }) {
@@ -503,8 +702,11 @@ export class OffboardingService {
       if (!lost) await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: dto.condition.trim(), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       else await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: `Not returned: ${dto.condition.trim()}`.slice(0, 200), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       await tx.asset.update({ where: { id: assetId }, data: { status: dto.status, version: { increment: 1 } } });
+      // IT assets answer 2715: taking back a booked asset ends its booking (the register and the bookings stay true).
+      await tx.assetBooking.updateMany({ where: { organizationId: org, assignmentId: x.id, status: 'out' }, data: { status: 'returned', version: { increment: 1 } } });
       // A recovery (damage or loss, founder 24 Oct 2026) signs the leaver's clearance item off with it: an F&F recovery line.
       const recovery = dto.recoveryAmount && Number(dto.recoveryAmount) > 0 ? dto.recoveryAmount : null;
+      if (recovery && (await companySetting(tx, c, 'asset.recovery_to_fnf')) !== 'on') throw new BadRequestException('Recovery to F&F is off in Settings › Assets.');
       if (recovery) {
         const items = await tx.clearanceItem.findMany({ where: { organizationId: org, assetAssignmentId: x.id, status: 'open' } });
         if (!items.length) throw new BadRequestException('A recovery goes on a leaver’s F&F; this person is not leaving.');
@@ -534,10 +736,14 @@ export class OffboardingService {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = await ownOf(tx, c, v);
-      if (!own.personId) return { rows: [] };
+      if (!own.personId) return { rows: [], seats: [] };
       const open = await tx.assetAssignment.findMany({ where: { organizationId: c.organizationId, personId: own.personId, returnedOn: null }, orderBy: { issuedOn: 'desc' } });
       const assets = await tx.asset.findMany({ where: { organizationId: c.organizationId, id: { in: open.map((o) => o.assetId) } } });
-      return { rows: open.map((o) => { const a = assets.find((x) => x.id === o.assetId)!; return { assignmentId: o.id, name: a.name, category: a.category, tag: a.tag, serial: a.serial, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledgedAt: (o.ackEvidence as { at?: string } | null)?.at ?? null }; }) };
+      // Answer 2718: the licence seats given to me.
+      const mine = await tx.assetLicenceSeat.findMany({ where: { organizationId: c.organizationId, personId: own.personId, freedOn: null }, orderBy: { givenOn: 'desc' } });
+      const licences = await tx.assetLicence.findMany({ where: { organizationId: c.organizationId, id: { in: mine.map((x) => x.licenceId) } } });
+      const seats = mine.map((x) => { const l = licences.find((y) => y.id === x.licenceId)!; return { seatId: x.id, software: l.software, softwareVersion: l.softwareVersion, expiresOn: l.expiresOn ? iso(l.expiresOn) : null, givenOn: iso(x.givenOn) }; });
+      return { seats, rows: open.map((o) => { const a = assets.find((x) => x.id === o.assetId)!; return { assignmentId: o.id, name: a.name, category: a.category, tag: a.tag, serial: a.serial, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledgedAt: (o.ackEvidence as { at?: string } | null)?.at ?? null, ackNone: (o.ackEvidence as { method?: string } | null)?.method === 'none' }; }) };
     });
   }
 

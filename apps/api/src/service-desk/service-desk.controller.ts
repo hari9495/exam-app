@@ -13,6 +13,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { AttachmentsService } from './attachments.service';
 import { DeskAccessService, assertOwnSession, visibleTickets } from './desk-access';
 import { DesksService } from './desks.service';
+import { ItBudgetsService } from './it-budgets.service';
 import {
   AddMemberDto,
   AgentCreateTicketDto,
@@ -63,6 +64,9 @@ import {
   RangeQueryDto,
   ReadsQueryDto,
   ReasonDto,
+  CostLineDto,
+  ItBudgetDto,
+  ItBudgetYearDto,
   ReminderDto,
   ResolutionCodeDto,
   ResolveDto,
@@ -383,7 +387,36 @@ export class DeskTicketsController {
     private readonly lists: TicketListsService,
     private readonly files: AttachmentsService,
     private readonly presence: PresenceService,
+    private readonly budgets: ItBudgetsService,
   ) {}
+
+  // GLPI 7 (answer 2719): fixed and material costs on IT tickets; each department's yearly IT budget with spent and left.
+  @Post('tickets/:id/costs')
+  @RequirePermissions('desk.ticket.work')
+  async addCost(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CostLineDto) {
+    assertOwnSession(req);
+    return this.tickets.addCost(await this.access.actor(req, t), id, dto);
+  }
+
+  @Post('tickets/:id/costs/:lineId/remove')
+  @RequirePermissions('desk.ticket.work')
+  async removeCost(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('lineId', ParseUUIDPipe) lineId: string, @Body() dto: ReasonDto) {
+    assertOwnSession(req);
+    return this.tickets.removeCost(await this.access.actor(req, t), id, lineId, dto.reason);
+  }
+
+  @Get('it-budgets')
+  @RequirePermissions('desk.budget.manage')
+  itBudgets(@CurrentTenant() t: TenantContext, @Query() q: ItBudgetYearDto) {
+    return this.budgets.budgets(t, q.year);
+  }
+
+  @Put('it-budgets')
+  @RequirePermissions('desk.budget.manage')
+  setItBudget(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: ItBudgetDto) {
+    assertOwnSession(req);
+    return this.budgets.setBudget(t, dto);
+  }
 
   /** Requesters to raise for, and watchers to add: names and emails only (P02 Public). */
   @Get('people')

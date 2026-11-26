@@ -30,7 +30,7 @@ import {
   requireWork,
   ticketAccess,
 } from './desk-access';
-import { AgentCreateTicketDto, AssignDto, ITSM_KINDS, BulkActionDto, CollaboratorDto, ConvertDto, EditNoteDto, MessageDto, TimeEntryDto, UpdateTicketDto, WatcherDto } from './dto';
+import { AgentCreateTicketDto, AssignDto, CostLineDto, ITSM_KINDS, BulkActionDto, CollaboratorDto, ConvertDto, EditNoteDto, MessageDto, TimeEntryDto, UpdateTicketDto, WatcherDto } from './dto';
 
 // SD-1.03 ticket core, SD-1.04 requesters, SD-1.06 assignment and SD-1.08 the ticket workspace (M14 §7, §12.1).
 // Every write: server-side key + seat check, one transaction with its timeline event, outbox event and audit row.
@@ -625,6 +625,8 @@ export class TicketsService {
         attachments: attachments.map((x) => this.attachmentView(x)),
         watchers: watchers.map((w) => ({ id: w.id, personId: w.personId, name: people.get(w.personId)?.name ?? 'Someone', email: people.get(w.personId)?.email ?? null, external: w.external })),
         collaborators: collaborators.map((c) => ({ userId: c.userId, name: users.get(c.userId) ?? 'Someone' })),
+        // GLPI 7 (answer 2719): an IT ticket's costs, for the agents of its desk only.
+        ...(desk.kind === 'it' && access === 'agent' ? { costs: await this.costsView(tx, a, t) } : {}),
         time: { totalMinutes: time.reduce((s, e) => s + e.minutes, 0), entries: time.map((e) => ({ id: e.id, minutes: e.minutes, note: e.note, workedOn: e.workedOn.toISOString().slice(0, 10), who: users.get(e.userId) ?? 'Someone', mine: e.userId === a.userId })) },
       };
     });
@@ -1325,7 +1327,9 @@ export class TicketsService {
       if (t.systemState === 'closed' && a.roles.get(t.deskId) !== 'lead') throw new ForbiddenException('Time on a closed ticket is changed only by a team lead.');
       const workedOn = dto.workedOn ?? todayIst();
       if (workedOn > todayIst()) throw new BadRequestException('Time is logged for today or earlier.');
-      const e = await tx.sdTimeEntry.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, userId: a.userId, minutes: dto.minutes, note: dto.note || null, workedOn: day(workedOn) } });
+      // GLPI 7 (answer 2719): on an IT desk the time is costed at the ticket team's rate today, charged to the requester's department.
+      const charge = await this.chargeOf(tx, a.ctx.organizationId, t, workedOn);
+      const e = await tx.sdTimeEntry.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, userId: a.userId, minutes: dto.minutes, note: dto.note || null, workedOn: day(workedOn), hourlyRate: charge.rate, departmentId: charge.departmentId } });
       await audit(tx, a, 'desk.ticket.time_logged', 'sd_ticket', t.id, { entryId: e.id, minutes: dto.minutes, workedOn });
       return { id: e.id };
     });
@@ -1343,6 +1347,75 @@ export class TicketsService {
       await tx.sdTimeEntry.update({ where: { id: e.id }, data: { minutes: dto.minutes, note: dto.note ?? e.note, ...(dto.workedOn ? { workedOn: day(dto.workedOn) } : {}), updatedBy: a.userId } });
       await audit(tx, a, 'desk.ticket.time_changed', 'sd_ticket', t.id, { entryId: e.id, from: e.minutes, to: dto.minutes });
       return { id: e.id };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ costs (GLPI 7, answer 2719)
+
+  /** An IT ticket's hourly rate (its team's) and the department its costs go to (the requester's on the day), else nulls. */
+  private async chargeOf(tx: Tx, org: string, t: Ticket, on: string): Promise<{ rate: Prisma.Decimal | null; departmentId: string | null }> {
+    const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: t.deskId }, select: { kind: true } });
+    if (desk?.kind !== 'it') return { rate: null, departmentId: null };
+    const group = t.groupId ? await tx.sdGroup.findFirst({ where: { organizationId: org, id: t.groupId }, select: { hourlyRate: true } }) : null;
+    const [dept] = await tx.$queryRaw<{ id: string }[]>`
+      SELECT a.department_id::text AS id FROM employees e
+      JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL
+        AND a.valid_from <= ${on}::date AND (a.valid_to IS NULL OR a.valid_to >= ${on}::date)
+      WHERE e.organization_id = ${org}::uuid AND e.person_id = ${t.requesterPersonId}::uuid
+      ORDER BY a.valid_from DESC LIMIT 1`;
+    return { rate: group?.hourlyRate ?? null, departmentId: dept?.id ?? null };
+  }
+
+  /** The costs card of an IT ticket for its desk's agents: time at its rate, fixed and material lines, the total. */
+  private async costsView(tx: Tx, a: DeskActor, t: Ticket) {
+    const org = a.ctx.organizationId;
+    const time = await tx.sdTimeEntry.findMany({ where: { organizationId: org, ticketId: t.id }, select: { minutes: true, hourlyRate: true, departmentId: true } });
+    const lines = await tx.sdCostLine.findMany({ where: { organizationId: org, ticketId: t.id, removedAt: null }, orderBy: { createdAt: 'asc' } });
+    const group = t.groupId ? await tx.sdGroup.findFirst({ where: { organizationId: org, id: t.groupId }, select: { hourlyRate: true } }) : null;
+    const timeCost = time.reduce((s, e) => (e.hourlyRate ? s.add(e.hourlyRate.mul(e.minutes).div(60)) : s), new Prisma.Decimal(0)).toDecimalPlaces(2);
+    const linesTotal = lines.reduce((s, l) => s.add(l.amount), new Prisma.Decimal(0));
+    const deptIds = [...new Set([...time.map((e) => e.departmentId), ...lines.map((l) => l.departmentId)].filter((x): x is string => Boolean(x)))];
+    const depts = deptIds.length ? await tx.department.findMany({ where: { organizationId: org, id: { in: deptIds } }, select: { id: true, name: true } }) : [];
+    const lead = a.roles.get(t.deskId) === 'lead';
+    const users = await this.userNames(tx, org, lines.map((l) => l.createdBy));
+    return {
+      hourlyRate: group?.hourlyRate?.toFixed(2) ?? null,
+      timeCost: timeCost.toFixed(2),
+      uncostedMinutes: time.filter((e) => !e.hourlyRate).reduce((s, e) => s + e.minutes, 0),
+      lines: lines.map((l) => ({ id: l.id, kind: l.kind as 'fixed' | 'material', description: l.description, amount: l.amount.toFixed(2), costOn: l.costOn.toISOString().slice(0, 10), who: users.get(l.createdBy) ?? 'Someone', canRemove: l.createdBy === a.userId || lead })),
+      total: timeCost.add(linesTotal).toFixed(2),
+      departments: depts.map((d) => d.name),
+    };
+  }
+
+  async addCost(a: DeskActor, id: string, dto: CostLineDto) {
+    return this.tx(a, async (tx) => {
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: t.deskId }, select: { kind: true } });
+      if (desk?.kind !== 'it') throw new BadRequestException('Costs are recorded on IT desks.');
+      const costOn = dto.costOn ?? todayIst();
+      if (costOn > todayIst()) throw new BadRequestException('A cost is recorded for today or earlier.');
+      const charge = await this.chargeOf(tx, a.ctx.organizationId, t, costOn);
+      const line = await tx.sdCostLine.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, kind: dto.kind, description: dto.description.trim(), amount: dto.amount, costOn: day(costOn), departmentId: charge.departmentId, createdBy: a.userId } });
+      await audit(tx, a, 'desk.ticket.cost_added', 'sd_ticket', t.id, { lineId: line.id, kind: dto.kind, amount: dto.amount, costOn });
+      return { id: line.id };
+    });
+  }
+
+  /** A cost line is taken off (kept, with who and why), by whoever added it or a team lead. */
+  async removeCost(a: DeskActor, id: string, lineId: string, reason: string) {
+    return this.tx(a, async (tx) => {
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const l = await tx.sdCostLine.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, id: lineId, removedAt: null } });
+      if (!l) throw new NotFoundException('No such cost on this ticket.');
+      if (l.createdBy !== a.userId && a.roles.get(t.deskId) !== 'lead') throw new ForbiddenException('Only whoever added it or a team lead takes a cost off.');
+      await tx.sdCostLine.update({ where: { id: l.id }, data: { removedAt: new Date(), removedBy: a.userId, removeReason: reason } });
+      await audit(tx, a, 'desk.ticket.cost_removed', 'sd_ticket', t.id, { lineId: l.id, amount: l.amount.toFixed(2), reason });
+      return { removed: true };
     });
   }
 

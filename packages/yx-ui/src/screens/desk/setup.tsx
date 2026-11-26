@@ -6,7 +6,7 @@ import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
-import { NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
+import { CurrencyField, NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
 import { Checkbox, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -64,7 +64,7 @@ export interface DeskSetupScreenProps {
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
   onEndMember: (memberId: string) => Promise<void>;
-  onSaveGroup: (id: string | null, input: { name: string; assignmentMethod: DeskGroup['assignmentMethod']; maxOpenPerAgent: number | null; memberIds: string[]; active: boolean }) => Promise<void>;
+  onSaveGroup: (id: string | null, input: { name: string; assignmentMethod: DeskGroup['assignmentMethod']; maxOpenPerAgent: number | null; hourlyRate?: string | null; memberIds: string[]; active: boolean }) => Promise<void>;
   onSaveCategory: (id: string | null, input: { name: string; parentId: string | null; sensitive: boolean; defaultGroupId: string | null; active: boolean; answeredBy?: 'desk' | 'manager' }) => Promise<void>;
   onSaveType: (id: string | null, input: { name: string; kind?: 'incident' | 'request' | 'question'; active?: boolean }) => Promise<void>;
   onSaveStatus: (id: string | null, input: { label: string; systemState?: SystemState; active?: boolean }) => Promise<void>;
@@ -419,6 +419,7 @@ function GroupsTab(props: TabProps) {
               <span className="yx-ops-list__sub">
                 {METHOD_LABEL[g.assignmentMethod]} · {g.memberIds.length} {g.memberIds.length === 1 ? 'person' : 'people'}
                 {g.maxOpenPerAgent ? ` · at most ${g.maxOpenPerAgent} open each` : ''}
+                {g.hourlyRate ? ` · ₹${Number(g.hourlyRate).toLocaleString('en-IN')} an hour` : ''}
                 {g.active ? '' : ' · off'}
               </span>
             </span>
@@ -437,15 +438,16 @@ function GroupsTab(props: TabProps) {
           </Button>
         </div>
       )}
-      {edit && <GroupDialog group={edit === 'new' ? null : edit} agents={agents} onClose={() => setEdit(null)} onSave={(input) => props.onSaveGroup(edit === 'new' ? null : edit.id, input)} />}
+      {edit && <GroupDialog group={edit === 'new' ? null : edit} agents={agents} costed={d.desk.kind === 'it'} onClose={() => setEdit(null)} onSave={(input) => props.onSaveGroup(edit === 'new' ? null : edit.id, input)} />}
     </div>
   );
 }
 
-function GroupDialog({ group, agents, onClose, onSave }: { group: DeskGroup | null; agents: DeskMember[]; onClose: () => void; onSave: (i: Parameters<DeskSetupScreenProps['onSaveGroup']>[1]) => Promise<void> }) {
+function GroupDialog({ group, agents, costed, onClose, onSave }: { group: DeskGroup | null; agents: DeskMember[]; costed: boolean; onClose: () => void; onSave: (i: Parameters<DeskSetupScreenProps['onSaveGroup']>[1]) => Promise<void> }) {
   const [name, setName] = useState(group?.name ?? '');
   const [method, setMethod] = useState<DeskGroup['assignmentMethod']>(group?.assignmentMethod ?? 'round_robin');
   const [max, setMax] = useState<number | null>(group?.maxOpenPerAgent ?? null);
+  const [rate, setRate] = useState<number | null>(group?.hourlyRate ? Number(group.hourlyRate) : null);
   const [members, setMembers] = useState<string[]>(group?.memberIds ?? []);
   const [active, setActive] = useState(group?.active ?? true);
   const { busy, error, run } = useRun();
@@ -459,7 +461,7 @@ function GroupDialog({ group, agents, onClose, onSave }: { group: DeskGroup | nu
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', async () => { await onSave({ name: name.trim(), assignmentMethod: method, maxOpenPerAgent: max, memberIds: members, active }); onClose(); })}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', async () => { await onSave({ name: name.trim(), assignmentMethod: method, maxOpenPerAgent: max, ...(costed ? { hourlyRate: rate ? String(rate) : null } : {}), memberIds: members, active }); onClose(); })}>
             Save group
           </Button>
         </>
@@ -479,6 +481,11 @@ function GroupDialog({ group, agents, onClose, onSave }: { group: DeskGroup | nu
         <FormField label="Most open tickets per person" optional>
           <NumberField value={max} onChange={setMax} min={1} max={500} />
         </FormField>
+        {costed && (
+          <FormField label="Hourly rate" optional helper="What an hour of this team's ticket work costs. Time logged is costed at the rate on the day and charged to the requester's department.">
+            <CurrencyField allowPaise value={rate} onChange={setRate} />
+          </FormField>
+        )}
         <Checkbox checked={active} onChange={setActive} label="Group is on" />
       </div>
     </Dialog>

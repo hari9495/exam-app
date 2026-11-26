@@ -500,6 +500,8 @@ export interface InterviewAnswers {
 }
 export interface AssetRow {
   id: string;
+  /** IT assets part 1 (answer 2712): the company category (null: an older asset not linked yet). */
+  categoryId?: string | null;
   category: string;
   name: string;
   tag: string;
@@ -507,12 +509,19 @@ export interface AssetRow {
   legalEntityId: string | null;
   locationId: string | null;
   purchasedOn: string | null;
-  cost: string | null;
+  /** Answer 2714: when the warranty ends (null: no purchase date or warranty months). */
+  warrantyEndsOn?: string | null;
+  /** Answer 2711: absent when the viewer may not see money on this asset. */
+  cost?: string | null;
   status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
   version: number;
   canManage: boolean;
-  /** leavingOn: the holder's last working day when they are leaving (the return can then carry an F&F recovery). */
-  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; condition: string; acknowledged: boolean; leavingOn?: string | null } | null;
+  /**
+   * leavingOn: the holder's last working day when they are leaving (the return can then carry an F&F recovery);
+   * recoveryDefault: the amount that recovery starts from (Settings 2.8's basis; null: HR decides); ackNone: the company
+   * asks no confirmation (Settings 2.8).
+   */
+  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; condition: string; acknowledged: boolean; ackNone?: boolean; leavingOn?: string | null; recoveryDefault?: string | null } | null;
 }
 export interface MyAsset {
   assignmentId: string;
@@ -523,6 +532,16 @@ export interface MyAsset {
   issuedOn: string;
   condition: string;
   acknowledgedAt: string | null;
+  /** Settings 2.8: the company asks no confirmation. */
+  ackNone?: boolean;
+}
+/** IT assets answer 2718: a software licence seat given to me. */
+export interface MySeat {
+  seatId: string;
+  software: string;
+  softwareVersion: string | null;
+  expiresOn: string | null;
+  givenOn: string;
 }
 
 // ---- Batch 6d: exit steps, the payroll hand-off, the alumni vault

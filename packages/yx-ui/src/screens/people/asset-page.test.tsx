@@ -56,6 +56,67 @@ describe('Asset page (live)', () => {
     expect(screen.getAllByText(/ended 1 Jan 2025|Ended 1 Jan 2025/).length).toBeGreaterThan(0);
   });
 
+  it('IT assets part 1 (2712): the category is picked from the company list in Edit details and sent by id', async () => {
+    const onSave = vi.fn().mockResolvedValue({ id: 'a1' });
+    const categories = [{ value: 'c1', label: 'Laptop' }, { value: 'c2', label: 'Tablet' }];
+    show(<AssetPageScreen live={liveAssetPage({ onSave, categories, data: { ...ASSET_PAGE, asset: { ...ASSET_PAGE.asset, categoryId: 'c1' } } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Edit details' }));
+    const d = await screen.findByRole('dialog');
+    await ue.click(within(d).getByRole('combobox', { name: 'Category' }));
+    await ue.click(screen.getByRole('option', { name: 'Tablet' }));
+    await ue.click(within(d).getByRole('button', { name: 'Save details' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'c2', name: 'Dell Latitude 5440' }));
+  });
+
+  it('2713: the net book value today, how it is worked out, and that it is not the tax books', () => {
+    show(<AssetPageScreen live={liveAssetPage()} />);
+    expect(screen.getByText('Net book value today')).toBeInTheDocument();
+    expect(screen.getByText('₹48,340.33')).toBeInTheDocument();
+    expect(screen.getByText(/Straight line over 3 years · a management figure, not the tax books/)).toBeInTheDocument();
+  });
+
+  it('negative (2713): no value without a purchase date, and the page says what is missing', () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, asset: { ...ASSET_PAGE.asset, purchasedOn: null, netBookValue: null } } })} />);
+    expect(screen.getByText('Needs the cost and the purchase date')).toBeInTheDocument();
+    expect(screen.queryByText('₹48,340.33')).toBeNull();
+  });
+
+  it('negative (2711): without money the Cost line is not shown at all', () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, canManage: false, money: false, asset: { ...ASSET_PAGE.asset, cost: undefined } } })} />);
+    expect(screen.queryByText('Cost')).toBeNull();
+    expect(screen.queryByText(/84,500/)).toBeNull();
+    expect(screen.queryByText('Net book value today')).toBeNull();
+    expect(screen.queryByText(/management figure/)).toBeNull();
+    expect(screen.getByText('Invoice number')).toBeInTheDocument();
+  });
+
+  it('2722: an agent of the desk sees its tickets with the count of all; a ticket opens on the Helpdesk', async () => {
+    const onOpenTicket = vi.fn();
+    show(<AssetPageScreen live={liveAssetPage({ onOpenTicket })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Tickets (3)' }));
+    const t = screen.getByRole('table', { name: 'Tickets about this device' });
+    expect(within(t).getByText('Battery drains in two hours')).toBeInTheDocument();
+    expect(within(t).getByText('Screen flickers after waking up')).toBeInTheDocument();
+    expect(screen.getByText('1 more is on desks you are not an agent of.')).toBeInTheDocument();
+    await ue.click(within(t).getByRole('link', { name: 'IT-1042' }));
+    expect(onOpenTicket).toHaveBeenCalledWith('t2');
+  });
+
+  it('negative (2722): someone who may not see the tickets gets only the count, never a subject', async () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, tickets: { count: 3, rows: [] } } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Tickets (3)' }));
+    expect(screen.getByText('3 Helpdesk tickets are about this device.')).toBeInTheDocument();
+    expect(screen.getByText(/Only agents of the desks they are on see them/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByText(/Battery drains/)).toBeNull();
+  });
+
+  it('2722: no tickets says so', async () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, tickets: { count: 0, rows: [] } } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Tickets (0)' }));
+    expect(screen.getByText('No Helpdesk tickets are about this device.')).toBeInTheDocument();
+  });
+
   it('no access, error with retry, and loading', async () => {
     const onRetry = vi.fn();
     const { unmount } = show(<AssetPageScreen live={liveAssetPage({ state: 'no-access', data: null })} />);

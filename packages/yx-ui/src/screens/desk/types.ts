@@ -81,6 +81,8 @@ export interface DeskGroup {
   tier: string | null;
   assignmentMethod: 'manual' | 'round_robin' | 'load';
   maxOpenPerAgent: number | null;
+  /** GLPI 7 (answer 2719): the team's cost of an hour of ticket work in rupees, shown to set-up people (IT desks). */
+  hourlyRate?: string | null;
   active: boolean;
   memberIds: string[];
 }
@@ -312,6 +314,8 @@ export interface TicketDetail {
   watchers: { id: string; personId: string; name: string; email: string | null; external: boolean }[];
   collaborators: { userId: string; name: string }[];
   time: { totalMinutes: number; entries: { id: string; minutes: number; note: string | null; workedOn: string; who: string; mine: boolean }[] };
+  /** GLPI 7 (answer 2719): an IT ticket's costs, for its desk's agents only. */
+  costs?: TicketCosts;
   /** Batch 3: false when we could not prove who sent the email. */
   senderVerified?: boolean;
   customer?: { account: { id: string; name: string }; plan: string | null } | null;
@@ -932,4 +936,27 @@ export interface PortalRaiseInput {
   /** Answer 1647: raised from this help article, or after this search. */
   originArticleId?: string;
   originQuery?: string;
+}
+
+/** GLPI 7 (answer 2719): time at the team's rate plus fixed and material lines, charged to the requester's department. */
+export interface TicketCosts {
+  hourlyRate: string | null;
+  timeCost: string;
+  uncostedMinutes: number;
+  lines: { id: string; kind: 'fixed' | 'material'; description: string; amount: string; costOn: string; who: string; canRemove: boolean }[];
+  total: string;
+  departments: string[];
+}
+export interface CostLineInput {
+  kind: 'fixed' | 'material';
+  description: string;
+  amount: string;
+  costOn?: string;
+}
+/** Each department's yearly IT budget (financial year from April) with what IT desks spent and what is left. */
+export interface ItBudgets {
+  year: number;
+  rows: { departmentId: string; department: string; budget: string | null; time: string; lines: string; spent: string; left: string | null }[];
+  noDepartment: { time: string; lines: string; spent: string } | null;
+  departments: { value: string; label: string }[];
 }

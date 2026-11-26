@@ -1153,6 +1153,35 @@ export const GROUP_2: SettingsGroupDef = {
             { key: 'asset.recovery_basis', label: 'Recovery amount', kind: 'radio', value: 'Category default', options: ['Category default', 'Written-down value', 'Decided by HR each time'] },
           ],
         },
+        // IT assets answer 2714: the asset managers of the asset's place are told once before a warranty ends.
+        {
+          title: 'Warranty',
+          settings: [
+            { key: 'asset.warranty_alert_days', label: 'Warranty alert', kind: 'radio', value: '30 days before', options: ['Off', '7 days before', '15 days before', '30 days before', '60 days before', '90 days before'], helper: 'Asset managers of the asset’s place are told once. An ended warranty shows in red on the register.', synonyms: ['warranty'] },
+          ],
+        },
+        // IT assets answer 2714 (contracts): the contract's owners are told once at its notice date (end less notice days).
+        {
+          title: 'Contracts',
+          settings: [
+            { key: 'asset.contract_alert_days', label: 'Contract notice alert', kind: 'radio', value: 'On the notice date', options: ['Off', 'On the notice date', '7 days before the notice date', '15 days before the notice date', '30 days before the notice date'], helper: 'Asset managers of the contract’s place (company-wide ones for a contract with no place) are told once. A tacit contract renews itself at its end; an express one ends.', synonyms: ['contract', 'notice', 'renewal'] },
+          ],
+        },
+        // IT assets answer 2718: the licence's asset managers are told once before it expires.
+        {
+          title: 'Licences',
+          settings: [
+            { key: 'asset.licence_alert_days', label: 'Licence expiry alert', kind: 'radio', value: '30 days before', options: ['Off', '7 days before', '15 days before', '30 days before', '60 days before', '90 days before'], helper: 'Asset managers of the licence’s place (company-wide ones for a licence with no place) are told once before it expires.', synonyms: ['licence', 'license', 'software', 'expiry'] },
+          ],
+        },
+        // IT assets answer 2715: bookings of bookable assets (spare laptops, projectors).
+        {
+          title: 'Bookings',
+          settings: [
+            { key: 'asset.booking_max_days', label: 'Longest booking', kind: 'radio', value: '14 days', options: ['1 day', '3 days', '7 days', '14 days', '30 days'], helper: 'An employee books a bookable asset for at most this many days at a time. Repeats (every day or week) go up to 3 months ahead.', synonyms: ['booking', 'loan', 'borrow', 'spare'] },
+            { key: 'asset.booking_approval', label: 'IT approves each booking', kind: 'toggle', value: false, helper: 'Off: a booking is made at once. On: it waits until an asset manager of the asset’s place approves or declines it (with a reason); the person is told either way.', synonyms: ['booking', 'approval', 'loan'] },
+          ],
+        },
       ],
       lastChange: { by: 'Karthik Subramanian', role: 'Engineering Manager', at: '2026-06-18T09:55', what: 'Changed default laptop recovery from ₹40,000 to ₹45,000' },
       related: [{ label: 'Asset register', screenId: 'PPL-25' }],
