@@ -6,13 +6,12 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxHeadcountPlansPage from './(app)/hiring/plans/page';
-import YxHiringApprovalRoutesPage from './(app)/hiring/approval-routes/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Hiring › Headcount plan (HIR-01) and Hiring approvals on the API (M10 batch AT2).
+// Hiring › Headcount plan (HIR-01) on the API (M10 batch AT2). Hiring approvals: yx-settings-approvals.test.tsx (E2).
 const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const api = apiFetch as jest.Mock;
 
@@ -80,20 +79,5 @@ describe('Hiring › Headcount plan (HIR-01, the designed board)', () => {
     expect(await screen.findByText("You don't have access to the headcount plan")).toBeInTheDocument();
     expect(screen.getByText(/Your System Admin gives this through Roles & access/)).toBeInTheDocument();
     expect(screen.queryByText('Only HR sees the headcount plan')).toBeNull();
-  });
-});
-
-describe('Hiring approvals (M10 AT2)', () => {
-  it('reads both chains and saves the requisition chain on the same API', async () => {
-    const put: unknown[] = [];
-    api.mockImplementation(async (path: string, init?: RequestInit) => {
-      if (path === '/organizations/approvals/chains' && !init?.method) return { requisition: { gate: 'requisition', enabled: true, steps: [{ position: 0, name: 'Head', approverType: 'reporting_manager', approverUserIds: [], managerLevel: 1, groupId: null }] }, offer: { gate: 'offer', enabled: false, steps: [] } };
-      if (path === '/organizations/approvals/chains/requisition' && init?.method === 'PUT') return (put.push(JSON.parse(String(init.body))), {});
-      if (path.startsWith('/users') || path.startsWith('/user-groups')) return [];
-      throw new Error(`unexpected ${init?.method ?? 'GET'} ${path}`);
-    });
-    wrap(<YxHiringApprovalRoutesPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Save requisition approval' }));
-    await waitFor(() => expect(put).toEqual([{ enabled: true, steps: [{ name: 'Head', approverType: 'reporting_manager', managerLevel: 1 }] }]));
   });
 });
