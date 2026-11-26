@@ -23,7 +23,6 @@
     "hiring: TimesheetApprovalsPhone",
     "ops: StatutorySetupScreen",
     "pay: GroupHealthScreen",
-    "pay: RunReadinessScreen",
     "people: AssetAcknowledgePhone",
     "people: BfsiPhone",
     "people: CertificateRequestPhone",

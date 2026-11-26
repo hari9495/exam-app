@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -9,6 +9,7 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import type { ScopeUser } from '../access/scope';
 import {
   AsOnDto,
+  PeriodDatesDto,
   BudgetDto,
   BudgetQueryDto,
   CompensationChangeDto,
@@ -157,6 +158,13 @@ export class Payroll5bController {
   @RequirePermissions('payroll.setup.manage')
   addMembers(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MemberDto) {
     return this.setup.addMembers(ctx, this.user(req), id, dto);
+  }
+
+  /** Enterprise E5 (O17): one month's own cut-off and release dates, with a reason. */
+  @Put('pay-groups/:id/periods/:month/dates')
+  @RequirePermissions('payroll.setup.manage')
+  setPeriodDates(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('month') month: string, @Body() dto: PeriodDatesDto) {
+    return this.setup.setPeriodDates(ctx, this.user(req), id, parseMonth(month), dto);
   }
 
   @Get('pay-groups/:id/calendar')
@@ -323,3 +331,8 @@ export class Payroll5bController {
     return this.imports.commit(ctx, this.user(req), id);
   }
 }
+
+const parseMonth = (m: string) => {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) throw new BadRequestException('The month is like 2026-10.');
+  return m;
+};

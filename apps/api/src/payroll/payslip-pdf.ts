@@ -14,6 +14,8 @@ export interface SlipLine {
   kind: string;
   amount: string;
   quantity: string | null;
+  /** Enterprise E5 (O16): paid separately. */
+  separate?: boolean;
 }
 export interface SlipData {
   employerName: string;
@@ -40,7 +42,7 @@ export function payslipValues(d: SlipData): Record<string, string> {
   const list = (kind: string) =>
     d.lines
       .filter((l) => l.kind === kind && Number(l.amount) !== 0)
-      .map((l) => `${l.name} ${inr(l.amount)}`)
+      .map((l) => `${l.name} ${inr(l.amount)}${l.separate ? ' (paid separately)' : ''}`)
       .join(' · ') || '—';
   const days = d.lines.filter((l) => l.code === 'basic' && l.quantity !== null).reduce((t, l) => t + Number(l.quantity), 0);
   return {

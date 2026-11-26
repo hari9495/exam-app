@@ -17,6 +17,9 @@ export interface PayRun {
   totals: { people: number; gross: string; deductions: string; net: string; employerCost: string; failed: number; skipped: number } | null;
   approvedAt: string | null;
   publishedAt: string | null;
+  /** Enterprise E5 (O17): employees see the payslips from this time; the reason when released before the release date. */
+  releaseAt?: string | null;
+  releaseReason?: string | null;
   voidReason: string | null;
   createdAt: string;
   /** Only on the single run. */
@@ -80,6 +83,29 @@ export interface RunReadiness {
   checks: RunCheck[];
   /** PAY-02: the run's people by location and attendance mode (company settings), open exceptions and manual LOP entered. */
   groups?: { group: string; mode: 'punch_block' | 'punch_warn' | 'assumed_present' | 'timesheet'; employees: number; exceptions: number; lopEntered: number; attendanceStage: string }[];
+  /** Enterprise E5 (O17): the run's input cut-off and payslip release dates (its pay group's, or the month's own). */
+  dates?: RunDates | null;
+  /** One-time items that came after a cut-off: rolled into this run ('in') or asked for this month and moved on ('out'). */
+  late?: LateInput[];
+}
+export interface RunDates {
+  payGroup: { id: string; name: string };
+  month: string;
+  cutOff: string;
+  /** null: released when published. */
+  release: string | null;
+  changed: { reason: string; changedAt: string; version: number } | null;
+  canChange: boolean;
+}
+export interface LateInput {
+  id: string;
+  employeeId: string;
+  name: string;
+  component: string;
+  amount: string;
+  from: string;
+  to: string;
+  direction: 'in' | 'out';
 }
 
 export interface RunProgressData {
@@ -120,6 +146,8 @@ export interface PayslipLine {
   explanation: string;
   rule: { statute: string; jurisdiction: string; version: string; verify?: boolean } | null;
   verify: boolean;
+  /** Enterprise E5 (O16): paid separately. */
+  separate?: boolean;
 }
 
 export interface PayslipDetail extends RunPayslip {
@@ -176,6 +204,10 @@ export interface OneTimeItem {
   source: string;
   reason: string;
   status: string;
+  /** Enterprise E5 (O16, O17): paid separately, the tax paid by the company, and the month asked for when it came late. */
+  paidSeparately?: boolean;
+  grossUp?: boolean;
+  rolledFrom?: string | null;
 }
 
 export interface PayHold {

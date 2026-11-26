@@ -57,7 +57,7 @@ export interface ParallelRunView {
 
 /** The wizard's steps; each set-up route opens one. */
 export type SetupStep = 'reg' | 'group' | 'template' | 'opening' | 'golive';
-export type GroupInput = Pick<PayGroup, 'legalEntityId' | 'name' | 'dayBasis' | 'cutOffDay' | 'payDay'> & { version?: number; frequency?: 'monthly' | 'weekly' | 'fortnightly'; anchorDate?: string };
+export type GroupInput = Pick<PayGroup, 'legalEntityId' | 'name' | 'dayBasis' | 'cutOffDay' | 'payDay'> & { releaseDay?: number; version?: number; frequency?: 'monthly' | 'weekly' | 'fortnightly'; anchorDate?: string };
 /** What the other set-up pages are called by the checklist (the web maps them to routes). */
 export type SetupLink = 'components' | 'templates' | 'payslip_layout' | 'runs';
 
@@ -340,6 +340,7 @@ const FREQ = [
 ];
 const PAY_DAYS = [{ value: '0', label: 'Last day of the month' }, ...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `Day ${i + 1} of the next month` }))];
 const payDayText = (n: number) => PAY_DAYS[n]?.label ?? `Day ${n}`;
+const RELEASE_DAYS = [{ value: '0', label: 'When they are published' }, ...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} ${i ? 'days' : 'day'} after the month ends` }))];
 type GroupEdit = Partial<PayGroup> & { frequency?: string };
 
 export function GroupsPart(p: {
@@ -405,6 +406,7 @@ export function GroupsPart(p: {
             { key: 'basis', header: 'Day basis', cell: (g) => BASIS.find((b) => b.value === g.dayBasis)?.label },
             { key: 'cut', header: 'Cut-off', cell: (g) => `Day ${g.cutOffDay}` },
             { key: 'pay', header: 'Pay day', cell: (g) => payDayText(g.payDay) },
+            { key: 'release', header: 'Payslips shown', cell: (g) => RELEASE_DAYS[g.releaseDay ?? 0]?.label ?? '' },
             {
               key: 'act',
               header: <span className="yx-visually-hidden">Actions</span>,
@@ -450,6 +452,7 @@ export function GroupsPart(p: {
                     dayBasis: edit.dayBasis ?? 'calendar',
                     cutOffDay: Number(edit.cutOffDay),
                     payDay: Number(edit.payDay ?? 0),
+                    releaseDay: Number(edit.releaseDay ?? 0),
                     version: edit.version,
                     ...(!edit.id && edit.frequency && edit.frequency !== 'monthly' ? { frequency: edit.frequency as 'weekly' | 'fortnightly', anchorDate: edit.anchorDate ?? undefined } : {}),
                   });
@@ -483,6 +486,10 @@ export function GroupsPart(p: {
             </FormField>
             <FormField id="pg-payday" label="Pay day" required>
               <Select value={String(edit.payDay ?? 0)} onChange={(v) => v && setEdit({ ...edit, payDay: Number(v) })} options={PAY_DAYS} />
+            </FormField>
+            {/* Enterprise E5 (O17, answer 2657). */}
+            <FormField id="pg-release" label="Payslips shown to employees" helper="Published payslips stay hidden until then; publishing early needs a reason.">
+              <Select value={String(edit.releaseDay ?? 0)} onChange={(v) => v && setEdit({ ...edit, releaseDay: Number(v) })} options={RELEASE_DAYS} />
             </FormField>
             <FormField id="pg-basis" label="Day basis for proration" required>
               <Segment label="Day basis for proration" value={edit.dayBasis ?? 'calendar'} onChange={(v) => setEdit({ ...edit, dayBasis: v })} options={BASIS} />

@@ -7,6 +7,7 @@ type S = StoryObj<typeof OneTimePayScreen>;
 
 export const List: S = { name: 'List · filters and bulk actions' };
 export const AddSheet: S = { name: 'Add one-time pay · effect summary', args: { sheet: 'add' } };
+export const GrossUp: S = { name: 'Add one-time pay · paid separately, company pays the tax (E5)', args: { sheet: 'grossup' } };
 export const Recurring: S = { name: 'Add recurring item · prorated months', args: { sheet: 'recurring' } };
 export const BulkUpload: S = { name: 'Bulk upload · row validation', args: { upload: true } };
 export const Empty: S = { name: 'Empty · first use', args: { rows: [] } };

@@ -57,6 +57,23 @@ export const Why: S = {
     </div>
   ),
 };
+// Enterprise E5 (O16, answer 2656): a joining bonus paid separately with the tax paid by the company.
+export const WhySeparate: S = {
+  name: 'WhyThisNumber · paid separately, company pays the tax (E5)',
+  render: () => (
+    <div style={col}>
+      <WhyThisNumber
+        lines={[
+          ...MY_LINES,
+          { id: 'jb', label: 'Joining bonus', amount: 1_00_000, kind: 'earning', separate: true, formula: 'One-time pay for this month, paid separately.' },
+          { id: 'tpc', label: 'Tax paid by the company', amount: 42_120, kind: 'earning', separate: true, formula: 'The income tax on Joining bonus, paid by the company (gross-up); it is taxable pay too.' },
+          { id: 'tdsjb', label: 'Income tax (TDS) on Joining bonus', amount: 42_120, kind: 'deduction', separate: true, formula: 'Deducted in full now and paid by the company, so the bonus is paid in full.' },
+        ]}
+        defaultOpenId="tpc"
+      />
+    </div>
+  ),
+};
 export const Stages: S = {
   name: 'RunStageTrack',
   render: () => (

@@ -88,6 +88,8 @@ const LATER_SUPPORT_EXCLUDED = [
   // Batch H part 3, B8/E5: flexible benefit components and settlements.
   'flex_components', 'flex_settlements',
   'positions', 'position_versions', 'position_changes',
+  // Enterprise E5 (O17): a pay group's own cut-off and release dates for one period.
+  'pay_group_period_dates',
   // Expenses cards; performance market rates, coach and disputes.
   'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
   'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots',

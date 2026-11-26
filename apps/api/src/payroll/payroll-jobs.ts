@@ -7,6 +7,7 @@ import { PayDocumentsService } from './documents.service';
 import { PaySetupService } from './setup.service';
 import { FnfService } from './fnf.service';
 import { PayInputsService } from './inputs.service';
+import { PayslipsService } from './payslips.service';
 
 const QUEUE = 'payroll-jobs';
 const DAY = 24 * 3_600_000;
@@ -25,6 +26,7 @@ export class PayrollJobs implements OnModuleInit, OnModuleDestroy {
     private readonly setup: PaySetupService,
     private readonly fnf: FnfService,
     private readonly inputs: PayInputsService,
+    private readonly payslips: PayslipsService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -38,6 +40,8 @@ export class PayrollJobs implements OnModuleInit, OnModuleDestroy {
     await this.queue.upsertJobScheduler('payroll-fnf-due', { every: DAY / 4 }, { name: 'fnf-due', data: {} });
     // HLP-12 answer 65: injury days from approved injury leave, this month and last (locked months untouched).
     await this.queue.upsertJobScheduler('payroll-injury-days', { every: DAY }, { name: 'injury-days', data: {} });
+    // Enterprise E5 (O17): payslips held for their release date are announced when it comes.
+    await this.queue.upsertJobScheduler('payroll-payslip-release', { every: DAY / 24 }, { name: 'payslip-release', data: {} });
   }
 
   async onModuleDestroy() {
@@ -56,6 +60,7 @@ export class PayrollJobs implements OnModuleInit, OnModuleDestroy {
     if (name === 'coverage') return this.setup.evaluateCoverage();
     if (name === 'fnf-due') return this.fnf.alertDue();
     if (name === 'injury-days') return this.inputs.fillInjuryAll();
+    if (name === 'payslip-release') return this.payslips.releaseDue();
     return null;
   }
 }

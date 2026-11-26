@@ -28632,5 +28632,48 @@
                               "Screens/Time/TIM-27 · Leave type (Rules tab)"
                     ],
                     "note": "Positive and negative (time-leave-rules e2e 'T2-A (D8)': bad values 400, saved and returned, Tuesday refused, Monday allowed, once a month, 10-day gap, other person not counted, withdrawn not counted; kit leave-rules-live test). Rules live in the leave type's rules JSON (no migration). Each limit is off until HR sets it."
+          },
+          {
+                    "id": "MT-E5-GROSSUP-SEPARATE",
+                    "area": "Enterprise E5: one-time pay paid separately and grossed up (answer 2656, O16)",
+                    "screen": "Pay › Inputs › One-time pay (PAY-05); the run (PAY-03); the bank file (PAY-08); Me › Payslips",
+                    "url": "http://localhost:3000/yx/payroll/inputs",
+                    "account": "payroll@demo-org.test adds; a payroll approver (approver@) approves the item and the run; an employee of the run.",
+                    "steps": [
+                              "Add one-time pay: a Joining bonus of ₹1,00,000 for an employee, tick Pay separately and Company pays the tax, and add it.",
+                              "Add a recurring item; look for the two boxes.",
+                              "Try to add a deduction with Company pays the tax (API or a deduction component).",
+                              "As the approver, approve the bonus in Approvals.",
+                              "Calculate the month's run and open the employee's payslip.",
+                              "Approve the run and make the bank file; open it.",
+                              "Publish (on or after the release date) and open the payslip as the employee."
+                    ],
+                    "expected": "Step 1: a toast says it waits for approval (gross-up always needs the payroll approver). Step 2: the two boxes are not offered for a recurring item. Step 3: refused, only a one-time earning. Step 4: approved. Step 5: a section 'Paid separately (its own bank payment)' with the bonus, 'Tax paid by the company' and the TDS on the bonus, the last two equal; Earnings and Deductions hold the salary. Step 6: two lines for that employee: the salary and ₹1,00,000. Step 7: the same Paid separately section; the PDF marks those lines '(paid separately)'.",
+                    "stories": [
+                              "Pay › PAY-05 One-time pay › Add one-time pay · paid separately, company pays the tax (E5)",
+                              "Pay › Pay kit › WhyThisNumber · paid separately, company pays the tax (E5)"
+                    ],
+                    "note": "Answer 2656. Positive and negative: API payroll-controls.e2e-spec.ts and payroll-controls.spec.ts; kit payroll-inputs-live.test.tsx and payroll-controls-live.test.tsx."
+          },
+          {
+                    "id": "MT-E5-CUTOFF-RELEASE",
+                    "area": "Enterprise E5: input cut-off, release date and late inputs; PAY-02 run readiness live (answer 2657, O17)",
+                    "screen": "Pay › Setup › Pay groups; a run › Run readiness (PAY-02); Pay › Inputs; publish (PAY-09); Me › Payslips",
+                    "url": "http://localhost:3000/yx/payroll/runs",
+                    "account": "payroll@demo-org.test (setup and inputs keys); a payroll approver; an employee.",
+                    "steps": [
+                              "In Pay groups, edit the monthly group: set Payslips shown to employees to 3 days after the month ends; save.",
+                              "Open this month's run and press Run readiness.",
+                              "Press Change dates and Save dates with no reason; then set the cut-off to yesterday with a reason of 10+ characters and save.",
+                              "Add one-time pay for this month for someone in the group.",
+                              "Open Run readiness again.",
+                              "After approval, publish with Employees see them = On <date>; open Me › Payslips as the employee.",
+                              "Try to publish choosing Now without a reason (on another run)."
+                    ],
+                    "expected": "Step 1: the table shows 'Payslips shown: 3 days after the month ends'. Step 2: Dates for this month (pay group, cut-off, release), Inputs after the cut-off, attendance, inputs and checks; the Calculate step says what blocks it. Step 3: 'Say why, in 10 characters or more.'; then a toast and 'Changed for this month' with the reason. Step 4: the toast says it came after the cut-off and is paid next month; the list says 'Late for <month>'. Step 5: the item is listed as asked for this month, paid next month. Step 6: a toast says employees see them on the release date; the employee sees no payslip until that day, and is told that day. Step 7: the reason is asked and nothing is published without it.",
+                    "stories": [
+                              "Pay › PAY-02 Run readiness"
+                    ],
+                    "note": "Answer 2657. Positive and negative: API payroll-controls.e2e-spec.ts; kit payroll-controls-live.test.tsx; web yx-payroll-readiness.test.tsx. No page scroll at 1278 x 635 except where content needs it."
           }
 ]

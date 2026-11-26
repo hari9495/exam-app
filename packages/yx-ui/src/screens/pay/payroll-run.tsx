@@ -48,7 +48,7 @@ import { IrreversibleSheet } from '../../components/irreversible';
 import { CONFIRM_PHRASE, DUE_ITEMS, EWA_REMITTANCE, FIN_APPROVER, PAYROLL_ADMIN, RUN, RUN_HISTORY, RUN_PICKS, RUN_ROWS, d, type RunRow } from './pay-data';
 import { variance } from './pay-logic';
 import { DueBadge } from '../time/time-kit';
-import { LiveFrequencyRun, LiveRunWorkspace, type LiveRunWorkspaceData } from './run-workspace-live';
+import { LiveFrequencyRun, LiveRunReadiness, LiveRunWorkspace, type LiveRunReadinessData, type LiveRunWorkspaceData } from './run-workspace-live';
 import { LiveCoverageScreen, LivePayrollHomeScreen, LiveRunListPanel, type LiveCoverage, type LivePayrollHome, type LiveRunList } from './payroll-home-live';
 
 /** Story ids this file links to (review/pay-story-ids.txt). */
@@ -694,8 +694,12 @@ export function AttendanceGroupsPanel({ groups, lopAction }: { groups: Attendanc
   );
 }
 
-/** PAY-02 · Run readiness / pre-flight (T5 step). */
-export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTENDANCE_GROUPS, inputs = INPUT_SOURCES, coverage: initialCoverage = COVERAGE, defaultWaiveId, state = 'ready' }: ReadinessProps) {
+/** PAY-02 · Run readiness / pre-flight (T5 step). The app passes `live` (Enterprise E5): /yx/payroll/runs/[id]/readiness. */
+export function RunReadinessScreen(p: ReadinessProps & { live?: LiveRunReadinessData }) {
+  return p.live ? <LiveRunReadiness live={p.live} /> : <SampleRunReadinessScreen {...p} />;
+}
+
+function SampleRunReadinessScreen({ findings: initial = FINDINGS, groups = ATTENDANCE_GROUPS, inputs = INPUT_SOURCES, coverage: initialCoverage = COVERAGE, defaultWaiveId, state = 'ready' }: ReadinessProps) {
   const phone = useNarrow(599);
   const [findings, setFindings] = useState(initial);
   const [coverage, setCoverage] = useState(initialCoverage);

@@ -1286,6 +1286,8 @@ export function PayrollSetupScreen({ live, ...story }: PayrollSetupStoryProps & 
   return live ? <LivePayrollSetupScreen live={live} /> : <SamplePayrollSetupScreen {...story} />;
 }
 
+const RELEASE_DAYS = [{ value: '0', label: 'When they are published' }, ...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} ${i ? 'days' : 'day'} after the month ends` }))];
+
 function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: importedInitially = false, options = false, groups, opening: openingView, golive = 'compare', decide, state = 'ready' }: PayrollSetupStoryProps) {
   const phone = useNarrow(599);
   const [lwf, setLwf] = useState(incomplete ? '' : 'LWF/KA/BNG/20417');
@@ -1295,6 +1297,7 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
   const [freq, setFreq] = useState<string | null>('m');
   const [cutoff, setCutoff] = useState<number | null>(25);
   const [payDay, setPayDay] = useState<string | null>('last');
+  const [release, setRelease] = useState<string | null>('3');
   const [ledgers, setLedgers] = useState(MAPPING.map(([, l]) => l));
   const [changeAcct, setChangeAcct] = useState(false);
   const [imported, setImported] = useState(importedInitially);
@@ -1387,6 +1390,10 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
           <Select value={payDay} onChange={setPayDay} options={[{ value: 'last', label: 'Last working day' }, { value: '1', label: '1st of next month' }]} />
         </FormField>
       </FieldRow>
+      {/* Enterprise E5 (O17, answer 2657): published payslips stay hidden from employees until this day. */}
+      <FormField label="Payslips shown to employees" helper="Published payslips stay hidden until then; publishing early needs a reason. One month's dates can be changed on its run.">
+        <Select value={release} onChange={setRelease} options={RELEASE_DAYS} />
+      </FormField>
       <FormField label="Day basis for proration" required>
         <RadioGroup orientation="horizontal" defaultValue="cal" options={[{ value: 'cal', label: 'Calendar days' }, { value: '30', label: '30 days' }, { value: '26', label: '26 days' }]} />
       </FormField>

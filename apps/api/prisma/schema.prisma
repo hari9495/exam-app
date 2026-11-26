@@ -8479,6 +8479,8 @@ model PayGroup {
   dayBasis       String    @default("calendar") @map("day_basis") @db.VarChar(8)
   cutOffDay      Int       @default(25) @map("cut_off_day") @db.SmallInt
   payDay         Int       @default(0) @map("pay_day") @db.SmallInt
+  /// Enterprise E5 (O17): payslips are shown to employees from this day of the month after the period (0: when published).
+  releaseDay     Int       @default(0) @map("release_day") @db.SmallInt
   membershipRule Json?     @map("membership_rule")
   bankFormat     String?   @map("bank_format") @db.VarChar(30)
   status         String    @default("active") @db.VarChar(10)
@@ -8769,9 +8771,33 @@ model PayrollRun {
   reference      String?   @db.VarChar(20)
   version        Int       @default(1)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Enterprise E5 (O17): employees see the published payslips from this time (null: from publishing).
+  releaseAt        DateTime? @map("release_at") @db.Timestamptz(3)
+  /// Why the payslips were released before the release date.
+  releaseReason    String?   @map("release_reason") @db.VarChar(500)
+  /// When the employees were told (a scheduled release tells them on the day).
+  releaseNoticedAt DateTime? @map("release_noticed_at") @db.Timestamptz(3)
 
   @@unique([organizationId, reference])
   @@map("payroll_runs")
+}
+
+/// Enterprise E5 (O17): one period's own cut-off and release dates for a pay group, set with a reason.
+model PayGroupPeriodDate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  payGroupId     String    @map("pay_group_id") @db.Uuid
+  periodStart    DateTime  @map("period_start") @db.Date
+  cutOffOn       DateTime  @map("cut_off_on") @db.Date
+  releaseOn      DateTime? @map("release_on") @db.Date
+  reason         String    @db.VarChar(500)
+  changedBy      String    @map("changed_by") @db.Uuid
+  changedAt      DateTime  @default(now()) @map("changed_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@unique([organizationId, payGroupId, periodStart], map: "pay_group_period_dates_key")
+  @@map("pay_group_period_dates")
 }
 
 model PayrollRunCounter {
@@ -8871,6 +8897,8 @@ model PayslipLine {
   rule           Json?
   verify         Boolean  @default(false)
   sourceRef      String?  @map("source_ref") @db.VarChar(80)
+  /// Enterprise E5 (O16): paid separately (its own bank file line and payslip section).
+  separate       Boolean  @default(false)
 
   @@map("payslip_lines")
 }
@@ -8926,6 +8954,12 @@ model OneTimePay {
   holdReason     String?   @map("hold_reason") @db.VarChar(300)
   createdBy      String    @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Enterprise E5 (O16): its own bank file line and payslip section, same month.
+  paidSeparately Boolean   @default(false) @map("paid_separately")
+  /// Enterprise E5 (O16): the company pays its tax (needs the payroll approver).
+  grossUp        Boolean   @default(false) @map("gross_up")
+  /// Enterprise E5 (O17): the month it was asked for, when it came after that month's cut-off and rolled on.
+  rolledFrom     DateTime? @map("rolled_from") @db.Date
 
   @@map("one_time_pays")
 }

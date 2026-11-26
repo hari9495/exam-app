@@ -138,6 +138,16 @@ export class OneTimeDto {
   @IsOptional()
   @IsBoolean()
   draft?: boolean;
+
+  /** Enterprise E5 (O16): paid on its own bank file line and payslip section, in the same month. */
+  @IsOptional()
+  @IsBoolean()
+  paidSeparately?: boolean;
+
+  /** Enterprise E5 (O16): the company pays the tax on it (needs the payroll approver). */
+  @IsOptional()
+  @IsBoolean()
+  grossUp?: boolean;
 }
 
 /** PAY-05 bulk actions on one-time pay drafts. */
