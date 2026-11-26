@@ -8,7 +8,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ActionDto, AgendaDto, DoneDto, FeedbackDto, FeedbackListDto, FeedbackRequestDto, OneOnOneDto, OneOnOneUpdateDto, PrivateNoteDto, SealDto } from './dto';
+import { ActionDto, AgendaDto, AgendaTemplateDto, DoneDto, FromTemplateDto, FeedbackDto, FeedbackListDto, FeedbackRequestDto, OneOnOneDto, OneOnOneUpdateDto, PrivateNoteDto, SealDto } from './dto';
 import { PerformanceFeedbackService } from './feedback.service';
 import { PerformancePersonNotesService } from './person-notes.service';
 import { NewPersonNoteDto, PersonNoteDto, PersonNotesQueryDto } from './dto';
@@ -140,6 +140,33 @@ export class PerformanceFeedbackController {
   @Post('one-on-ones/:id/agenda')
   addAgenda(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AgendaDto) {
     return this.svc.addAgenda(ctx, this.user(req), id, dto);
+  }
+
+  /** T2-C item 70 (answer 2843): 1:1 agenda templates (company ones by HR, a manager's own); the service decides. */
+  @Get('one-on-one-templates')
+  agendaTemplates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.svc.agendaTemplates(ctx, this.user(req));
+  }
+
+  @Post('one-on-one-templates')
+  addAgendaTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AgendaTemplateDto) {
+    return this.svc.saveAgendaTemplate(ctx, this.user(req), null, dto);
+  }
+
+  @Put('one-on-one-templates/:id')
+  updateAgendaTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AgendaTemplateDto) {
+    return this.svc.saveAgendaTemplate(ctx, this.user(req), id, dto);
+  }
+
+  @Delete('one-on-one-templates/:id')
+  deleteAgendaTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteAgendaTemplate(ctx, this.user(req), id);
+  }
+
+  @Post('one-on-ones/:id/agenda/from-template')
+  @HttpCode(200)
+  agendaFromTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FromTemplateDto) {
+    return this.svc.agendaFromTemplate(ctx, this.user(req), id, dto.templateId);
   }
 
   @Put('one-on-ones/:id/agenda/:itemId')

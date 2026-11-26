@@ -11040,6 +11040,21 @@ model OneOnOneAgendaItem {
   @@map("one_on_one_agenda")
 }
 
+/// T2-C item 70 (answer 2843): a 1:1 agenda template: a company one (ownerUserId null, HR in Settings › Performance) or a
+/// manager's own. Picking one adds its lines to a 1:1's agenda. The name index (lower-case, per owner) is in the migration.
+model OneOnOneTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  ownerUserId    String?  @map("owner_user_id") @db.Uuid
+  name           String   @db.VarChar(80)
+  items          String[]
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("one_on_one_templates")
+}
+
 model OneOnOnePrivateNote {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

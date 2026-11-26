@@ -588,3 +588,27 @@ export class SuggestParentDto {
   @IsUUID()
   parentGoalId!: string;
 }
+
+/** T2-C item 70 (answer 2843): a 1:1 agenda template: a name and 1 to 20 agenda lines. `company`: HR's company template. */
+export class AgendaTemplateDto {
+  @trim()
+  @IsString()
+  @Length(2, 80)
+  name!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @Length(2, 500, { each: true })
+  items!: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  company?: boolean;
+}
+
+export class FromTemplateDto {
+  @IsUUID()
+  templateId!: string;
+}

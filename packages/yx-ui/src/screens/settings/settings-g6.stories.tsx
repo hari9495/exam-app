@@ -11,6 +11,7 @@ import { InvoiceSeriesSheet } from '../hiring/staffing-sheets';
 import type { ScorecardTemplateView } from '../hiring/live/types';
 import type { SettingsPageDef } from './settings-types';
 import { PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage } from './perf-setup-live';
+import { AgendaTemplateSheet, type AgendaTemplate } from './agenda-templates-live';
 import type { RatingScale, ReviewTemplate, Skill } from '../performance/live/types';
 import './settings.css';
 
@@ -168,6 +169,11 @@ export const P6_3_ScaleNew: S = { name: '6.3 Performance · add a rating scale',
 export const P6_3_SkillNew: S = { name: '6.3 Performance · add a skill', render: () => <SkillSheet skill={null} skills={SKILLS} onClose={close} onAdd={ok} onMerge={ok} onRetire={ok} /> };
 export const P6_3_SkillMerge: S = { name: '6.3 Performance · merge or retire a skill', render: () => <SkillSheet skill={SKILLS[2]!} skills={SKILLS} onClose={close} onAdd={ok} onMerge={ok} onRetire={ok} /> };
 export const P6_3_SkillMerged: S = { name: '6.3 Performance · merged skill', render: () => <SkillSheet skill={SKILLS[3]!} skills={SKILLS} onClose={close} onAdd={ok} onMerge={ok} onRetire={ok} /> };
+// T2-C item 70 (answer 2843): the company's 1:1 agenda templates on 6.3, and their sheet.
+const WEEKLY: AgendaTemplate = { id: 'a1', name: 'Weekly check-in', items: ['Wins this week', 'Blockers', 'Help needed', 'Goals on track?'], company: true, mine: false, updatedAt: '2026-11-27T10:00:00Z' };
+export const P6_3_AgendaTemplates: S = { name: '6.3 Performance · 1:1 agenda templates', render: () => <SettingsPageScreen groups={perfSetupGroups({ templates: [ANNUAL], scales: [FIVE], skills: SKILLS, agendaTemplates: [WEEKLY, { ...WEEKLY, id: 'a2', name: 'Career talk', items: ['Where do you want to be in a year?', 'What would help?'] }] })} pageId="6.3" highlightKey="perf.one_on_one_templates" /> };
+export const P6_3_AgendaTemplateNew: S = { name: '6.3 Performance · add a 1:1 template', render: () => <AgendaTemplateSheet template={null} onClose={close} onSave={ok} onDelete={ok} /> };
+export const P6_3_AgendaTemplateEdit: S = { name: '6.3 Performance · edit a 1:1 template', render: () => <AgendaTemplateSheet template={WEEKLY} onClose={close} onSave={ok} onDelete={ok} /> };
 export const P6_4: S = { name: '6.4 Learning', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" /> };
 export const P6_4_ReadOnly: S = { name: '6.4 Learning · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" readOnly /> };
 export const P6_5: S = { name: '6.5 Assessments', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.5" /> };

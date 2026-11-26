@@ -39,3 +39,5 @@ export type { ApprovalStep } from '../../../components/timeline';
 export { PerfNoAccessScreen, type PerfNoAccessProps } from '../../growth/perf-access';
 // T2-C item 68 (answer 2842): What is expected of me.
 export { ExpectationsScreen, type Expectations } from '../../growth/perf-expectations';
+// T2-C item 70 (answer 2843): 1:1 agenda templates.
+export { AgendaTemplateSheet, agendaLines, type AgendaTemplate, type AgendaTemplateInput } from '../../settings/agenda-templates-live';

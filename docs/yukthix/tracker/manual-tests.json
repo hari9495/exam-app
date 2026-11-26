@@ -29231,5 +29231,29 @@
                               "Screens/Performance/PRF-18 · What is expected of me"
                     ],
                     "note": "Competencies come from the designation (the PRF-14 framework links competencies to designations, not grades). A competency weight is not kept anywhere yet, so the page shows the expected level and behaviours, not a weight (question 2880)."
+          },
+          {
+                    "id": "MT-T2C-70",
+                    "area": "Batch T2-C item 70 (answer 2843): 1:1 agenda templates",
+                    "screen": "Settings › Performance (6.3) › Competencies and 1:1s › 1:1 agenda templates; Performance › 1:1s › a planned 1:1",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up); a manager (panel@demo-org.test, Divya) with a report; that report (employee); an employee with no reports.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under 'Competencies and 1:1s' find '1:1 agenda templates'. Press 'Add a 1:1 template' and press Save with nothing filled in.",
+                              "Name it 'Weekly check-in' and write the lines 'Wins this week', 'Blockers', 'Blockers' and an empty line (one a line). Save.",
+                              "Add another company template with the same name in capitals.",
+                              "As the manager open a planned 1:1 with the report. In the agenda part pick 'Weekly check-in (company)' and press 'Use template'. Press it again.",
+                              "Add an agenda item by hand. Then press 'Save agenda as my template', press 'Save template' without a name, then name it 'My weekly' and save.",
+                              "Open another planned 1:1 and pick 'My weekly (mine)'.",
+                              "As the report open the same 1:1: pick a template; look for 'Save agenda as my template'.",
+                              "As HR edit 'Weekly check-in' (change a line), then delete it. Open the manager's 1:1 again.",
+                              "Negative: as the employee with no reports call POST /api/v1/performance/one-on-one-templates with a name and lines; as the manager call it with \"company\": true; as the report use the manager's own template id on the 1:1 (POST /api/v1/performance/one-on-ones/<id>/agenda/from-template); open a held 1:1."
+                    ],
+                    "expected": "Step 1: 'Name the template.' and 'Write at least one agenda line.'; nothing is saved. Step 2: a 5-second toast '1:1 template saved'; the list shows 'Weekly check-in' with '2 · Wins this week · Blockers' (the repeat and the blank line are dropped). Step 3: refused: a template with that name already exists. Step 4: 'Template lines added to the agenda' toast; the two lines are on the agenda once, even after the second press. Step 5: the hand-added item stays; the name is required; then 'Saved as your 1:1 template'. Step 6: its lines fill that agenda; the managers' own templates are not listed in Settings. Step 7: the report can pick a company template but has no 'Save agenda as my template' and does not see the manager's own one. Step 8: the change and the delete each show a toast; agendas already filled keep their lines. Step 9: 403, 403, 404; a held 1:1 shows no template picker.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance · 1:1 agenda templates, add a 1:1 template, edit a 1:1 template)",
+                              "Screens/Performance/PRF-11 · 1:1s (Manager · start the agenda from a template)"
+                    ],
+                    "note": "New table one_on_one_templates (forced RLS, in rls-isolation). Calendar sync of 1:1s stays with tier 3 item 90 (2748)."
           }
 ]

@@ -2,7 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { SETTINGS_GROUPS } from './settings-groups';
-import { PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage } from './perf-setup-live';
+import { PERF_SETUP_LISTS, PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage } from './perf-setup-live';
+import { AgendaTemplateSheet, type AgendaTemplate } from './agenda-templates-live';
 import type { RatingScale, ReviewTemplate, Skill } from '../performance/live/types';
 
 // Settings 6.3 Performance, the drawn page with the live editors (batch T2-C; the PM1 set-up tests, M06-BUILD-DESIGN
@@ -130,5 +131,43 @@ describe('Settings 6.3 Performance · live editors', () => {
     await ue.click(screen.getByRole('option', { name: 'Quality › Root cause analysis' }));
     await ue.click(within(d).getByRole('button', { name: 'Merge' }));
     expect(onMerge).toHaveBeenCalledWith('a');
+  });
+});
+
+// T2-C item 70 (answer 2843): the company's 1:1 agenda templates on 6.3, edited in their sheet.
+describe('Settings 6.3 · 1:1 agenda templates (70)', () => {
+  const at = (o: Partial<AgendaTemplate> = {}): AgendaTemplate => ({ id: 'a1', name: 'Weekly check-in', items: ['Wins', 'Blockers', 'Help needed'], company: true, mine: false, updatedAt: '2026-11-27T10:00:00Z', ...o });
+  it('lists only the company templates under the 1:1 part of the page', () => {
+    const page = perfSetupPage(SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '6.3')!, { templates: [], scales: [], skills: [], agendaTemplates: [at(), at({ id: 'a2', name: 'Mine', company: false, mine: true })] });
+    const list = page.sections.flatMap((s) => s.settings).find((d) => d.key === PERF_SETUP_LISTS.agendaTemplates)!;
+    expect(list.rows).toEqual([['Weekly check-in', '3 · Wins · Blockers …']]);
+    expect(page.sections.find((s) => s.settings.includes(list))!.title).toBe('Competencies and 1:1s');
+  });
+
+  it('adds a template: one line a line, blanks and repeats dropped; saved with a toast', async () => {
+    const onSave = vi.fn(ok);
+    const onClose = vi.fn();
+    render(<AgendaTemplateSheet template={null} onClose={onClose} onSave={onSave} onDelete={vi.fn(ok)} />);
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Monthly');
+    await ue.type(screen.getByRole('textbox', { name: /Agenda lines/ }), 'Goals{enter}{enter}Goals{enter}Learning');
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onSave).toHaveBeenCalledWith({ name: 'Monthly', items: ['Goals', 'Learning'] });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('negative: no name or no lines is refused; delete asks first', async () => {
+    const onSave = vi.fn(ok);
+    const onDelete = vi.fn(ok);
+    render(<AgendaTemplateSheet template={at()} onClose={vi.fn()} onSave={onSave} onDelete={onDelete} />);
+    await ue.clear(screen.getByRole('textbox', { name: /^Name/ }));
+    await ue.clear(screen.getByRole('textbox', { name: /Agenda lines/ }));
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getAllByText('Name the template.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Write at least one agenda line.').length).toBeGreaterThan(0);
+    expect(onSave).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onDelete).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Delete template' }));
+    expect(onDelete).toHaveBeenCalled();
   });
 });

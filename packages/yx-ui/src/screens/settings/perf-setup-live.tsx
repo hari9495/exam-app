@@ -15,6 +15,7 @@ import { Card, DescriptionList } from '../../components/shell';
 import { errorText } from '../org/org-kit';
 import type { RatingScale, ReviewTemplate, ScaleInput, SectionKind, Skill, TemplateInput, TemplateKind, TemplateSection, Who } from '../performance/live/types';
 import type { SettingDef, SettingsPageDef } from './settings-types';
+import type { AgendaTemplate } from './agenda-templates-live';
 
 // Settings 6.3 Performance (batch T2-C, 2411): the drawn page made live with the editors the old live copy had (batch PM1,
 // M06-BUILD-DESIGN §5.2, §6, §9.1). Review templates, rating scales and the skills library show as lists on the drawn
@@ -33,6 +34,8 @@ export interface PerfSetupData {
   templates: ReviewTemplate[];
   scales: RatingScale[];
   skills: Skill[];
+  /** T2-C item 70 (answer 2843): 1:1 agenda templates (company ones are edited here; a manager's own are not listed). */
+  agendaTemplates?: AgendaTemplate[];
 }
 
 /** The skills library in the order the page lists it (by its path, Domain › Skill › Sub-skill). */
@@ -43,7 +46,7 @@ export function skillsInOrder(skills: readonly Skill[]): { skill: Skill; path: s
 }
 
 /** The keys of the lists this module adds to the drawn page (for listEditors). */
-export const PERF_SETUP_LISTS = { templates: 'perf.review_templates', scales: 'perf.rating_scales', skills: 'perf.skills_library' } as const;
+export const PERF_SETUP_LISTS = { templates: 'perf.review_templates', scales: 'perf.rating_scales', skills: 'perf.skills_library', agendaTemplates: 'perf.one_on_one_templates' } as const;
 
 /**
  * The drawn 6.3 page with the live lists: review templates and rating scales under the drawn Review templates link,
@@ -81,11 +84,17 @@ export function perfSetupPage(page: SettingsPageDef, data: PerfSetupData): Setti
     const i = s.settings.findIndex((d) => d.key === key);
     return i < 0 ? s : { ...s, settings: [...s.settings.slice(0, i + 1), ...add, ...s.settings.slice(i + 1)] };
   };
-  let sections = page.sections.map(after('perf.templates', [templates, scales])).map(after('perf.competencies', [skills]));
+  // T2-C item 70 (answer 2843): the company's 1:1 agenda templates, under the 1:1 part of the page.
+  const company = (data.agendaTemplates ?? []).filter((t) => t.company);
+  const agenda = data.agendaTemplates
+    ? [list(PERF_SETUP_LISTS.agendaTemplates, '1:1 agenda templates', ['Template', 'Agenda lines'], company.map((t) => [t.name, `${t.items.length} · ${t.items.slice(0, 2).join(' · ')}${t.items.length > 2 ? ' …' : ''}`]), 'Add a 1:1 template', 'Managers pick one when they plan a 1:1; its lines fill the agenda, which stays editable. Managers may also save their own.')]
+    : [];
+  let sections = page.sections.map(after('perf.templates', [templates, scales])).map(after('perf.competencies', [skills, ...agenda]));
   // A page drawn without those links still lists them, in a section of their own.
   const has = (k: string) => sections.some((s) => s.settings.some((d) => d.key === k));
   if (!has(templates.key)) sections = [...sections, { title: 'Review templates and scales', settings: [templates, scales] }];
   if (!has(skills.key)) sections = [...sections, { title: 'Skills library', settings: [skills] }];
+  if (agenda.length && !has(agenda[0]!.key)) sections = [...sections, { title: '1:1 agenda templates', settings: agenda }];
   return { ...page, sections };
 }
 

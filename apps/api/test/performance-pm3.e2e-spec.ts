@@ -32,7 +32,7 @@ describe('Performance batch PM3', () => {
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1/performance${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1/performance${path}`).set('Authorization', `Bearer ${token[who]}`);
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const shift = (iso: string, n: number) => new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
@@ -281,6 +281,46 @@ describe('Performance batch PM3', () => {
     await api('adminB', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(404);
     await api('rev', 'get', '/feedback/employee/not-a-uuid/shared').expect(400);
     await api('rev', 'get', `/feedback/employee/${randomUUID()}/shared`).expect(404);
+  });
+
+  it('T2-C 70 (answer 2843): HR keeps company 1:1 templates, a manager saves their own; picking one fills the agenda, which stays editable', async () => {
+    type T = { id: string; name: string; items: string[]; company: boolean; mine: boolean };
+    // Negative: someone with no direct reports cannot save one; only HR saves a company one; bad lines are refused.
+    await api('arjun', 'post', '/one-on-one-templates').send({ name: 'Mine', items: ['Wins'] }).expect(403);
+    await api('priya', 'post', '/one-on-one-templates').send({ name: 'Weekly', items: ['Wins'], company: true }).expect(403);
+    await api('adminA', 'post', '/one-on-one-templates').send({ name: 'Weekly', items: [], company: true }).expect(400);
+    await api('adminA', 'post', '/one-on-one-templates').send({ name: 'Weekly', items: Array.from({ length: 21 }, (_, i) => `Line ${i}`), company: true }).expect(400);
+    const company = (await api('adminA', 'post', '/one-on-one-templates').send({ name: 'Weekly check-in', items: ['Wins this week', 'Blockers', ' Blockers '], company: true }).expect(201)).body as T;
+    expect(company).toMatchObject({ company: true, items: ['Wins this week', 'Blockers'] });
+    await api('adminA', 'post', '/one-on-one-templates').send({ name: 'weekly CHECK-IN', items: ['x1'], company: true }).expect(409);
+    const own = (await api('priya', 'post', '/one-on-one-templates').send({ name: 'Career talk', items: ['Where do you want to be in a year?'] }).expect(201)).body as T;
+    expect(own).toMatchObject({ company: false, mine: true });
+    // Everyone sees the company ones; only Priya sees hers.
+    expect(((await api('arjun', 'get', '/one-on-one-templates').expect(200)).body as T[]).map((t) => t.name)).toEqual(['Weekly check-in']);
+    expect(((await api('priya', 'get', '/one-on-one-templates').expect(200)).body as T[]).map((t) => t.name)).toEqual(['Weekly check-in', 'Career talk']);
+    expect((await api('adminB', 'get', '/one-on-one-templates').expect(200)).body).toEqual([]);
+    // Only HR changes a company one and only the owner their own.
+    await api('priya', 'put', `/one-on-one-templates/${company.id}`).send({ name: 'Hijack', items: ['x1'] }).expect(404);
+    await api('adminA', 'put', `/one-on-one-templates/${own.id}`).send({ name: 'Hijack', items: ['x1'] }).expect(404);
+    await api('priya', 'put', `/one-on-one-templates/${own.id}`).send({ name: 'Career talk', items: ['Where do you want to be in a year?', 'What would help?'] }).expect(200);
+    // Picking one fills the agenda; twice adds nothing twice; the agenda stays editable.
+    type M = { id: string; agenda: { text: string }[] };
+    const m = (await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.arjun, on: shift(today, 3) }).expect(201)).body as M;
+    let got = (await api('priya', 'post', `/one-on-ones/${m.id}/agenda/from-template`).send({ templateId: company.id }).expect(200)).body as M;
+    got = (await api('priya', 'post', `/one-on-ones/${m.id}/agenda/from-template`).send({ templateId: company.id }).expect(200)).body as M;
+    expect(got.agenda.map((a) => a.text)).toEqual(['Wins this week', 'Blockers']);
+    got = (await api('priya', 'post', `/one-on-ones/${m.id}/agenda/from-template`).send({ templateId: own.id }).expect(200)).body as M;
+    got = (await api('arjun', 'post', `/one-on-ones/${m.id}/agenda`).send({ text: 'Leave in December' }).expect(201)).body as M;
+    expect(got.agenda.map((a) => a.text)).toEqual(['Wins this week', 'Blockers', 'Where do you want to be in a year?', 'What would help?', 'Leave in December']);
+    // Negative: Arjun cannot use Priya's own template; someone outside the 1:1 cannot use any.
+    await api('arjun', 'post', `/one-on-ones/${m.id}/agenda/from-template`).send({ templateId: own.id }).expect(404);
+    await api('sita', 'post', `/one-on-ones/${m.id}/agenda/from-template`).send({ templateId: company.id }).expect(404);
+    await api('priya', 'post', `/one-on-ones/${m.id}/agenda/from-template`).send({ templateId: 'nope' }).expect(400);
+    // Deleting a template keeps the agendas it filled.
+    await api('priya', 'delete', `/one-on-one-templates/${company.id}`).expect(404);
+    await api('adminA', 'delete', `/one-on-one-templates/${company.id}`).expect(200);
+    expect((await api('arjun', 'get', '/one-on-one-templates').expect(200)).body).toEqual([]);
+    expect(((await api('arjun', 'get', `/one-on-ones/${m.id}`).expect(200)).body as M).agenda).toHaveLength(5);
   });
 
   it('keeps companies apart', async () => {
