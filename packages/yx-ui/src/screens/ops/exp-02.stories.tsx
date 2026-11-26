@@ -25,7 +25,7 @@ export const PhoneCamera: S = { name: 'Receipt capture · phone', globals: PHONE
 export const PhoneReading: S = { name: 'Reading receipt · phone', globals: PHONE, render: () => <ClaimComposerScreen device="phone" title="New claim" lines={MUMBAI_LINES.slice(0, 1)} advance={0} camera="processing" /> };
 export const PhoneDenied: S = { name: 'Camera off · phone', globals: PHONE, render: () => <ClaimComposerScreen device="phone" title="New claim" lines={[]} advance={0} camera="denied" /> };
 export const Phone: S = { name: 'Claim · phone (you will receive)', globals: PHONE, render: () => <ClaimComposerScreen device="phone" title="Mumbai distributor meet" lines={MUMBAI_LINES} advance={10000} /> };
-export const AddLine: S = { name: 'Add a line · what are you adding', render: () => <ClaimComposerScreen title="Mumbai distributor meet" lines={MUMBAI_LINES} advance={10000} addOpen /> };
+export const AddLine: S = { name: 'Add a line · what are you adding, Save and add another (T2-B 66)', render: () => <ClaimComposerScreen title="Mumbai distributor meet" lines={MUMBAI_LINES} advance={10000} addOpen /> };
 const noop = async () => ({});
 export const CheckReadLine: S = {
   name: 'Line read from a receipt · check and confirm',

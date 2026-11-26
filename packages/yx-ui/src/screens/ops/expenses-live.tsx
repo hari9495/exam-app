@@ -587,7 +587,7 @@ const KINDS: { value: AddKind; label: string; description: string }[] = [
 const KIND_OF: Record<AddKind, ExpenseCategory['kind'][]> = { receipt: ['spend'], mileage: ['mileage'], perdiem: ['per_diem'], bill: ['spend', 'company_paid_only'] };
 
 /** The design's "Add a line" sheet, and the same form to check or change a saved line. */
-function LineSheet({ phone, line, start, categories, today, currency, onClose, live }: { phone: boolean; line: ClaimLine | null; start: AddKind; categories: ExpenseCategory[]; today: string; currency: string; onClose: () => void; live: LiveClaim }) {
+function LineSheet({ phone, line, start, categories, today, currency, onClose, onAddAnother, live }: { phone: boolean; line: ClaimLine | null; start: AddKind; categories: ExpenseCategory[]; today: string; currency: string; onClose: () => void; /** T2-B 66: after saving a new line, open a fresh form of the same kind. */ onAddAnother?: (kind: AddKind) => void; live: LiveClaim }) {
   const [kind, setKind] = useState<AddKind>(line ? (line.mileage ? 'mileage' : line.perDiem ? 'perdiem' : 'bill') : start);
   const usable = categories.filter((x) => x.active && (line ? true : KIND_OF[kind].includes(x.kind)));
   const f = line?.ocr?.fields ?? {};
@@ -641,7 +641,7 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
       ];
   const v = useSaveErrors(errors);
   const n = (x: string) => (x.trim() ? x.trim() : null);
-  const save = async () => {
+  const save = async (another = false) => {
     if (receiptOnly) return onClose();
     if (errors.length) {
       v.reveal();
@@ -667,7 +667,8 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
         ...(line ? { version: line.version } : {}),
       });
       toast({ tone: 'success', title: line ? (line.ocr && !line.ocr.confirmed ? 'Line confirmed' : 'Line saved') : 'Line added' });
-      onClose();
+      if (another && onAddAnother) onAddAnother(kind);
+      else onClose();
     } catch (e) {
       setFailed(errorText(e));
     } finally {
@@ -831,14 +832,19 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
   );
   const title = line ? `Line ${line.lineNo}` : 'Add a line';
   const confirm = receiptOnly ? 'Done' : line?.ocr && !line.ocr.confirmed ? 'Confirm line' : line ? 'Save line' : 'Add line';
+  const addAnother = !line && !receiptOnly && onAddAnother && (
+    <Button loading={saving} onClick={() => void save(true)} fullWidth={phone}>
+      Save and add another
+    </Button>
+  );
   if (phone)
     return (
-      <BottomSheet open onOpenChange={(o) => !o && onClose()} title={title} footer={<Button variant="primary" fullWidth loading={saving} onClick={() => void save()}>{confirm}</Button>}>
+      <BottomSheet open onOpenChange={(o) => !o && onClose()} title={title} footer={<>{addAnother}<Button variant="primary" fullWidth loading={saving} onClick={() => void save()}>{confirm}</Button></>}>
         {body}
       </BottomSheet>
     );
   return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} title={title} subtitle={line?.ocr && !line.ocr.confirmed ? 'We read these values from the receipt. Check each one; saving confirms them.' : undefined} size="lg" footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={() => void save()}>{confirm}</Button></>}>
+    <Drawer open onOpenChange={(o) => !o && onClose()} title={title} subtitle={line?.ocr && !line.ocr.confirmed ? 'We read these values from the receipt. Check each one; saving confirms them.' : undefined} size="lg" footer={<><Button onClick={onClose}>Cancel</Button>{addAnother}<Button variant="primary" loading={saving} onClick={() => void save()}>{confirm}</Button></>}>
       {body}
     </Drawer>
   );
@@ -892,7 +898,7 @@ export function LiveClaimComposer({ live }: { live: LiveClaim }) {
   const phone = useNarrow();
   const c = live.claim;
   const { busy, act, toast } = useAct();
-  const [sheet, setSheet] = useState<{ line: ClaimLine | null; kind: AddKind } | null>(live.startAdd ? { line: null, kind: live.startAdd } : null);
+  const [sheet, setSheet] = useState<{ line: ClaimLine | null; kind: AddKind; n?: number } | null>(live.startAdd ? { line: null, kind: live.startAdd } : null);
   const [removing, setRemoving] = useState<ClaimLine | null>(null);
   const [blockers, setBlockers] = useState<string[]>([]);
   if (live.state !== 'ready' || !c) return <LoadingOrError state={live.state} onRetry={live.onRetry} title="Claim" phone={phone} />;
@@ -947,7 +953,7 @@ export function LiveClaimComposer({ live }: { live: LiveClaim }) {
   const status = <Badge tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Badge>;
   const overlays = (
     <>
-      {sheet && <LineSheet phone={phone} line={sheet.line} start={sheet.kind} categories={cats} today={live.today} currency={c.currency} live={live} onClose={() => setSheet(null)} />}
+      {sheet && <LineSheet key={sheet.n ?? 0} phone={phone} line={sheet.line} start={sheet.kind} categories={cats} today={live.today} currency={c.currency} live={live} onClose={() => setSheet(null)} onAddAnother={(kind) => setSheet((x) => ({ line: null, kind, n: (x?.n ?? 0) + 1 }))} />}
       {removing && (
         <ConfirmDialog open onOpenChange={(o) => !o && setRemoving(null)} title={`Remove line ${removing.lineNo}?`} consequence="The line and its receipt leave this claim." confirmLabel="Remove line" destructive onConfirm={async () => {
           await live.onRemoveLine(removing.id);

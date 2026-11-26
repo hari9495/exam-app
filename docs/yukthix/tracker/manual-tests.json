@@ -29219,5 +29219,104 @@
                               "Screens/Pay/PAY-28 · Arrears base confirmation"
                     ],
                     "note": "Answer 2850. The change's approver is looked up from the change (employee_changes.decided_by); no new column. Positive and negative: api payroll-5g e2e (hand-made worksheet for a change: approver1 refused, approver2 approves; E3 trigger: approver1 refused; item 4 test approves as approver2); kit offcycle-live.test.tsx (2850 test)."
+          },
+          {
+                    "id": "MT-T2B-66-SAVE-AND-ADD",
+                    "area": "T2-B 66 (Expenses A2): \"Save and add another\" on a claim line",
+                    "screen": "Expenses › Claims › a draft claim › Add line drawer (EXP-02)",
+                    "url": "http://localhost:3000/yx/expenses/claims",
+                    "account": "panel@demo-org.test (employee with a draft claim).",
+                    "steps": [
+                              "Open a draft claim and press Add line. Choose Mileage, type 42 km and press 'Save and add another'.",
+                              "In the fresh form type 18 km and press Add line.",
+                              "Choose 'A bill without a receipt', choose a category, type the amount and date, and press 'Save and add another'; then press Cancel.",
+                              "Negative: press Add line, choose Mileage and press 'Save and add another' with the distance empty.",
+                              "Negative: open an existing line with Edit line (or Edit distance).",
+                              "Negative: choose 'A receipt' (upload) in the Add line drawer."
+                    ],
+                    "expected": "Step 1: toast 'Line added' (5 s); the drawer stays open with an empty Mileage form; the claim shows the 42 km line behind it. Step 2: a second line, the drawer closes. Step 3: the bill line is added and a fresh bill form opens; Cancel closes it. Step 4: 'Enter the distance in km.' and nothing is saved. Step 5: the edit drawer has Save line only, no 'Save and add another'. Step 6: no 'Save and add another' (each receipt becomes its own line). Buttons have a border, hover, pointer and focus ring.",
+                    "stories": [
+                              "Screens/Ops/EXP-02 · Claim composer › Add a line · what are you adding, Save and add another (T2-B 66)",
+                              "Screens/Ops/EXP-02 · Claim composer › AddLineProject"
+                    ],
+                    "note": "T2-B item 66. Positive and negative: kit expenses-live.test.tsx (two T2-B 66 tests). No API change."
+          },
+          {
+                    "id": "MT-T2B-67-ADVANCE-RULES",
+                    "area": "T2-B 67 (Expenses A6): advances on or off, and the most one advance can be (per grade)",
+                    "screen": "Settings › Expenses & travel (4.8) › Advances, travel and cards; Expenses › Advances (EXP-05); Expenses › Trips (trip request)",
+                    "url": "http://localhost:3000/yx/expenses/advances",
+                    "account": "admin@demo-org.test (company admin, expense.policy.manage) for the settings; panel@demo-org.test (employee) on one grade; a second employee on another grade.",
+                    "steps": [
+                              "As the admin open Settings › Expenses & travel. Under 'Advances, travel and cards' find 'Expenses: employees can ask for advances' (Allowed) and 'Expenses: the most one advance can be' (No limit). Set the most to 5000 for the company, then with 'Different for' set 25000 for the employee's grade. Save.",
+                              "As the employee open Expenses › Advances and press Request an advance. Choose Standing imprest, type 25000 and a purpose; send.",
+                              "Negative: request again with 25001.",
+                              "Negative: as the second employee (other grade) request 5001; then request a trip with an advance of 6000.",
+                              "As the admin switch 'employees can ask for advances' to Switched off. As the employee open Expenses › Advances.",
+                              "Negative: as the employee send a draft trip that asks for an advance; then request a trip with no advance.",
+                              "Set both settings back (Allowed, No limit)."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; the grade value shows under 'Different for'. Step 2: the Amount field says 'At most ₹25,000.'; toast 'Advance sent for approval'. Step 3: 'An advance can be at most ₹25,000.' and nothing is sent. Step 4: 'An advance can be at most ₹5,000 for you (your company's limit).' on the advance and on the trip. Step 5: the notice 'Your company does not give expense advances' and no Request an advance button; advances already given are still listed and settle as usual. Step 6: 'Your company does not give expense advances.'; the trip with no advance is saved. Step 7: Request an advance shows again with no limit.",
+                    "stories": [
+                              "Screens/Expenses/EXP-05 · Advance card + request › Advances list · switched off by the company (T2-B 67)",
+                              "Screens/Expenses/EXP-05 · Advance card + request › Advances list · with the most one advance can be (T2-B 67)"
+                    ],
+                    "note": "T2-B item 67, answers 2861 (cap per advance, pay currency; a forex trip advance has no cap) and 2862 (off: no new advance, old ones settle). Settings expense.advance.enabled (default on) and expense.advance.cap (default off; company, legal entity or grade). Positive and negative: API expenses-e4 e2e (T2-B 67 test); kit expenses-travel-live.test.tsx (two T2-B 67 tests)."
+          },
+          {
+                    "id": "MT-T2B-65-DOWNLOAD-YEAR",
+                    "area": "T2-B 65 (Pay B4): Download the year on Me › Payslips",
+                    "screen": "Me › Payslips (PAY-21), the months list",
+                    "url": "http://localhost:3000/yx/me/payslips",
+                    "account": "panel@demo-org.test (employee with published payslips in this tax year and the last one); a second employee.",
+                    "steps": [
+                              "Open Me › Payslips. Under the tax year press 'Download the year'. Open the zip.",
+                              "Choose the earlier tax year and press 'Download the year' again.",
+                              "Press 'Download PDF' on one payslip (the same kind of link).",
+                              "Negative (API): GET /api/v1/payroll/me/payslips/year/2026 and /year/2026-28; then /year/2010-11.",
+                              "Negative (API): copy the path the year link returns and open it twice; open it as the second employee."
+                    ],
+                    "expected": "Step 1: toast 'Payslips downloaded' (5 s); one file payslips-<year>.zip with one PDF per published payslip of that tax year (payslip-2026-09.pdf and so on; off-cycle ones marked -offcycle-), each with your name and the time as a watermark. Step 2: the earlier year's zip. Step 3: the PDF opens in the page and downloads (not a small text file). Step 4: 400 'Give the tax year as 2026-27.' twice; 404 'You have no payslips for that tax year.' Step 5: the second open and the other person get 404 'This link has been used or has expired. Ask for a new one.' Each payslip in the zip is in the audit log as downloaded.",
+                    "stories": [
+                              "Screens/Pay/PAY-21 · Payslip viewer › Months list · Download the year (T2-B 65)"
+                    ],
+                    "note": "T2-B item 65, answer 2863. Migration 202617z0000875 (payslip_links purpose 'year'). Also fixed: Me › Payslips now fetches the PDF through the single-use link the API returns (it was saving the link's JSON). Positive and negative: API payroll-5d e2e (T2-B 65 test); kit employee-pay.test.tsx (two T2-B 65 tests)."
+          },
+          {
+                    "id": "MT-T2B-63-MY-SALARY",
+                    "area": "T2-B 63 (Pay B3): the employee's salary timeline (Me › My pay › My salary)",
+                    "screen": "Me › My pay › My salary (new page next to Payslips)",
+                    "url": "http://localhost:3000/yx/me/salary",
+                    "account": "panel@demo-org.test (employee with at least two approved salaries, one raise approved for a later date, and one raise still waiting); someone with no employee record.",
+                    "steps": [
+                              "Open the Pay menu: My salary is next to Payslips. Open it (confirm it is you if asked).",
+                              "Read the list: the later raise, the salary in force, then earlier salaries.",
+                              "Press 'Show the split' on the salary in force; then 'Hide the split'; then show it again.",
+                              "Negative: look for the raise still waiting for approval, or a turned-down one, and for the names of who asked or approved.",
+                              "Negative: as someone with no employee record open /yx/me/salary; as the employee call GET /api/v1/payroll/employees/<another person's id>/compensation-history.",
+                              "Negative (API): as the employee call GET /api/v1/payroll/employees/<own id>/compensation-history while a raise waits for approval."
+                    ],
+                    "expected": "Step 1: the page 'My salary' with no page scroll at 1278 x 635 for up to four salaries. Step 2: newest first; the later raise has 'Starts on <date>', the salary in force has 'Current'; each shows the yearly CTC, the dates, the change in % on the salary before and the reason. Step 3: a table Component / A month / A year (earnings, then company contributions); it opens again without loading. Step 4: neither is shown, nor any names (answer 2860). Step 5: 'No salary yet.'; 404 for another person. Step 6: only approved salaries, with requestedBy and decidedBy empty; the waiting raise is not in the answer.",
+                    "stories": [
+                              "Screens/Pay/My salary (T2-B 63)"
+                    ],
+                    "note": "T2-B item 63, answer 2860 (approved only, no names: the API's own-history answer leaves out requests waiting or turned down and who asked or approved). The PAY-12 history and the salary on a day already allow self. Positive and negative: API payroll-5b e2e (history test: own view, a pending then turned-down request); kit my-salary.test.tsx (3 tests); web yx-nav.test.ts (My salary next to Payslips)."
+          },
+          {
+                    "id": "MT-T2B-64-PAY-SUMMARY",
+                    "area": "T2-B 64 (Pay B1): the pay summary at the top of Me › Payslips (already live)",
+                    "screen": "Me › Payslips (PAY-21)",
+                    "url": "http://localhost:3000/yx/me/payslips",
+                    "account": "panel@demo-org.test (employee with a published payslip that has a day of unpaid leave); a new joiner with no payslip yet.",
+                    "steps": [
+                              "Open Me › Payslips.",
+                              "Read the top of the page and the Days card.",
+                              "Negative: open the page as the new joiner with no payslip."
+                    ],
+                    "expected": "Step 1: the latest payslip opens first (the last pay cycle). Step 2: net pay, gross, deductions and the payment status at the top; 'Days in <month>' with '<n> paid days of <m> · 1 unpaid'; Download PDF and Raise a query beside it. Step 3: 'No payslips yet.' with how payslips are published.",
+                    "stories": [
+                              "Screens/Pay/PAY-21 · Payslip viewer"
+                    ],
+                    "note": "T2-B item 64 was found live (2753, answer 2864): no change. Kit employee-pay.test.tsx covers the payslip page."
           }
 ]

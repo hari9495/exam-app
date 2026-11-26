@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -555,6 +556,33 @@ describe('Payroll batch 5d', () => {
     await api('emp1', 'get', link.path).expect(404);
     const logged = await inA((tx) => tx.auditLog.findFirst({ where: { action: 'payroll.payslip.downloaded', entityId: s1.id } }));
     expect(JSON.parse(logged?.metadataJson ?? '{}').sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('T2-B 65: Download the year: one zip of the person\'s own published payslips of the tax year, from a single-use link', async () => {
+    const s1 = await slipOf(ids.emp1);
+    const start = Number(month.slice(5)) >= 4 ? Number(month.slice(0, 4)) : Number(month.slice(0, 4)) - 1;
+    const taxYear = `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+    const link = (await api('emp1', 'get', `/payroll/me/payslips/year/${taxYear}`).expect(200)).body;
+    expect(link).toMatchObject({ payslips: 1, expiresInSeconds: 60 });
+    // Only the person it was made for, once; it is not a "view" link either.
+    await api('emp2', 'get', link.path).expect(404);
+    await api('emp1', 'post', `/payroll/me/payslip-links/${String(link.path).split('/').pop()}/open`).expect(404);
+    const zipped = await binary(api('emp1', 'get', link.path)).expect(200);
+    expect(zipped.headers['content-type']).toBe('application/zip');
+    expect(zipped.headers['content-disposition']).toBe(`attachment; filename="payslips-${taxYear}.zip"`);
+    const zip = await JSZip.loadAsync(zipped.body as Buffer);
+    expect(Object.keys(zip.files)).toEqual([`payslip-${month}.pdf`]);
+    const pdf = await zip.file(`payslip-${month}.pdf`)!.async('nodebuffer');
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.toString('latin1')).toContain(`result:${s1.resultHash}`);
+    await api('emp1', 'get', link.path).expect(404);
+    const logged = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.payslip.downloaded', entityId: s1.id } }));
+    expect(logged.some((x) => JSON.parse(x.metadataJson ?? '{}').taxYear === taxYear)).toBe(true);
+    // Negative: a malformed year, a year with no payslips; nobody gets another person's year.
+    await api('emp1', 'get', '/payroll/me/payslips/year/2026').expect(400);
+    await api('emp1', 'get', `/payroll/me/payslips/year/${start}-${String((start + 2) % 100).padStart(2, '0')}`).expect(400);
+    expect((await api('emp1', 'get', '/payroll/me/payslips/year/2010-11').expect(404)).body.message).toBe('You have no payslips for that tax year.');
+    expect((await api('payAdmin', 'get', `/payroll/me/payslips/year/${taxYear}`)).status).not.toBe(200);
   });
 
   it('payslip queries: the employee on their own payslip; payroll of the entity answers; each side does only its part', async () => {

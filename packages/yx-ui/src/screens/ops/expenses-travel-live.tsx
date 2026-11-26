@@ -20,7 +20,7 @@ import { BottomSheet, ConfirmDialog } from '../../components/overlay';
 import { FileUpload } from '../../components/upload';
 import { Segment } from '../../components/segment';
 import { useNarrow } from '../../components/stepper';
-import { formatDate } from '../../lib/format';
+import { formatDate, formatINR } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
 import { useAct } from '../growth/perf-live';
@@ -503,6 +503,8 @@ export interface LiveAdvances {
   onRequest: (purpose: string, amount: string) => Promise<unknown>;
   onRequestTrip: () => void;
   onOpen: (id: string) => void;
+  /** T2-B 67 (A6): advances on or off for the person, and the most one advance can be (pay currency), else null. */
+  policy?: { enabled: boolean; cap: string | null } | null;
 }
 
 export interface LiveAdvance {
@@ -522,14 +524,17 @@ export interface LiveAdvance {
 }
 
 /** The design's request sheet: a standing imprest here; a trip's advance is asked on the trip request. */
-function AdvanceRequestSheet({ phone, onClose, onSave, onRequestTrip }: { phone: boolean; onClose: () => void; onSave: (purpose: string, amount: string) => Promise<unknown>; onRequestTrip: () => void }) {
+function AdvanceRequestSheet({ phone, cap, onClose, onSave, onRequestTrip }: { phone: boolean; /** T2-B 67: the most one advance can be. */ cap?: string | null; onClose: () => void; onSave: (purpose: string, amount: string) => Promise<unknown>; onRequestTrip: () => void }) {
   const [type, setType] = useState('imprest');
   const [amt, setAmt] = useState('');
   const [purpose, setPurpose] = useState('');
   const [failed, setFailed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const { toast } = useAct();
-  const early = useTooEarly([...(moneyInput(amt) && paise(amt) > 0 ? [] : [{ fieldId: 'ad-amount', message: 'Enter an amount above 0, e.g. 15000.' }]), ...(purpose.trim().length >= 3 ? [] : [{ fieldId: 'ad-purpose', message: 'Say what it is for, in at least 3 characters.' }])]);
+  const early = useTooEarly([
+    ...(moneyInput(amt) && paise(amt) > 0 ? (cap && paise(amt) > paise(cap) ? [{ fieldId: 'ad-amount', message: `An advance can be at most ${formatINR(Number(cap))}.` }] : []) : [{ fieldId: 'ad-amount', message: 'Enter an amount above 0, e.g. 15000.' }]),
+    ...(purpose.trim().length >= 3 ? [] : [{ fieldId: 'ad-purpose', message: 'Say what it is for, in at least 3 characters.' }]),
+  ]);
   const save = async () => {
     if (type === 'trip') return onRequestTrip();
     if (early.stop()) return;
@@ -553,7 +558,7 @@ function AdvanceRequestSheet({ phone, onClose, onSave, onRequestTrip }: { phone:
       </FormField>
       {type === 'imprest' ? (
         <>
-          <FormField id="ad-amount" label="Amount" required error={early.errorOf('ad-amount')}>
+          <FormField id="ad-amount" label="Amount" required error={early.errorOf('ad-amount')} helper={cap ? `At most ${formatINR(Number(cap))}.` : undefined}>
             <TextField value={amt} onChange={(x) => setAmt(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
           </FormField>
           <FormField id="ad-purpose" label="Purpose" required error={early.errorOf('ad-purpose')}>
@@ -608,19 +613,28 @@ export function LiveAdvancesList({ live }: { live: LiveAdvances }) {
         empty={<EmptyState compact title={tab === 'mine' ? 'No advances.' : 'Nothing waiting.'} description={tab === 'mine' ? 'For a trip, ask on the trip request. For site expenses, request a standing advance.' : undefined} />}
         rowButtons={(r) => <Button size="sm" onClick={() => live.onOpen(r.id)}>Open</Button>}
       />
-      {requesting && <AdvanceRequestSheet phone={phone} onClose={() => setRequesting(false)} onSave={live.onRequest} onRequestTrip={live.onRequestTrip} />}
+      {requesting && <AdvanceRequestSheet phone={phone} cap={live.policy?.cap} onClose={() => setRequesting(false)} onSave={live.onRequest} onRequestTrip={live.onRequestTrip} />}
     </>
+  );
+  // T2-B 67: switched off, nobody asks for a new advance; those already given settle as usual.
+  const off = live.policy?.enabled === false;
+  const offNotice = off && (
+    <InlineAlert tone="info" title="Your company does not give expense advances">
+      Advances already given are settled as usual, with claims or a bank transfer.
+    </InlineAlert>
   );
   if (phone)
     return (
       <PhoneFrame tab="pay" title="Advances">
+        {offNotice}
         {list}
-        <Button variant="primary" fullWidth onClick={() => setRequesting(true)}>Request an advance</Button>
+        {!off && <Button variant="primary" fullWidth onClick={() => setRequesting(true)}>Request an advance</Button>}
       </PhoneFrame>
     );
   return (
     <OpsDesk area="expenses" active="Advances">
-      <PageHeader title="Advances" description="Money paid to you before you spend it. Your claims settle it first; what is left you return." actions={<Button variant="primary" onClick={() => setRequesting(true)}>Request an advance</Button>} />
+      <PageHeader title="Advances" description="Money paid to you before you spend it. Your claims settle it first; what is left you return." actions={off ? undefined : <Button variant="primary" onClick={() => setRequesting(true)}>Request an advance</Button>} />
+      {offNotice}
       {list}
     </OpsDesk>
   );

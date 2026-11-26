@@ -290,6 +290,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Over-limit and payment', key: 'expense.route.default', synonyms: ['reimbursement', 'pay claims'] },
       { section: 'Over-limit and payment', key: 'expense.route.payout_above', synonyms: ['direct payout'] },
       { section: 'Over-limit and payment', key: 'expense.payroll_cutoff_day', synonyms: ['payroll cut-off'] },
+      { section: 'Advances, travel and cards', key: 'expense.advance.enabled', synonyms: ['advances on', 'advances off', 'imprest'] },
+      { section: 'Advances, travel and cards', key: 'expense.advance.cap', synonyms: ['advance limit', 'advance cap', 'grade'] },
       { section: 'Advances, travel and cards', key: 'expense.advance.settle_days', synonyms: ['advance settlement', 'imprest'] },
       { section: 'Advances, travel and cards', key: 'expense.advance.recovery_instalments' },
       { section: 'Advances, travel and cards', key: 'expense.card.match_amount_within', synonyms: ['corporate card', 'card statement'] },

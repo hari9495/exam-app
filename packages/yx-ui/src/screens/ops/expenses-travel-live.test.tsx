@@ -98,6 +98,32 @@ describe('EXP-05 advances', () => {
     await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
     await waitFor(() => expect(p.onRequest).toHaveBeenCalledWith('Hosur site petty cash', '15000'));
   });
+  it('T2-B 67: with a cap, an amount up to it is sent; the helper says the cap', async () => {
+    const p = advances({ policy: { enabled: true, cap: '25000.00' } });
+    show(<AdvanceScreen live={p} />);
+    await ue.click(screen.getByRole('button', { name: 'Request an advance' }));
+    expect(screen.getByText('At most ₹25,000.')).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '25000');
+    await ue.type(screen.getByRole('textbox', { name: /Purpose/ }), 'Hosur site petty cash');
+    await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(p.onRequest).toHaveBeenCalledWith('Hosur site petty cash', '25000'));
+  });
+  it('negative T2-B 67: above the cap nothing is sent; switched off, there is a notice and no Request an advance', async () => {
+    const p = advances({ policy: { enabled: true, cap: '25000.00' } });
+    const { unmount } = show(<AdvanceScreen live={p} />);
+    await ue.click(screen.getByRole('button', { name: 'Request an advance' }));
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '25001');
+    await ue.type(screen.getByRole('textbox', { name: /Purpose/ }), 'Hosur site petty cash');
+    await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(await screen.findByText('An advance can be at most ₹25,000.')).toBeInTheDocument();
+    expect(p.onRequest).not.toHaveBeenCalled();
+    unmount();
+    show(<AdvanceScreen live={advances({ policy: { enabled: false, cap: null } })} />);
+    expect(screen.getByText('Your company does not give expense advances')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request an advance' })).toBeNull();
+    // Advances already given still list.
+    expect(screen.getByRole('row', { name: /Mumbai distributor meet \(trip\)/ })).toBeInTheDocument();
+  });
   it('overdue: the employee is told what happens, with the company’s instalments', () => {
     show(<AdvanceScreen live={advance()} />);
     expect(screen.getByText('Settlement window ended')).toBeInTheDocument();

@@ -192,13 +192,18 @@ export interface PayslipMonth {
   note?: string;
 }
 
-export function PayslipMonths({ years, year, onYear, months, selectedId, onSelect }: { years: string[]; year: string; onYear: (y: string) => void; months: PayslipMonth[]; selectedId: string | null; onSelect: (id: string) => void }) {
+export function PayslipMonths({ years, year, onYear, months, selectedId, onSelect, onDownloadYear, downloading }: { years: string[]; year: string; onYear: (y: string) => void; months: PayslipMonth[]; selectedId: string | null; onSelect: (id: string) => void; /** T2-B 65 (Keka B4): one zip of the year's payslips. */ onDownloadYear?: () => void; downloading?: boolean }) {
   return (
     <nav className="yx-pay-months__list" aria-label="Payslips by month">
       {years.length > 1 ? (
         <Select aria-label="Tax year" value={year} onChange={(v) => v && onYear(v)} options={years.map((y) => ({ value: y, label: `Tax year ${y}` }))} />
       ) : (
         <p className="yx-pay-muted">Tax year {year}</p>
+      )}
+      {onDownloadYear && (
+        <Button size="sm" icon={Download} loading={downloading} onClick={onDownloadYear} aria-label={`Download the year ${year}`}>
+          Download the year
+        </Button>
       )}
       <ul>
         {months.map((m) => (
@@ -531,6 +536,7 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
               months={PAYSLIP_HISTORY.map((p) => ({ id: p.id, label: p.period, net: p.id === 'sep' ? net : p.net }))}
               selectedId={past?.id ?? 'sep'}
               onSelect={(id) => setPast(id === 'sep' ? null : (PAYSLIP_HISTORY.find((p) => p.id === id) ?? null))}
+              onDownloadYear={() => toast({ title: 'Payslips downloaded', description: 'Your 2026-27 payslips are in your downloads as one zip file.', tone: 'success' })}
             />
             {body}
           </div>
@@ -1857,6 +1863,8 @@ export interface LivePayslips {
   queries?: PayslipQueryView[] | null;
   /** Founder answer 16: withdraw one's own query (PATCH payroll/queries/:id, status closed, no reply needed). */
   onWithdraw?: (q: PayslipQueryView) => Promise<unknown>;
+  /** T2-B 65: one zip of the tax year's payslips ("2026-27"). */
+  onDownloadYear?: (taxYear: string) => Promise<unknown>;
 }
 
 const QUERY_STATE: Record<PayslipQueryView['status'], { label: string; tone: BadgeTone }> = {
@@ -1999,6 +2007,13 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
             months={inYear.map((x) => ({ id: x.id, label: monthName(x.month), net: num(x.net), ...(x.runType === 'offcycle' ? { note: 'Off-cycle' } : {}) }))}
             selectedId={slip.id}
             onSelect={setOpenId}
+            {...(live.onDownloadYear
+              ? {
+                  downloading: busy === 'year',
+                  onDownloadYear: () =>
+                    void run('year', () => live.onDownloadYear!(year)).then((ok) => ok && toast({ title: 'Payslips downloaded', description: `Your ${year} payslips are in your downloads as one zip file.`, tone: 'success' })),
+                }
+              : {})}
           />
           <div className="yx-pay-stack">
             {error && (

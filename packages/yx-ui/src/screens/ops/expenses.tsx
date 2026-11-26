@@ -461,7 +461,7 @@ function SampleClaimComposer({ device = 'desk', title, lines: initial, advance, 
             </Button>
           </div>
         )}
-        <BottomSheet open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<Button variant="primary" fullWidth onClick={() => setAddOpen(false)}>Add line</Button>}>
+        <BottomSheet open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<><Button fullWidth>Save and add another</Button><Button variant="primary" fullWidth onClick={() => setAddOpen(false)}>Add line</Button></>}>
           {addForm}
         </BottomSheet>
       </PhoneFrame>
@@ -487,7 +487,7 @@ function SampleClaimComposer({ device = 'desk', title, lines: initial, advance, 
         }
       />
       <Workspace main={body} rail={submitted ? null : <>{lead}{gstOn && <p className="yx-ops-muted">GST capture is on for your company. Check the supplier GSTIN on each line.</p>}</>} />
-      <Drawer open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<><Button onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => setAddOpen(false)}>Add line</Button></>}>
+      <Drawer open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<><Button onClick={() => setAddOpen(false)}>Cancel</Button><Button>Save and add another</Button><Button variant="primary" onClick={() => setAddOpen(false)}>Add line</Button></>}>
         {addForm}
       </Drawer>
     </OpsDesk>
