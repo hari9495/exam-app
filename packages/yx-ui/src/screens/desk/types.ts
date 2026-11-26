@@ -943,6 +943,8 @@ export interface TicketCosts {
   hourlyRate: string | null;
   timeCost: string;
   uncostedMinutes: number;
+  /** 2810: the day the ticket was opened (IST); a cost line is dated from then to today. */
+  openedOn: string;
   lines: { id: string; kind: 'fixed' | 'material'; description: string; amount: string; costOn: string; who: string; canRemove: boolean }[];
   total: string;
   departments: string[];

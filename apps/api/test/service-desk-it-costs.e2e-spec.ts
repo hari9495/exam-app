@@ -149,12 +149,24 @@ describe('Helpdesk: IT costs into department budgets (2719)', () => {
     expect(kept).toMatchObject({ removedBy: users.itAgent, removeReason: 'Courier paid by the vendor' });
   });
 
+  it('2810: a cost line keeps the date chosen (today, the day the ticket was opened); the card says when the ticket was opened', async () => {
+    const dated = (await api('itAgent', 'post', `/desk/tickets/${ids.ticket}/costs`).send({ kind: 'fixed', description: 'Data cable', amount: '120', costOn: today }).expect(201)).body;
+    const c = await costs('itAgent', ids.ticket);
+    expect(c.openedOn).toBe(today);
+    expect(c.lines.find((l: { id: string }) => l.id === dated.id)).toMatchObject({ costOn: today });
+    await api('itAgent', 'post', `/desk/tickets/${ids.ticket}/costs/${dated.id}/remove`).send({ reason: 'Test line' }).expect(201);
+  });
+
   it('negative: a bad kind, amount or future date is refused; other desks record no costs and show none', async () => {
     const add = (body: object) => api('itAgent', 'post', `/desk/tickets/${ids.ticket}/costs`).send(body);
     await add({ kind: 'travel', description: 'Cab', amount: '100' }).expect(400);
     await add({ kind: 'fixed', description: 'Cab', amount: '-100' }).expect(400);
     await add({ kind: 'fixed', description: 'Cab', amount: '1e5' }).expect(400);
     await add({ kind: 'fixed', description: 'Cab', amount: '100', costOn: '2999-01-01' }).expect(400);
+    // 2810: not before the ticket was opened (it was opened today).
+    const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    expect((await add({ kind: 'fixed', description: 'Cab', amount: '100', costOn: yesterday }).expect(400)).body.message).toMatch(/before the ticket was opened/);
+    await add({ kind: 'fixed', description: 'Cab', amount: '100', costOn: 'not-a-date' }).expect(400);
     await api('hrAgent', 'post', `/desk/tickets/${ids.hrTicket}/costs`).send({ kind: 'fixed', description: 'Cab', amount: '100' }).expect(400);
     expect(await costs('hrAgent', ids.hrTicket)).toBeUndefined();
     // An agent of another desk cannot add costs to this IT ticket.

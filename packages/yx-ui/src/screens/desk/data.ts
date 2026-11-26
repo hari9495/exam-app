@@ -308,6 +308,7 @@ export const COSTS: TicketCosts = {
   hourlyRate: '650.00',
   timeCost: '975.00',
   uncostedMinutes: 0,
+  openedOn: '2026-11-20',
   lines: [
     { id: 'cl-1', kind: 'material', description: 'Replacement screen, Dell Latitude 5440', amount: '8450.00', costOn: '2026-11-24', who: 'Suresh Iyer', canRemove: true },
     { id: 'cl-2', kind: 'fixed', description: 'Courier to the repair centre', amount: '350.00', costOn: '2026-11-25', who: 'Farah Khan', canRemove: false },

@@ -122,7 +122,7 @@ export const ResolvedRated: S = { name: 'Resolved · closes on, the rating', ren
 export const OutsideHours: S = { name: 'Raised outside hours', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, raisedOutsideHours: true } })} /> };
 // Answer 1661: an IT desk's agent sets or changes the device a ticket is about (any company device, by tag or name).
 export const Application: S = { name: 'IT ticket · application set by an IT agent (answer 2057)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, app: { id: 'a1', name: 'Tally Prime' }, appOptions: [{ id: 'a1', name: 'Tally Prime' }, { id: 'a2', name: 'Attendance devices' }] }, onSetApp: async () => undefined })} /> };
-export const Costs: S = { name: 'IT ticket · costs: time at the team rate, fixed and material (answer 2719)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, costs: COSTS } })} /> };
+export const Costs: S = { name: 'IT ticket · costs: time at the team rate, fixed and material, dated (2719, 2810)', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, costs: COSTS } })} /> };
 export const CostsAddTooEarly: S = { name: 'IT ticket · costs · Add cost pressed with nothing filled', render: Costs.render, play: play(press('Add cost')) };
 export const CostsTakeOff: S = { name: 'IT ticket · costs · take a cost off (reason asked)', render: Costs.render, play: play(pressFirst('Take off')) };
 export const CostsNoRate: S = { name: 'IT ticket · costs · team has no hourly rate', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, costs: { ...COSTS, hourlyRate: null, timeCost: '0.00', uncostedMinutes: 45, lines: [], total: '0.00' } } })} /> };

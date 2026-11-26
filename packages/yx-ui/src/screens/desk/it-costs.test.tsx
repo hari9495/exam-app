@@ -7,6 +7,7 @@ import { CostsPanel } from './ticket';
 import { ItBudgetsScreen } from './it-budgets';
 import { DeskSetupScreen } from './setup';
 import { COSTS, DESK, DETAIL, HR_DESK, IT_BUDGETS } from './data';
+import { dayKey } from '../../lib/dates';
 
 // GLPI 7 (answer 2719): ticket costs, the IT budgets page and the team's hourly rate.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -22,7 +23,36 @@ describe('CostsPanel', () => {
     await ue.type(screen.getByLabelText('What for'), 'Docking station');
     await ue.type(screen.getByLabelText('Amount'), '6200.50');
     await ue.click(screen.getByRole('button', { name: 'Add cost' }));
-    await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ kind: 'material', description: 'Docking station', amount: '6200.5' }));
+    await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ kind: 'material', description: 'Docking station', amount: '6200.5', costOn: dayKey(new Date()) }));
+  });
+
+  it('2810: the date can be set to the day the ticket was opened', async () => {
+    const onAdd = ok();
+    render(<CostsPanel costs={COSTS} work busy={false} onAdd={onAdd} onRemove={ok()} />);
+    await ue.type(screen.getByLabelText('What for'), 'Spare charger');
+    await ue.type(screen.getByLabelText('Amount'), '1800');
+    const date = screen.getByLabelText('Date');
+    await ue.clear(date);
+    await ue.type(date, '20 Nov 2026{Enter}');
+    await ue.click(screen.getByRole('button', { name: 'Add cost' }));
+    await waitFor(() => expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ costOn: '2026-11-20' })));
+  });
+
+  it('negative 2810: a date before the ticket was opened, or no date, is refused and nothing is sent', async () => {
+    const onAdd = ok();
+    render(<CostsPanel costs={COSTS} work busy={false} onAdd={onAdd} onRemove={ok()} />);
+    await ue.type(screen.getByLabelText('What for'), 'Spare charger');
+    await ue.type(screen.getByLabelText('Amount'), '1800');
+    const date = screen.getByLabelText('Date');
+    await ue.clear(date);
+    await ue.type(date, '19 Nov 2026');
+    await ue.tab();
+    expect(await screen.findByText(/Choose a date on or after 20 Nov 2026/)).toBeInTheDocument();
+    await ue.clear(date);
+    await ue.tab();
+    await ue.click(screen.getByRole('button', { name: 'Add cost' }));
+    expect(await screen.findByText('Choose the date of the cost.')).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
   });
 
   it('negative: nothing is sent without what and how much; only own lines can be taken off, with a reason', async () => {

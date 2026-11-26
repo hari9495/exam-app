@@ -1382,7 +1382,16 @@ export class TicketsService {
       hourlyRate: group?.hourlyRate?.toFixed(2) ?? null,
       timeCost: timeCost.toFixed(2),
       uncostedMinutes: time.filter((e) => !e.hourlyRate).reduce((s, e) => s + e.minutes, 0),
-      lines: lines.map((l) => ({ id: l.id, kind: l.kind as 'fixed' | 'material', description: l.description, amount: l.amount.toFixed(2), costOn: l.costOn.toISOString().slice(0, 10), who: users.get(l.createdBy) ?? 'Someone', canRemove: l.createdBy === a.userId || lead })),
+      openedOn: todayIst(t.createdAt),
+      lines: lines.map((l) => ({
+        id: l.id,
+        kind: l.kind as 'fixed' | 'material',
+        description: l.description,
+        amount: l.amount.toFixed(2),
+        costOn: l.costOn.toISOString().slice(0, 10),
+        who: users.get(l.createdBy) ?? 'Someone',
+        canRemove: l.createdBy === a.userId || lead,
+      })),
       total: timeCost.add(linesTotal).toFixed(2),
       departments: depts.map((d) => d.name),
     };
@@ -1397,6 +1406,8 @@ export class TicketsService {
       if (desk?.kind !== 'it') throw new BadRequestException('Costs are recorded on IT desks.');
       const costOn = dto.costOn ?? todayIst();
       if (costOn > todayIst()) throw new BadRequestException('A cost is recorded for today or earlier.');
+      // 2810: not before the ticket was opened (IST day).
+      if (costOn < todayIst(t.createdAt)) throw new BadRequestException(`A cost cannot be dated before the ticket was opened (${todayIst(t.createdAt)}).`);
       const charge = await this.chargeOf(tx, a.ctx.organizationId, t, costOn);
       const line = await tx.sdCostLine.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, kind: dto.kind, description: dto.description.trim(), amount: dto.amount, costOn: day(costOn), departmentId: charge.departmentId, createdBy: a.userId } });
       await audit(tx, a, 'desk.ticket.cost_added', 'sd_ticket', t.id, { lineId: line.id, kind: dto.kind, amount: dto.amount, costOn });

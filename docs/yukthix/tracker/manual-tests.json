@@ -28990,5 +28990,24 @@
                               "Screens/Pay/PAY-28 · Arrears base confirmation (E3 · Rule changes and triggers, all three)"
                     ],
                     "note": "Positive and negative (api payroll-5g e2e: E3 trigger test (maker, switches, once per change, joining replace, confirmed base kept, other company and no-key refusals), E3 ESI April test, proposal preview and accept; payroll-pf-ceiling; kit offcycle-live E3 tests). Migrations 860 (switches, arrears_runs, proposal impact) and 861 (trigger sources)."
+          },
+          {
+                    "id": "MT-2810-IT-COST-DATE",
+                    "area": "Helpdesk: the date of an IT cost line (answer 2810)",
+                    "screen": "Helpdesk › an IT ticket › Costs card",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "it-agent@demo-org.test (IT desk agent); panel@demo-org.test (employee) for the negative access step.",
+                    "steps": [
+                              "As the IT agent open an IT ticket opened a few days ago. In the Costs card look at Date: it shows today.",
+                              "Add Material, Spare charger, 1800 with the date set to the day the ticket was opened; press Add cost.",
+                              "Negative: set Date to the day before the ticket was opened and leave the field; then set a date in the future; then clear Date and press Add cost.",
+                              "Negative (API): POST /api/v1/desk/tickets/<id>/costs with costOn the day before the ticket was opened, then with tomorrow.",
+                              "Negative access: as the employee open the same ticket in My tickets."
+                    ],
+                    "expected": "Step 1: Date is today; the calendar greys out days before the ticket was opened and after today. Step 2: toast 'Cost added.' (5 s); the line shows the chosen date. Step 3: 'Choose a date on or after <opened day>', then 'Choose a date on or before <today>', then 'Choose the date of the cost.'; nothing is added. Step 4: 400 'A cost cannot be dated before the ticket was opened (<day>).' and 400 'A cost is recorded for today or earlier.' Step 5: no Costs card.",
+                    "stories": [
+                              "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs"
+                    ],
+                    "note": "Answer 2810. Positive and negative: API service-desk-it-costs.e2e-spec.ts (2810 test and the negative test); kit it-costs.test.tsx (2810 tests)."
           }
 ]
