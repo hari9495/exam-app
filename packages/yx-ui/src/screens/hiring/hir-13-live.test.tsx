@@ -130,4 +130,12 @@ describe('Answer 226: the job workspace "Referrals & internal" tab (live)', () =
     expect(screen.getByRole('switch', { name: /Show on internal jobs/ })).toBeDisabled();
     expect(screen.getByRole('switch', { name: /Open for referrals/ })).toBeDisabled();
   });
+
+  it('answer 2761: with the release setting on, the sheet says the manager is asked and HR decides after 5 working days', async () => {
+    show(<InternalJobsScreen jobs={OPEN} applications={[]} live={live({ manager: { name: 'Divya Menon', when: 'on_apply', release: true } })} />);
+    await ue.click(screen.getByRole('button', { name: `Apply for ${OPEN[0]!.title}` }));
+    expect(screen.getByText(/Your manager, Divya Menon, is asked to release you when you apply\. An offer can be made only once they agree; if they have not answered in 5 working days, HR decides\./)).toBeInTheDocument();
+    // Negative: never "told" at the same time.
+    expect(screen.queryByText(/is told when you/)).toBeNull();
+  });
 });

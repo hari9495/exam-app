@@ -449,6 +449,66 @@ describe('HLP-12 answer 62: Add injury leave', () => {
   });
 });
 
+describe('answer 2754: starter leave types', () => {
+  const starters = [
+    { key: 'casual', code: 'CL', name: 'Casual leave', kind: 'casual', summary: '12 days a year', added: false },
+    { key: 'earned', code: 'EL', name: 'Earned leave', kind: 'earned', summary: '15 days a year, carry forward up to 30', added: true },
+  ];
+  it('first set-up offers the gallery; Add adds one starter by its key; an added one shows Added', async () => {
+    const onAddStarter = vi.fn(async () => ({ id: 'lt-cl' }));
+    wrap(<LeavePoliciesScreen live={policies({ onAddStarter, data: { ...TIME_SETUP, types: [], policies: [], starters } })} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Choose starter leave types' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('Added')).toBeInTheDocument();
+    expect(within(drawer).getAllByRole('button', { name: 'Add' })).toHaveLength(1);
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Add' }));
+    expect(onAddStarter).toHaveBeenCalledWith('casual');
+  });
+
+  it('negative: with leave types already there, no first set-up prompt; a refusal shows in the drawer', async () => {
+    const onAddStarter = vi.fn(async () => { throw new Error('Casual leave (CL) is already there.'); });
+    wrap(<LeavePoliciesScreen live={policies({ onAddStarter, data: { ...TIME_SETUP, starters } })} />);
+    expect(screen.queryByRole('button', { name: 'Choose starter leave types' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole('button', { name: 'Leave types' }).find((b) => b.getAttribute('aria-haspopup') === 'menu')!);
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Add starter leave types' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Add' }));
+    expect((await screen.findAllByText('Casual leave (CL) is already there.')).length).toBeGreaterThan(0);
+  });
+
+  it('a starter type fills its suggested days into a new policy', async () => {
+    const data = { ...TIME_SETUP, policies: [], types: TIME_SETUP.types.map((t) => (t.kind === 'earned' ? { ...t, starter: 'earned', suggestedLine: { annualDays: 15, frequency: 'monthly' as const, proRata: true, rounding: 0.5, carryForwardMax: 30 } } : t)) };
+    wrap(<LeavePoliciesScreen live={policies({ data })} />);
+    await userEvent.click(screen.getAllByRole('button', { name: 'New policy' })[0]);
+    expect(await screen.findByText(/15 days a year.*carries forward up to 30 days/)).toBeInTheDocument();
+  });
+});
+
+describe('answer 2755: service bands on a policy line', () => {
+  it('adds bands that save with the dated version; out-of-order bands block the save', async () => {
+    const live = policies({ data: { ...TIME_SETUP, policies: [] } });
+    wrap(<LeavePoliciesScreen live={live} />);
+    await userEvent.click(screen.getAllByRole('button', { name: 'New policy' })[0]);
+    const drawer = screen.getByRole('dialog');
+    await userEvent.type(within(drawer).getByLabelText(/^Policy name/), 'Staff');
+    await userEvent.click(within(drawer).getAllByRole('button', { name: 'Edit' })[0]);
+    const days = within(drawer).getByLabelText(/Earned leave: days a year/);
+    await userEvent.clear(days);
+    await userEvent.type(days, '15');
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Add service band' }));
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Add service band' }));
+    // Defaults: after 2 years 18 days, after 5 years 21 days. Make band 2 start before band 1: refused.
+    const second = within(drawer).getByLabelText(/^Band 2: after years/);
+    await userEvent.clear(second);
+    await userEvent.type(second, '1');
+    await userEvent.click(within(drawer).getByRole('button', { name: /^Save from/ }));
+    expect(within(drawer).getAllByText(/Each band starts after more years than the one before/).length).toBeGreaterThan(0);
+    expect(live.onAddVersion).not.toHaveBeenCalled();
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Remove band 2' }));
+    await userEvent.click(within(drawer).getByRole('button', { name: /^Save from/ }));
+    await waitFor(() => expect(live.onAddVersion).toHaveBeenCalledWith('pol-new', expect.objectContaining({ lines: [expect.objectContaining({ leaveTypeId: 'el', annualDays: 15, bands: [{ fromYears: 2, annualDays: 18 }] })] })));
+  });
+});
+
 // Founder answer 141: the location editor says where Factories Act coverage comes from.
 describe('TIM-31 Locations: Factories Act coverage (answer 141)', () => {
   const withFa = (factoriesAct: NonNullable<(typeof base.data.locations)[number]['factoriesAct']>) => ({ ...base.data, locations: base.data.locations.map((l, i) => (i === 0 ? { ...l, factoriesAct } : l)) });

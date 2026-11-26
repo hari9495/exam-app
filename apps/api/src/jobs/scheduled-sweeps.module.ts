@@ -35,6 +35,7 @@ import { AssetAlertsService } from '../lifecycle/asset-alerts.service';
 // (mirrors HrisModule / BulkCandidateEmailModule).
 import { ProjectsModule } from '../projects/projects.module';
 import { QuestionsModule } from '../questions/questions.module';
+import { InternalApplicationsModule } from '../internal-applications/internal-applications.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { QuestionsModule } from '../questions/questions.module';
     AssistantModule,
     PlatformModule,
     OrgStructureModule,
+    InternalApplicationsModule,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

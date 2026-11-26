@@ -11,11 +11,11 @@ import { payOn } from '../payroll/fnf.service';
 import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
-import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, leaveYearFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
+import { Facts, LeaveRules, asDate, companySetting, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, leaveYearFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
 import { addDays, daysBetween, isWeeklyOff, leaveYearOf } from './time-maths';
 import { cloneToYear, holidayCompOffDue, recountedDay, templateRows } from './holiday-rules';
 import { ScheduleBook, lockedDates } from './schedule';
-import { BLOCK_DATE_EXEMPT, blockWindowProblem, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashTerms, encashWindowOpen, longestRun, toCsv } from './leave-rules';
+import { BLOCK_DATE_EXEMPT, blockWindowProblem, rosterCompOffDays, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashTerms, encashWindowOpen, longestRun, toCsv } from './leave-rules';
 import { FEED_STATES, HOLIDAY_PROVIDER, HolidayProvider } from './holiday-feed.provider';
 import type { BlockDateDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, LongAbsenceDto, ReportQueryDto } from './leave-v2.dto';
 
@@ -1381,6 +1381,48 @@ export class LeaveV2Service implements OnModuleInit {
         }
       }
       if (n) await audit(tx, c, 'leave.comp_off.holiday_on_weekly_off', 'leave_ledger', org, { entries: n });
+      return n;
+    });
+  }
+
+  /**
+   * Answer 2757 (job, with accruals): when leave.comp_off.auto_from_roster is on, a weekly off or full holiday the
+   * published roster put the person to work on, and that they worked, is credited as comp-off without a claim. The claim
+   * and the manager's approval stay for everything else. Looks back over the claim window; the period key makes a
+   * repeat do nothing.
+   */
+  async creditRosteredCompOff(org: string, now = new Date()): Promise<number> {
+    const c: CompanyContext = { organizationId: org, isSuperAdmin: false };
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      if ((await companySetting(tx, c, 'leave.comp_off.auto_from_roster')) !== 'on' || !(await this.compOffType(tx, org))) return 0;
+      const today = todayIn('Asia/Kolkata', now);
+      const from = addDays(today, -Number(await companySetting(tx, c, 'leave.comp_off.claim_within_days')));
+      const rostered = await tx.rosterEntry.findMany({ where: { organizationId: org, published: true, isOff: false, shiftId: { not: null }, workOn: { gte: asDate(from), lt: asDate(today) } }, select: { employeeId: true, workOn: true } });
+      if (!rostered.length) return 0;
+      const book = await ScheduleBook.load(tx, org);
+      await book.prime([...new Set(rostered.map((r) => r.employeeId))], from, today);
+      let n = 0;
+      for (const r of rostered) {
+        const on = dateOf(r.workOn);
+        const f = await factsOn(tx, org, r.employeeId, on);
+        if (!f) continue;
+        const day = await tx.attendanceDay.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: r.workOn }, select: { workedMinutes: true } });
+        if (!day?.workedMinutes) continue;
+        const h = (await holidaysFor(tx, org, f.locationId, on, on, f.employeeId)).map.get(on);
+        const rule = (await rulesFor(tx, org, f.locationId, on))(on);
+        const days = rosterCompOffDays({
+          usualOff: (await book.day(f, on, false)).weeklyOff,
+          fullHoliday: Boolean(h && !h.halfDay),
+          rostered: true,
+          workedMinutes: day.workedMinutes,
+          halfDayMinutes: rule.halfDayMinutes,
+          fullDayMinutes: rule.fullDayMinutes,
+          claimed: Boolean(await tx.compOffClaim.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workedOn: r.workOn, status: { in: ['pending', 'approved'] } }, select: { id: true } })),
+          credited: Boolean(await tx.leaveLedgerEntry.findFirst({ where: { organizationId: org, employeeId: f.employeeId, kind: 'comp_off', entryOn: r.workOn }, select: { id: true } })),
+        });
+        if (days && (await this.creditCompOff(tx, { organizationId: org, employeeId: f.employeeId, workedOn: on, days, key: `roster:${on}`, reason: `Comp-off for rostered work on ${fmt(on)}${h ? ` (${h.name})` : ''}` }))) n++;
+      }
+      if (n) await audit(tx, c, 'leave.comp_off.rostered', 'leave_ledger', org, { entries: n });
       return n;
     });
   }

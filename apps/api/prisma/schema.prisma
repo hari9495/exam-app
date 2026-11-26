@@ -1811,9 +1811,16 @@ model InternalApplication {
   note            String    @db.VarChar(2000)
   managerUserId   String?   @map("manager_user_id") @db.Uuid
   managerToldAt   DateTime? @map("manager_told_at") @db.Timestamptz(3)
+  /// Answer 2761: 'pending' | 'approved' | 'refused'; null = no release needed (setting off, or no manager).
+  releaseStatus      String?   @map("release_status") @db.VarChar(10)
+  releaseWfRequestId String?   @map("release_wf_request_id") @db.Uuid
+  releaseAskedAt     DateTime? @map("release_asked_at") @db.Timestamptz(3)
+  /// When the 5-working-day wait ran out and HR got the decision too.
+  releaseHrAt        DateTime? @map("release_hr_at") @db.Timestamptz(3)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([organizationId, applicantUserId, createdAt], map: "internal_applications_applicant_idx")
+  // internal_applications_release_idx (organization_id, release_status) WHERE pending: a partial index, in migration 852 only.
   @@map("internal_applications")
 }
 
@@ -3277,6 +3284,8 @@ model EmployeeAssignment {
   employmentTypeId     String    @map("employment_type_id") @db.Uuid
   /// 5c-D2: minimum-wage skill class (unskilled, semi_skilled, skilled, highly_skilled); null until HR sets it.
   skillClass           String?   @map("skill_class") @db.VarChar(16)
+  /// Answer 2762: HR marks the job as a manager or supervisor role (Tamil Nadu and Delhi LWF exclusions).
+  supervisory          Boolean   @default(false)
   /// G1 (gap pass C1): contracted hours a week; null = full-time (the normal week of the location).
   hoursPerWeek         Decimal?  @map("hours_per_week") @db.Decimal(4, 1)
   managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid
@@ -6009,6 +6018,8 @@ model LeaveType {
   rules          Json     @default("{}")
   active         Boolean  @default(true)
   version        Int      @default(1)
+  /// Answer 2754: the starter it was added from (casual, sick, earned ...); null for a type HR made. Still editable.
+  starter        String?  @db.VarChar(20)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)

@@ -64,6 +64,16 @@ describe('Settings › Hiring (6.1, live)', () => {
     expect((await screen.findAllByText('Hiring settings saved')).length).toBeGreaterThan(0);
   });
 
+  it('answer 2761: the manager release is a company setting, off by default; turning it on saves it', async () => {
+    routes(['ats.settings.manage']);
+    wrap(<YxHiringSettingsPage />);
+    const release = await screen.findByRole('checkbox', { name: /The current manager releases the person before an offer/ });
+    expect(release).not.toBeChecked();
+    await ue.click(release);
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    await waitFor(() => expect(calls).toEqual([['PUT /hiring/settings', { changes: [{ key: 'hiring.internal.manager_release', value: 'on' }] }]]));
+  });
+
   it('read-only without the key, and while acting for someone else', async () => {
     routes(['pipeline:manage'], { ...SETTINGS, canEdit: false });
     const { unmount } = wrap(<YxHiringSettingsPage />);

@@ -2,7 +2,7 @@ import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloa
 
 // P06 rules that need no database: change types (M01 §3.3), the fold that turns changes into dated rows
 // (§4.3, §4.4, YX-HIS-06), retro reach (YX-HIS-12) and affected periods (§4.5).
-const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', skillClass: null, hoursPerWeek: null, employmentTypeId: 'et', managerEmployeeId: 'm1', positionId: null, costCentres: [], dottedLineManagerIds: [] };
+const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', skillClass: null, supervisory: false, hoursPerWeek: null, employmentTypeId: 'et', managerEmployeeId: 'm1', positionId: null, costCentres: [], dottedLineManagerIds: [] };
 
 describe('change types (M01 §3.3)', () => {
   it('each type changes only its own facts', () => {

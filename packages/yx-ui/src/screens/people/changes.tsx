@@ -25,7 +25,7 @@ import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText, useRun } from '../org/org-kit';
-import { changeInput, DOTTED_TYPES, EMPTY_CHANGE, FIELD_LABEL, FIELDS, forEntity, HOURS_TYPES, kindLabel, Lines, monthName, moneyLine, MOVE, moveInput, moveNeeds, orList, PAY_TYPES, RAISABLE, requiredFor, routeLine, SKILL_CLASS_LABEL, TYPE_LABEL, type ChangeDraft, type ChangeDrawerProps, type ChangeField, type Raisable } from '../history/history-kit';
+import { changeInput, DOTTED_TYPES, EMPTY_CHANGE, FIELD_LABEL, FIELDS, forEntity, HOURS_TYPES, kindLabel, Lines, monthName, moneyLine, MOVE, moveInput, moveNeeds, orList, PAY_TYPES, RAISABLE, requiredFor, routeLine, SKILL_CLASS_LABEL, SUPERVISORY_LABEL, TYPE_LABEL, type ChangeDraft, type ChangeDrawerProps, type ChangeField, type Raisable } from '../history/history-kit';
 import type { ChangeInput, Impact, ImpactLine, MoveHandlers, MoveInput, PersonOption, PromotionRule, TransferOptions } from '../history/types';
 import { LiveIncrementWizard, type LiveIncrement } from './increment';
 import { LiveEmployeeImport, type LiveImport, SavedImportNotice } from './import';
@@ -508,6 +508,7 @@ export function ChangeActionDrawer({ options, employeeId, initial, onPreview, on
       designationId: forEntity(options.designations, entity),
       gradeId: forEntity(options.grades, entity),
       skillClass: Object.entries(SKILL_CLASS_LABEL).map(([value, label]) => ({ value, label })),
+      supervisory: Object.entries(SUPERVISORY_LABEL).map(([value, label]) => ({ value, label })),
       employmentTypeId: forEntity(options.employmentTypes, entity),
       costCentreId: forEntity(options.costCentres, entity),
       managerEmployeeId: (options.managers ?? options.people).filter((p) => p.id !== draft.employeeId).map((p) => ({ value: p.id, label: `${p.name}${p.employeeCode ? ` · ${p.employeeCode}` : ''}` })),

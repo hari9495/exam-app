@@ -103,8 +103,13 @@ export const EXIT_INTERVIEW_FORM: FormDef = {
  * Working days skip Saturdays, Sundays and the holidays of the person's calendar. Open clearance never moves it.
  */
 export function wagesDueBy(lwd: string, holidays: ReadonlySet<string>): string {
-  let d = lwd;
-  let left = 2;
+  return workingDaysAfter(lwd, 2, holidays);
+}
+
+/** The day `n` working days after `from` (Monday to Friday less `holidays`; answers 973, 2836). */
+export function workingDaysAfter(from: string, n: number, holidays: ReadonlySet<string>): string {
+  let d = from;
+  let left = n;
   while (left > 0) {
     d = nextDay(d, 1);
     if (workday(d, holidays)) left--;

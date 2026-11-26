@@ -1062,6 +1062,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         age,
       },
       joinedOn: dateOf(em.joinedOn),
+      // Answer 2762: the job on the last day of the period says whether the person is a manager or supervisor.
+      supervisory: Boolean((covering(assigns, to) ?? assigns[assigns.length - 1])?.supervisory),
       ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2), ...(await this.ptWageSoFar(tx, org, employmentId, run.periodStart, fyStart, month, components)) },
       oneTime: [
         ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}), ...(o.paidSeparately ? { separate: true } : {}), ...(o.grossUp ? { grossUp: true } : {}), ...(o.sourceRef && sheets.has(o.sourceRef) ? { settled: true } : {}) })),

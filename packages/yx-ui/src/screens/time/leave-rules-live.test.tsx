@@ -49,6 +49,26 @@ describe('TIM-27 type rules, live', () => {
     await waitFor(() => expect(live.onSaveType).toHaveBeenCalledWith('el', expect.objectContaining({ rules: expect.objectContaining({ maxRequestsPerMonth: 2, minGapDays: 10, allowedWeekdays: [1, 3] }) })));
   });
 
+  it('answers 2756 / 2758: most days in a row and types it cannot touch are saved; a request bigger than the row limit is refused', async () => {
+    const live = editor('el');
+    wrap(<LeaveTypeEditorScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: 'Rules' }));
+    await ue.type(screen.getByLabelText(/^Most days in a row/), '3');
+    await ue.type(screen.getByLabelText(/^Most days in one request/), '4');
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getAllByText('More than the limit in a row of 3 days.').length).toBeGreaterThan(0);
+    expect(live.onSaveType).not.toHaveBeenCalled();
+    await ue.clear(screen.getByLabelText(/^Most days in one request/));
+    await ue.click(screen.getByRole('combobox', { name: "Can't be taken next to" }));
+    const first = (await screen.findAllByRole('option'))[0];
+    const picked = first.textContent ?? '';
+    await ue.click(first);
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    const typeId = TIME_SETUP.types.find((t) => picked.includes(t.name))!.id;
+    await waitFor(() => expect(live.onSaveType).toHaveBeenCalledWith('el', expect.objectContaining({ rules: expect.objectContaining({ maxConsecutiveDays: 3, notWithTypes: [typeId] }) })));
+  });
+
   it('partially paid needs a share of 1 to 99; it saves as one pay step', async () => {
     const live = editor('cl');
     wrap(<LeaveTypeEditorScreen live={live} />);

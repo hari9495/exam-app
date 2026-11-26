@@ -48,6 +48,12 @@ export class TimeController {
     return this.leave.me(ctx);
   }
 
+  /** Answer 2760: my peers (the same manager today) away in the next two weeks; "away" only, no type or times. */
+  @Get('me/peers-away')
+  myPeersAway(@CurrentTenant() ctx: TenantContext) {
+    return this.leave.peersAway(ctx);
+  }
+
   // Batch A item 2 (C2): every request, filtered, a page at a time (the Home shows the last 13 months).
   @Get('me/leave/history')
   myLeaveHistory(@CurrentTenant() ctx: TenantContext, @Query() q: LeaveHistoryQueryDto) {
@@ -267,6 +273,13 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   createType(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LeaveTypeDto) {
     return this.setup.createType(ctx, this.user(req), dto);
+  }
+
+  /** Answer 2754: adds one starter leave type from the gallery. */
+  @Post('setup/types/starter/:key')
+  @RequirePermissions('leave.settings.manage')
+  addStarter(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('key') key: string) {
+    return this.setup.addStarter(ctx, this.user(req), key);
   }
 
   /** HLP-12 answer 62: creates the injury leave type on HR's press (never automatically). */

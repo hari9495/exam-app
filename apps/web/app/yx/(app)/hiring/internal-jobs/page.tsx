@@ -9,7 +9,7 @@ import { useOrgBranding } from '../../../../../lib/hooks/useBranding';
 import { internalJob, type ApiInternalJob } from '../../../../../lib/yx-internal-jobs';
 
 type Mine = { entryId: string; jobTitle: string; status: InternalApplication['status']; appliedAt: string };
-type Eligibility = { eligible: boolean; title?: string; detail?: string; managerName: string | null; tellManager: 'on_apply' | 'at_offer' };
+type Eligibility = { eligible: boolean; title?: string; detail?: string; managerName: string | null; tellManager: 'on_apply' | 'at_offer'; managerRelease?: boolean };
 
 // Hiring › Internal jobs (HIR-13): the designed screen with `live`, for anyone with an employee record. The jobs shown on
 // Internal jobs, whether the person may apply (company rules, founder decision 6: settings hiring.internal.*) and their
@@ -32,7 +32,7 @@ export default function YxInternalJobsPage() {
         onRetry: () => void Promise.all([jobs.refetch(), mine.refetch(), rule.refetch()]),
         companyName: branding.data?.name || 'your company',
         eligibility: { eligible: Boolean(rule.data?.eligible), title: rule.data?.title, detail: rule.data?.detail },
-        manager: { name: rule.data?.managerName ?? null, when: rule.data?.tellManager ?? 'on_apply' },
+        manager: { name: rule.data?.managerName ?? null, when: rule.data?.tellManager ?? 'on_apply', release: Boolean(rule.data?.managerRelease) },
         onApply: async (input: InternalApplyInput) => {
           await apiFetch('/internal-applications', { method: 'POST', body: JSON.stringify({ jobId: input.jobId, note: input.note, ...(input.resumeBase64 ? { resumeBase64: input.resumeBase64 } : {}) }) }, accessToken ?? undefined);
           await qc.invalidateQueries({ queryKey: ['internal-applications'] });
