@@ -29,7 +29,9 @@ export const DocumentsManager: S = { name: 'Documents tab · manager (restricted
 export const Performance: S = { name: 'Performance tab', render: () => <PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="performance" /> };
 export const PerformanceHr: S = { name: 'Performance tab · HR sees feedback shared with HR', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="performance" /> };
 export const Learning: S = { name: 'Learning tab', render: () => <PersonWorkspace persona="emp" relation="self" today={TODAY} defaultTab="learning" /> };
-export const Assets: S = { name: 'Assets tab', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="assets" /> };
+export const Assets: S = { name: 'Assets tab (assets and licence seats)', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="assets" /> };
+// IT assets answer 2826: the person's managers see the licence seats too (no Issue asset).
+export const AssetsManager: S = { name: 'Assets tab · manager (assets and licence seats)', render: () => <PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="assets" /> };
 export const History: S = { name: 'History tab (timeline, corrections, roles)', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="history" /> };
 export const AsOfPast: S = { name: 'History · as on 1 Jul 2024', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="history" defaultAsOf={d(2024, 7, 1)} /> };
 export const AsOfFuture: S = { name: 'History · as on 1 Oct 2026 (scheduled)', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="history" defaultAsOf={d(2026, 10, 1)} /> };

@@ -13,8 +13,8 @@ import { contractEndsOn, contractNoticeOn } from './asset-categories';
 // IT assets part 3. Answer 2716: the IT and Admin supplier list, separate from hiring's staffing vendors and from
 // contract-labour contractors (they keep their own lists and compliance checks). The list is company-wide (a supplier
 // has no place): anyone holding asset.view or asset.manage at any scope reads it (to pick it on an asset); anyone holding
-// asset.manage at any scope adds, edits and retires suppliers (retired, never deleted; assets keep them). Every change
-// is audited.
+// asset.manage at any scope adds and edits suppliers; only company-wide asset managers retire or restore one (answer
+// 2823; retired, never deleted; assets keep them). Every change is audited.
 // Answer 2717: contracts. A contract has an optional place (legal entity or location; none = company-wide, like an
 // asset); asset.view over its place reads it, asset.manage over its place changes it (a place-less contract: company-wide
 // asset.manage only). Its value is money: only asset.manage of its place and asset.finance.view see it (answer 2711).
@@ -24,11 +24,13 @@ import { contractEndsOn, contractNoticeOn } from './asset-categories';
 // over it changes; place-less = company-wide). Seats go to a current employee or a device the caller sees and are counted
 // (no install scan); beyond the seats bought a seat is refused unless the licence allows over quota. Its cost is money
 // (answer 2711). A seat given to someone already leaving joins their exit clearance at once (ExitsService.assetItemsIn);
-// freeing a seat signs off its open clearance item, and clearing the item frees the seat. Every change is audited.
+// freeing a seat signs off its open clearance item, and clearing or waiving the item frees the seat (answer 2825). Every change is audited.
 
 type Contact = { name: string; email: string | null; phone: string | null };
 
 const manages = (v: Viewer) => v.grants.has('asset.manage') && !v.actingForOther;
+/** Answer 2823: asset.manage over the whole company (a place-less record), not one site. */
+const managesCompany = (v: Viewer) => reachesPlace(v, 'asset.manage', { legalEntityId: null, locationId: null });
 const seesMoney = (v: Viewer, k: { legalEntityId: string | null; locationId: string | null }) => reachesPlace(v, 'asset.manage', k) || reachesPlace(v, 'asset.finance.view', k);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
@@ -58,6 +60,7 @@ export class ItAssetsService {
       const assets = (await tx.asset.findMany({ where: { organizationId: org, supplierId: { in: rows.map((r) => r.id) } }, select: { supplierId: true, legalEntityId: true, locationId: true } })).filter((a) => reachesPlace(v, 'asset.view', a));
       return {
         canManage: manages(v),
+        canRetire: managesCompany(v),
         rows: rows.map((r) => ({
           id: r.id,
           name: r.name,
@@ -88,6 +91,7 @@ export class ItAssetsService {
         const cur = await tx.itSupplier.findFirst({ where: { organizationId: org, id } });
         if (!cur) throw new NotFoundException('No such supplier.');
         const retiredAt = dto.retired === undefined ? cur.retiredAt : dto.retired ? (cur.retiredAt ?? new Date()) : null;
+        if (Boolean(retiredAt) !== Boolean(cur.retiredAt) && !managesCompany(v)) throw new ForbiddenException('Only company-wide asset managers retire or restore a supplier.');
         const n = await tx.itSupplier.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, retiredAt, version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this supplier. Reload it.');
         await audit(tx, c, 'asset.supplier.updated', 'it_supplier', id, { from: { name: cur.name, gstin: cur.gstin, contacts: cur.contacts, notes: cur.notes }, to: data });
@@ -220,6 +224,29 @@ export class ItAssetsService {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This supplier already has a contract with that number.');
         throw e;
       }
+    });
+  }
+
+  /**
+   * Answer 2824: an express contract renewed by hand for one more length: the start stays, the end moves by its length
+   * (an ended one whose new end is still ahead is active again). A tacit contract renews by itself (the daily check).
+   */
+  async renewContract(ctx: TenantContext, user: ScopeUser, id: string, version: number) {
+    const v = await this.viewer(user);
+    if (!manages(v)) throw new ForbiddenException('Only asset managers renew contracts.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const cur = await tx.assetContract.findFirst({ where: { organizationId: org, id } });
+      if (!cur || !reachesPlace(v, 'asset.view', cur)) throw new NotFoundException('No such contract.');
+      if (!reachesPlace(v, 'asset.manage', cur)) throw new ForbiddenException('You cannot change this contract.');
+      if (cur.renewal !== 'express') throw new BadRequestException('A tacit contract renews by itself at its end.');
+      const renewals = cur.renewals + 1;
+      const from = iso(cur.endsOn);
+      const to = contractEndsOn(iso(cur.startsOn), cur.months, renewals);
+      const n = await tx.assetContract.updateMany({ where: { organizationId: org, id, version }, data: { renewals, endsOn: asDate(to), ...(to >= todayIst() ? { status: 'active' } : {}), version: { increment: 1 } } });
+      if (!n.count) throw new ConflictException('Someone else changed this contract. Reload it.');
+      await audit(tx, c, 'asset.contract.renewed', 'asset_contract', id, { from, to, times: 1, renewals, months: cur.months, by: 'hand' });
+      return { id, endsOn: to, renewals };
     });
   }
 

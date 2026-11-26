@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AssetCategoryDto, AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, BlockItemDto, SignOffDto } from './exit-dto';
+import { AssetCategoryDto, AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, BlockItemDto, SignOffDto, VersionDto } from './exit-dto';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
@@ -297,6 +297,14 @@ export class ExitsController {
   @RequirePermissions('asset.manage')
   saveAssetContract(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractDto) {
     return this.itAssets.saveContract(ctx, this.user(req), id, dto);
+  }
+
+  // Answer 2824: renew an express contract for one more length (asset.manage over its place; checked by the service).
+  @Post('asset-contracts/:id/renew')
+  @HttpCode(200)
+  @RequirePermissions('asset.manage')
+  renewAssetContract(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
+    return this.itAssets.renewContract(ctx, this.user(req), id, dto.version);
   }
 
   // Answer 2718: software licences and their seats (asset.view over the licence's place reads; asset.manage over it

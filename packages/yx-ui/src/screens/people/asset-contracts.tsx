@@ -3,8 +3,9 @@
 // notice period, support hours, a value (money: managers of its place and Finance only) and the assets it covers, with
 // an optional cap. The list opens a contract in a drawer with its assets; asset managers of its place edit it.
 // Answer 2714: a contract within its notice window shows "Give notice by". Helpdesk tickets to a supplier come later.
+// Answer 2824: an express contract has "Renew" (one more length; the start stays), for asset managers of its place.
 import { useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, RefreshCw } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Card, DescriptionList, PageHeader } from '../../components/shell';
@@ -13,6 +14,7 @@ import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { CurrencyField, NumberField, TextField } from '../../components/inputs';
+import { ConfirmDialog } from '../../components/overlay';
 import { MultiSelect, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { Text } from '../../components/foundations';
@@ -83,6 +85,8 @@ export interface LiveContracts {
   locations: (Choice & { entityId: string })[];
   assets: Choice[];
   onSave: (id: string | null, input: ContractInput) => Promise<unknown>;
+  /** Answer 2824: renew an express contract for one more length (with its version). */
+  onRenew: (id: string, version: number) => Promise<unknown>;
   onOpenAsset?: (id: string) => void;
   /** A contract to open at once (from an asset page). */
   open?: string | null;
@@ -109,7 +113,7 @@ const renewalText = (k: Pick<ContractRow, 'renewal' | 'months'>) => (k.renewal =
 /** The contract list: the designed view (sample data) or, with `live`, the company's contracts. */
 export function AssetContractsScreen(props: { rows: ContractRow[]; today: string; money?: boolean; canAdd?: boolean; show?: Show; open?: string; editing?: 'new' | string } | { live: LiveContracts }) {
   if ('live' in props) return <ContractList {...props.live} />;
-  return <ContractList state="ready" onRetry={() => undefined} rows={props.rows} today={props.today} money={props.money} canAdd={props.canAdd ?? true} {...SAMPLE_FORM} onSave={() => Promise.resolve()} onOpenAsset={() => undefined} open={props.open} show={props.show} editing={props.editing} />;
+  return <ContractList state="ready" onRetry={() => undefined} rows={props.rows} today={props.today} money={props.money} canAdd={props.canAdd ?? true} {...SAMPLE_FORM} onSave={() => Promise.resolve()} onRenew={() => Promise.resolve()} onOpenAsset={() => undefined} open={props.open} show={props.show} editing={props.editing} />;
 }
 
 /** The design's form choices (sample data). */
@@ -120,7 +124,7 @@ const SAMPLE_FORM = {
   assets: [{ value: 'a1', label: 'LT-0418 · Dell Latitude 5440' }, { value: 'a2', label: 'LT-0419 · Dell Latitude 5440' }, { value: 'a3', label: 'PR-0007 · HP LaserJet M404' }],
 };
 
-function ContractList({ state, onRetry, today, rows, money, canAdd, suppliers, entities, locations, assets, onSave, onOpenAsset, open: initialOpen, show: initialShow = 'active', editing: initialEditing }: LiveContracts & { show?: Show; editing?: 'new' | string }) {
+function ContractList({ state, onRetry, today, rows, money, canAdd, suppliers, entities, locations, assets, onSave, onRenew, onOpenAsset, open: initialOpen, show: initialShow = 'active', editing: initialEditing }: LiveContracts & { show?: Show; editing?: 'new' | string }) {
   const [show, setShow] = useState<Show>(initialShow);
   const [viewing, setViewing] = useState<string | null>(initialOpen ?? null);
   const [editing, setEditing] = useState<'new' | string | null>(initialEditing ?? null);
@@ -174,7 +178,7 @@ function ContractList({ state, onRetry, today, rows, money, canAdd, suppliers, e
           </div>
         </Card>
       )}
-      {viewed && !editing && <ContractView k={viewed} today={today} onClose={() => setViewing(null)} onEdit={viewed.canManage ? () => setEditing(viewed.id) : undefined} onOpenAsset={onOpenAsset} />}
+      {viewed && !editing && <ContractView k={viewed} today={today} onClose={() => setViewing(null)} onEdit={viewed.canManage ? () => setEditing(viewed.id) : undefined} onRenew={viewed.canManage && viewed.renewal === 'express' ? () => onRenew(viewed.id, viewed.version) : undefined} onOpenAsset={onOpenAsset} />}
       {(editing === 'new' || edited) && (
         <ContractForm key={editing} k={edited} today={today} money={money !== false} suppliers={suppliers} entities={entities} locations={locations} assets={assets} onClose={() => setEditing(null)} onSave={onSave} />
       )}
@@ -182,7 +186,10 @@ function ContractList({ state, onRetry, today, rows, money, canAdd, suppliers, e
   );
 }
 
-function ContractView({ k, today, onClose, onEdit, onOpenAsset }: { k: ContractRow; today: string; onClose: () => void; onEdit?: () => void; onOpenAsset?: (id: string) => void }) {
+function ContractView({ k, today, onClose, onEdit, onRenew, onOpenAsset }: { k: ContractRow; today: string; onClose: () => void; onEdit?: () => void; onRenew?: () => Promise<unknown>; onOpenAsset?: (id: string) => void }) {
+  const { toast } = useToast();
+  const [renewing, setRenewing] = useState(false);
+  const renewedTo = endOf(k.startsOn, k.months * (k.renewals + 2));
   const cols: TableColumn<ContractRow['assets'][number]>[] = [
     { key: 'tag', header: 'Tag', type: 'id', value: (a) => a.tag, render: onOpenAsset ? (a) => <Link href={`#${a.id}`} onClick={(e) => (e.preventDefault(), onOpenAsset(a.id))}>{a.tag}</Link> : undefined, width: 130 },
     { key: 'name', header: 'Asset', value: (a) => a.name, width: 220 },
@@ -197,6 +204,11 @@ function ContractView({ k, today, onClose, onEdit, onOpenAsset }: { k: ContractR
       footer={
         <>
           <Button onClick={onClose}>Close</Button>
+          {onRenew && (
+            <Button icon={RefreshCw} onClick={() => setRenewing(true)}>
+              Renew
+            </Button>
+          )}
           {onEdit && (
             <Button variant="primary" icon={Pencil} onClick={onEdit}>
               Edit contract
@@ -226,6 +238,20 @@ function ContractView({ k, today, onClose, onEdit, onOpenAsset }: { k: ContractR
         {k.assets.length ? <DataTable label="Assets this contract covers" columns={cols} rows={k.assets} getRowId={(a) => a.id} state="ready" /> : <InlineAlert tone="info" title="No assets you see are on this contract." />}
         {k.hiddenAssets > 0 && <InlineAlert tone="info" title={`${k.hiddenAssets} more ${k.hiddenAssets === 1 ? 'asset is' : 'assets are'} at places you do not look after.`} />}
       </div>
+      {renewing && onRenew && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRenewing(false)}
+          title={`Renew ${k.number}?`}
+          consequence={`It runs ${months(k.months)} more: the end moves from ${formatDate(day(k.endsOn))} to ${formatDate(day(renewedTo))}. The start stays ${formatDate(day(k.startsOn))}.`}
+          confirmLabel="Renew"
+          onConfirm={async () => {
+            await onRenew();
+            toast({ tone: 'success', title: `${k.number} renewed to ${formatDate(day(renewedTo))}.` });
+            setRenewing(false);
+          }}
+        />
+      )}
     </Drawer>
   );
 }

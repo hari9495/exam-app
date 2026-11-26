@@ -23,7 +23,7 @@ import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/forma
 import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
 import { canSeePay, daysBetween, fieldVisibility, ibanProblem, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
-import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
+import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_SEATS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
 import { ClassBadge, FactRail, FieldList, ListSkeleton, MeFrame, PeopleFrame, SplitLayout, StatusBadge, useSay } from './people-kit';
 import { FamilyCards, type RecordFamily } from './family';
 import { PayAccessDialog, PayAccessNote, type PayAccessRow } from './pay-access';
@@ -49,6 +49,14 @@ export interface RecordAsset {
   issued: Date;
   condition: string;
   ack: string;
+}
+/** IT assets answer 2826: a software licence seat given to the person. */
+export interface RecordSeat {
+  seatId: string;
+  software: string;
+  version: string | null;
+  given: Date;
+  expires: Date | null;
 }
 export interface RecordRole {
   role: string;
@@ -207,7 +215,7 @@ export interface LiveRecord {
   /** null: no Time tab (no leave access). */
   time: { balances: { type: string; used: number; total: number }[]; unpaid: number | null; attendance?: { title: string; rows: [string, string][] } | null } | null;
   documents: { rows: RecordDoc[]; hidden: number; onUpload?: () => void; onRequest?: () => void; onVerify?: (d: RecordDoc) => void; onReject?: (d: RecordDoc) => void; onDownload?: (d: RecordDoc) => void } | null;
-  assets: { rows: RecordAsset[]; onIssue?: () => void } | null;
+  assets: { rows: RecordAsset[]; seats?: RecordSeat[]; onIssue?: () => void } | null;
   /** `company` names the company in the Person roles panel (PPL-35). */
   history: { rows: JobChange[]; roles: RecordRole[]; company?: string } | null;
   asOf: Date | null;
@@ -349,7 +357,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
   );
 
   const docCount = live ? live.documents?.rows.length || undefined : ARJUN_DOCS.length;
-  const assetCount = live ? live.assets?.rows.length || undefined : ARJUN_ASSETS.length;
+  const assetCount = live ? (live.assets?.rows.length ?? 0) + (live.assets?.seats?.length ?? 0) || undefined : ARJUN_ASSETS.length + ARJUN_SEATS.length;
   const tabs: { id: RecordTab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
     ...(!live || live.job ? [{ id: 'job' as const, label: 'Job' }] : []),
@@ -581,7 +589,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               </TabsContent>
               <TabsContent value="performance">{live ? live.performance && <PerformanceTab persona={persona} data={live.performance} /> : <PerformanceTab persona={persona} />}</TabsContent>
               <TabsContent value="learning">{live ? live.learning && <LearningTab rows={live.learning} /> : <LearningTab />}</TabsContent>
-              <TabsContent value="assets">{live ? live.assets && <AssetsTab name={name} rows={live.assets.rows} onIssue={persona === 'hr' ? live.assets.onIssue : undefined} /> : <AssetsTab name={ARJUN.name} rows={ARJUN_ASSETS} onIssue={persona === 'hr' ? () => {} : undefined} />}</TabsContent>
+              <TabsContent value="assets">{live ? live.assets && <AssetsTab name={name} rows={live.assets.rows} seats={live.assets.seats ?? []} onIssue={persona === 'hr' ? live.assets.onIssue : undefined} /> : <AssetsTab name={ARJUN.name} rows={ARJUN_ASSETS} seats={ARJUN_SEATS} onIssue={persona === 'hr' ? () => {} : undefined} />}</TabsContent>
               <TabsContent value="history">
                 {live ? live.history && <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={live.history.rows} roles={live.history.roles} /> : <HistoryTab asOf={asOf} onAsOf={setAsOf} today={today} rows={ARJUN_HISTORY} roles={ARJUN_ROLES} />}
               </TabsContent>
@@ -1095,7 +1103,7 @@ function LearningTab({ rows = LEARNING_SAMPLE }: { rows?: RecordLearning[] }) {
   );
 }
 
-function AssetsTab({ name, rows, onIssue }: { name: string; rows: RecordAsset[]; onIssue?: () => void }) {
+function AssetsTab({ name, rows, seats, onIssue }: { name: string; rows: RecordAsset[]; seats: RecordSeat[]; onIssue?: () => void }) {
   return (
     <div className="yx-ppl__stack">
       {onIssue && (
@@ -1106,7 +1114,7 @@ function AssetsTab({ name, rows, onIssue }: { name: string; rows: RecordAsset[];
         </div>
       )}
       {rows.length === 0 ? (
-        <EmptyState title={`No assets with ${name}`} description="Assets issued to this person appear here." />
+        seats.length === 0 && <EmptyState title={`No assets with ${name}`} description="Assets issued to this person and their licence seats appear here." />
       ) : (
         <PlainTable
           label={`Assets with ${name}`}
@@ -1120,6 +1128,20 @@ function AssetsTab({ name, rows, onIssue }: { name: string; rows: RecordAsset[];
           rows={rows}
           getRowId={(a) => a.tag}
         />
+      )}
+      {seats.length > 0 && (
+        <Card title="Licence seats">
+          <PlainTable
+            label={`Licence seats of ${name}`}
+            columns={[
+              { key: 'software', header: 'Software', cell: (x: RecordSeat) => (x.version ? `${x.software} ${x.version}` : x.software) },
+              { key: 'given', header: 'Given', date: true, cell: (x: RecordSeat) => formatDate(x.given) },
+              { key: 'expires', header: 'Expires', date: true, cell: (x: RecordSeat) => (x.expires ? formatDate(x.expires) : 'No expiry') },
+            ]}
+            rows={seats}
+            getRowId={(x) => x.seatId}
+          />
+        </Card>
       )}
     </div>
   );
