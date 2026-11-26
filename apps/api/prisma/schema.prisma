@@ -2276,8 +2276,10 @@ model ApprovalPolicy {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   requestType    String   @map("request_type") @db.VarChar(60)
-  /// [{ name, approver: manager | manager_2 | hr, mode: any | all }], 1 to 5 steps
+  /// The "otherwise" route: [{ name, approver, mode, ... }], 1 to 5 steps
   steps          Json
+  /// E2: ordered rules before it, [{ name, when (a P19 condition group), steps }]
+  rules          Json     @default("[]")
   version        Int      @default(1)
   updatedBy      String?  @map("updated_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -5696,6 +5698,10 @@ model WfRequest {
   /// Who the request is about: the inbox names this person.
   subjectPersonId String?   @map("subject_person_id") @db.Uuid
   steps           Json
+  /// E2: the request type's declared fields as submitted (what routed it), for "Try it" and audit.
+  payload         Json      @default("{}")
+  /// E2: the company policy version that gave the steps; null for the module's built-in steps.
+  policyVersion   Int?      @map("policy_version")
   status          String    @default("pending") @db.VarChar(10)
   currentStep     Int       @default(0) @map("current_step") @db.SmallInt
   risk            String    @default("normal") @db.VarChar(6)
@@ -16169,4 +16175,33 @@ model ReportSchedule {
 
   @@index([organizationId, createdBy], map: "report_schedules_org_idx")
   @@map("report_schedules")
+}
+
+/// E2 part 3 (O26): grade -> the largest amount someone of that grade approves, per request family. Empty by default.
+/// E2 part 7 (answer 2648): a company's notice text per event for the two hiring request types.
+model ApprovalNoticeText {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  requestType    String   @map("request_type") @db.VarChar(60)
+  event          String   @db.VarChar(20)
+  subject        String   @db.VarChar(150)
+  body           String   @db.VarChar(2000)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, requestType, event], map: "approval_notice_texts_org_type_event_key")
+  @@map("approval_notice_texts")
+}
+
+model ApprovalLimit {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  family         String   @db.VarChar(20)
+  gradeId        String   @map("grade_id") @db.Uuid
+  amount         Decimal  @db.Decimal(14, 2)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, family, gradeId], map: "approval_limits_org_family_grade_key")
+  @@map("approval_limits")
 }

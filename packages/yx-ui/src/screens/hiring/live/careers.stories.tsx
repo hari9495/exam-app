@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { JobBoardsScreen, type JobBoardsScreenProps } from './boards';
 
-// Recruitment, wired (batch AT3; M10-BUILD-DESIGN §6). In the affordance guard set ('screens-hiring-live').
-// boards is sample props shared with the tests, not stories.
-const meta: Meta = { title: 'Screens/Hiring/Live · Careers site and job boards', parameters: { layout: 'fullscreen' }, excludeStories: ['boards'] };
+// HIR-32 Job boards (batch AT3; M10-BUILD-DESIGN §6; drawn here as the design, E2 part 6): where jobs are posted, the
+// feed link and Easy Apply. In the affordance guard set ('screens-hiring-hir-32'). boards is sample props shared with the
+// tests, not stories.
+const meta: Meta = { title: 'Screens/Hiring/HIR-32 · Job boards', parameters: { layout: 'fullscreen' }, excludeStories: ['boards'] };
 export default meta;
 type S = StoryObj;
 
@@ -21,5 +22,11 @@ export const boards: JobBoardsScreenProps = {
   onCopy: ok,
 };
 
-export const JobBoards: S = { render: () => <JobBoardsScreen {...boards} /> };
-export const NoJobBoards: S = { render: () => <JobBoardsScreen {...boards} boards={[]} /> };
+export const JobBoards: S = { name: 'HIR-32 · Job boards', render: () => <JobBoardsScreen {...boards} /> };
+export const NoJobBoards: S = { name: 'HIR-32 · No boards yet', render: () => <JobBoardsScreen {...boards} boards={[]} /> };
+export const WithEasyApply: S = {
+  name: 'HIR-32 · Easy Apply addresses',
+  render: () => <JobBoardsScreen {...boards} easyApply={{ providers: [{ id: 'linkedin', label: 'LinkedIn', configured: true, ingestUrl: 'https://api.example.com/api/v1/public/easy-apply/linkedin' }, { id: 'indeed', label: 'Indeed', configured: false, ingestUrl: 'https://api.example.com/api/v1/public/easy-apply/indeed' }], onSet: ok, onTurnOff: ok }} />,
+};
+export const Loading: S = { name: 'HIR-32 · Loading', render: () => <JobBoardsScreen {...boards} state="loading" /> };
+export const Failed: S = { name: 'HIR-32 · Could not load', render: () => <JobBoardsScreen {...boards} state="error" /> };

@@ -6,6 +6,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { REDIS_CONNECTION, createRedisConnection, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { ApprovalsEngine } from './approvals-engine.service';
 import { ApprovalPolicies } from './approval-policies';
+import { ApprovalNotices } from './approval-notices';
+import { HiringChainsMove } from './hiring-chains-move';
 import { ApprovalPoliciesController } from './approval-policies.controller';
 import { WorkflowController } from './workflow.controller';
 import { ApprovalsOversight } from './approvals-oversight';
@@ -53,7 +55,7 @@ export class WorkflowJobs implements OnModuleInit, OnModuleDestroy {
 @Module({
   imports: [AuditModule, NotificationsModule],
   controllers: [WorkflowController, ActionLinkController, ChannelLinksController, ApprovalPoliciesController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalCards, ApprovalPolicies, ApprovalsEngine, ApprovalsOversight, WorkflowJobs],
-  exports: [ApprovalsEngine, ApprovalCards],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalCards, ApprovalPolicies, ApprovalNotices, HiringChainsMove, ApprovalsEngine, ApprovalsOversight, WorkflowJobs],
+  exports: [ApprovalsEngine, ApprovalCards, ApprovalPolicies],
 })
 export class WorkflowModule {}

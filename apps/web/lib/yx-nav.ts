@@ -150,7 +150,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.1': ['/yx/settings/access', ...peoplePage('2.1')],
   '2.2': peoplePage('2.2'),
   '2.3': ['/yx/settings/security', ...peoplePage('2.3'), '/yx/settings/identity-providers', '/yx/settings/support-access'],
-  '2.4': [...peoplePage('2.4'), '/yx/settings/approval-policies'],
+  '2.4': [...peoplePage('2.4'), '/yx/settings/approval-policies', '/yx/settings/approval-limits'],
   '2.5': [...peoplePage('2.5'), '/yx/settings/checklists'],
   '2.6': peoplePage('2.6'),
   '2.7': peoplePage('2.7'),
@@ -459,7 +459,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
           // HIR-21: recruitment agencies and staffing vendors (one model); recruiters review their submissions here.
           ...when(any('ats.agency.manage', 'ats.staffing.manage', 'org:manage_settings', 'pipeline:manage', 'ats.staffing.billing'), L('hiring-vendors', 'Vendors', '/yx/hiring/vendors')),
-          ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
+          // Answer 2650: the approval rules editor for requisitions and offers, so it follows the editor's keys (E2).
+          ...when(settingsView, L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           // HIR-10: HR with the background-check key (Special data; the API checks the joiner's scope).
           ...when(has('lifecycle.bgv.manage'), L('hiring-bgv', 'Background checks', '/yx/hiring/bgv')),
@@ -666,6 +667,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(settingsView, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),
         // S-6 (answer 1330): the approval policy editor, beside 2.4 Approvals.
         ...when(settingsView, L('approval-policies', 'Approval policies', '/yx/settings/approval-policies')),
+        // E2 (answer 2645): the approval limits by grade that "up the chain to the limit" steps read.
+        ...when(settingsView, L('approval-limits', 'Approval limits', '/yx/settings/approval-limits')),
         // Answer 1563: the company audit log.
         ...when(has('audit.view') && !support, L('audit-log', 'Audit log', AUDIT_LOG)),
         // Batch B item 3 (admin B2): deleted records across YukthiX, restorable until the company's keep days pass.

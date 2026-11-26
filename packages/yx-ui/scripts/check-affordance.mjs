@@ -44,8 +44,10 @@ const GUARD = [
   'screens-performance-live',
   // M03 payroll, wired (5a onwards, consultants 5h and special pay 5i included).
   'screens-pay-live',
-  // M10 recruitment, wired (AT1 onwards).
-  'screens-hiring-live',
+  // M10 recruitment, wired (AT1 onwards); HIR-32 job boards.
+  'screens-hiring-live', 'screens-hiring-hir-32',
+  // E2 approval rules editor (PLT-12, 32, 34, 57 live).
+  'screens-platform-e2',
 ];
 
 // Documented exceptions: [story id prefix or '*', selector, reason, rules skipped (all when omitted)].
