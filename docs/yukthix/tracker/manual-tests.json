@@ -29145,5 +29145,26 @@
                               "Screens/Settings/6.1 Hiring (Internal jobs)"
                     ],
                     "note": "Positive and negative (api e2e hiring-internal-release 7: off by default, setting values and key, asked not told, offer refused while pending and after a refusal, only the manager decides, HR after 5 working days once, rerun, other company, off again, RLS; unit release.spec 3, offers and hiring-settings specs; kit hir-13-live and hiring-live; web yx-hiring-hir13 and yx-settings-hiring). Migration 852 (internal_applications release_status, release_wf_request_id, release_asked_at, release_hr_at). Engine request type hiring.internal_release; hourly sweep internal-release-handover at :35."
+          },
+          {
+                    "id": "MT-T2B-66-SAVE-AND-ADD",
+                    "area": "T2-B 66 (Expenses A2): \"Save and add another\" on a claim line",
+                    "screen": "Expenses › Claims › a draft claim › Add line drawer (EXP-02)",
+                    "url": "http://localhost:3000/yx/expenses/claims",
+                    "account": "panel@demo-org.test (employee with a draft claim).",
+                    "steps": [
+                              "Open a draft claim and press Add line. Choose Mileage, type 42 km and press 'Save and add another'.",
+                              "In the fresh form type 18 km and press Add line.",
+                              "Choose 'A bill without a receipt', choose a category, type the amount and date, and press 'Save and add another'; then press Cancel.",
+                              "Negative: press Add line, choose Mileage and press 'Save and add another' with the distance empty.",
+                              "Negative: open an existing line with Edit line (or Edit distance).",
+                              "Negative: choose 'Receipt' (upload) in the Add line drawer."
+                    ],
+                    "expected": "Step 1: toast 'Line added' (5 s); the drawer stays open with an empty Mileage form; the claim shows the 42 km line behind it. Step 2: a second line, the drawer closes. Step 3: the bill line is added and a fresh bill form opens; Cancel closes it. Step 4: 'Enter the distance in km.' and nothing is saved. Step 5: the edit drawer has Save line only, no 'Save and add another'. Step 6: no 'Save and add another' (each receipt becomes its own line). Buttons have a border, hover, pointer and focus ring.",
+                    "stories": [
+                              "Screens/Ops/EXP-02 · Claim composer › Add a line · what are you adding, Save and add another (T2-B 66)",
+                              "Screens/Ops/EXP-02 · Claim composer › AddLineProject"
+                    ],
+                    "note": "T2-B item 66. Positive and negative: kit expenses-live.test.tsx (two T2-B 66 tests). No API change."
           }
 ]
