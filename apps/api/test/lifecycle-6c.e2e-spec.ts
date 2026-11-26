@@ -33,7 +33,7 @@ describe('Lifecycle batch 6c', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hr' | 'hr2' | 'mgr' | 'it' | 'ravi' | 'sita' | 'arun' | 'meena' | 'kiran' | 'fin' | 'agent';
+  type Who = 'adminA' | 'adminB' | 'hr' | 'hr2' | 'mgr' | 'it' | 'ravi' | 'sita' | 'arun' | 'meena' | 'kiran' | 'fin' | 'agent' | 'deskAgent' | 'otherAgent';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
@@ -85,6 +85,9 @@ describe('Lifecycle batch 6c', () => {
       // IT assets part 1 (answer 2711): Finance sees money on assets; an IT desk agent with asset.view only does not.
       ['fin', 'A', 'panel', tpl('finance')],
       ['agent', 'A', 'panel', ['asset.view']],
+      // IT assets part 2 (answer 2722): Helpdesk agents who also see assets, each on their own IT desk.
+      ['deskAgent', 'A', 'panel', [...tpl('desk_agent'), 'asset.view']],
+      ['otherAgent', 'A', 'panel', [...tpl('desk_agent'), 'asset.view']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -658,6 +661,35 @@ describe('Lifecycle batch 6c', () => {
     expect(rows.find((r: { id: string }) => r.id === ended).warrantyEndsOn).toBe(addMonthsIso(back(70), 1));
     // Another company's people are never told.
     expect(await told(soon)).not.toContain(users.adminB);
+  });
+
+  it('IT assets part 2 (2722): the Tickets tab lists only the tickets the viewer may see on the Helpdesk; others get the count', async () => {
+    const it1 = (await api('adminA', 'post', '/desk/desks').send({ name: `IT ${run}`, key: `I${run.slice(0, 4).toUpperCase()}`, kind: 'it' }).expect(201)).body.id as string;
+    const it2 = (await api('adminA', 'post', '/desk/desks').send({ name: `IT two ${run}`, key: `J${run.slice(0, 4).toUpperCase()}`, kind: 'it' }).expect(201)).body.id as string;
+    await api('adminA', 'post', `/desk/desks/${it1}/members`).send({ userId: users.deskAgent, role: 'agent' }).expect(201);
+    await api('adminA', 'post', `/desk/desks/${it2}/members`).send({ userId: users.otherAgent, role: 'agent' }).expect(201);
+    const tag = `TK-${run}`;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Ticketed laptop', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    const tickets = async (who: Who) => (await api(who, 'get', `/lifecycle/assets/${id}`).expect(200)).body.tickets;
+    // No tickets yet: a count of 0 for everyone.
+    expect(await tickets('hr')).toEqual({ count: 0, rows: [] });
+    await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'Good' }).expect(200);
+    const raise = (deskId: string, subject: string) => api('sita', 'post', '/desk/my/tickets').send({ deskId, subject, description: 'The screen flickers.', assetId: id }).expect(201).then((r) => r.body.id as string);
+    const t1 = await raise(it1, `Flicker ${run}`);
+    const t2 = await raise(it2, `Battery ${run}`);
+    // An agent of each desk sees that desk's ticket only, with the count of all.
+    const mine = await tickets('deskAgent');
+    expect(mine.count).toBe(2);
+    expect(mine.rows).toEqual([expect.objectContaining({ id: t1, subject: `Flicker ${run}`, number: expect.any(String), state: expect.any(String), raisedAt: expect.any(String) })]);
+    expect((await tickets('otherAgent')).rows.map((r: { id: string }) => r.id)).toEqual([t2]);
+    // Negative: asset managers and asset.view holders without a desk seat get the count only, never a subject.
+    for (const who of ['hr', 'it', 'agent', 'fin'] as const) {
+      const body = (await api(who, 'get', `/lifecycle/assets/${id}`).expect(200)).body;
+      expect(body.tickets).toEqual({ count: 2, rows: [] });
+      expect(JSON.stringify(body)).not.toContain(`Flicker ${run}`);
+    }
+    // Another company: no asset at all.
+    await api('adminB', 'get', `/lifecycle/assets/${id}`).expect(404);
   });
 
   it('two companies apart', async () => {

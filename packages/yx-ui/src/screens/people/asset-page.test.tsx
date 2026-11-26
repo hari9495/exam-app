@@ -90,6 +90,33 @@ describe('Asset page (live)', () => {
     expect(screen.getByText('Invoice number')).toBeInTheDocument();
   });
 
+  it('2722: an agent of the desk sees its tickets with the count of all; a ticket opens on the Helpdesk', async () => {
+    const onOpenTicket = vi.fn();
+    show(<AssetPageScreen live={liveAssetPage({ onOpenTicket })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Tickets (3)' }));
+    const t = screen.getByRole('table', { name: 'Tickets about this device' });
+    expect(within(t).getByText('Battery drains in two hours')).toBeInTheDocument();
+    expect(within(t).getByText('Screen flickers after waking up')).toBeInTheDocument();
+    expect(screen.getByText('1 more is on desks you are not an agent of.')).toBeInTheDocument();
+    await ue.click(within(t).getByRole('link', { name: 'IT-1042' }));
+    expect(onOpenTicket).toHaveBeenCalledWith('t2');
+  });
+
+  it('negative (2722): someone who may not see the tickets gets only the count, never a subject', async () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, tickets: { count: 3, rows: [] } } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Tickets (3)' }));
+    expect(screen.getByText('3 Helpdesk tickets are about this device.')).toBeInTheDocument();
+    expect(screen.getByText(/Only agents of the desks they are on see them/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByText(/Battery drains/)).toBeNull();
+  });
+
+  it('2722: no tickets says so', async () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, tickets: { count: 0, rows: [] } } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Tickets (0)' }));
+    expect(screen.getByText('No Helpdesk tickets are about this device.')).toBeInTheDocument();
+  });
+
   it('no access, error with retry, and loading', async () => {
     const onRetry = vi.fn();
     const { unmount } = show(<AssetPageScreen live={liveAssetPage({ state: 'no-access', data: null })} />);

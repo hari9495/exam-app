@@ -28679,5 +28679,25 @@
                               "Screens/Settings/Group 2 (2.8 Assets, 2.8 Assets · live)"
                     ],
                     "note": "Positive and negative. e2e lifecycle-6c 'IT assets part 2 (2714)': told HR, IT, location grant holder and the System Admin; not Finance, asset.view agent, another location's manager, an employee or company B; not the 45-day or ended ones; audited once (asset.warranty.alerted); second run silent; 60-day lead; changed end told again; Off silent; register sends warrantyEndsOn. Kit tests: register red badge / Ends / dash; 2.8 Warranty section at 30. Unit: sweeps worker dispatch, notification type registered (asset.warranty.ending). Migration 803 (assets.warranty_alerted_for). Contract notice alerts: with contracts later (assetManagers is reusable)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2722",
+                    "area": "IT assets part 2, answer 2722: the asset page's Tickets tab",
+                    "screen": "People › Assets › an asset › Tickets",
+                    "url": "http://localhost:3000/yx/people/assets",
+                    "account": "A Helpdesk agent of IT desk 1 with asset.view; an agent of IT desk 2 with asset.view; IT / Admin coordinator (no desk seat); HR Admin; Finance; another company's admin.",
+                    "steps": [
+                              "As IT add a laptop and issue it to an employee. Open its page: look at the Tickets tab.",
+                              "As the employee raise one ticket about the laptop on IT desk 1 and one on IT desk 2 (Helpdesk › raise, pick the device).",
+                              "As the agent of IT desk 1 open the asset page › Tickets. Press the ticket number.",
+                              "As the agent of IT desk 2 open the same tab.",
+                              "As IT, HR and Finance (no desk seat) open the same tab.",
+                              "As another company's admin open /yx/people/assets/<that id>."
+                    ],
+                    "expected": "Step 1: 'Tickets (0)' and 'No Helpdesk tickets are about this device.' Step 3: 'Tickets (2)' lists only desk 1's ticket (number, subject, status, raised) and '1 more is on desks you are not an agent of.'; the number opens the ticket on the Helpdesk. Step 4: only desk 2's ticket. Step 5: 'Tickets (2)' and '2 Helpdesk tickets are about this device. Only agents of the desks they are on see them.' with no subjects. Step 6: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset register (Asset page · tickets (desk agent), tickets count only, tickets none)"
+                    ],
+                    "note": "Positive and negative. The list uses the Helpdesk's own visibleTickets (agents and leads of the desk, a standard desk's admin for standard tickets, collaborators with a seat, shares), via DeskAccessService.actorOf; a session the desk refuses (two-step not used where the company asks it) gets the count only. e2e lifecycle-6c 'IT assets part 2 (2722)': count 0; each desk's agent sees only that desk's ticket with count 2; HR, IT, the asset.view agent and Finance get {count 2, rows []} and no subject anywhere in the answer; company B 404. Kit tests: list with link and hidden count, count only, none. No new route (GET lifecycle/assets/:id adds tickets)."
           }
 ]

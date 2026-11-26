@@ -12,6 +12,7 @@ import { EXIT_INTERVIEW_FORM } from './exit-rules';
 import { ExitsService } from './exits.service';
 import { freezeSettlementIn } from './settlement';
 import { settingFor } from '../people/probation';
+import { DeskAccessService, RequestUser, companyOf, visibleTickets } from '../service-desk/desk-access';
 import { STARTER_CATEGORIES, addMonthsIso, netBookValue, nextTag, recoveryAmount, tagHead } from './asset-categories';
 
 // Lifecycle batch 6c (design §10.6): clearance sign-offs (LIFE-3.05), the exit interview (LIFE-3.06) and the shared
@@ -86,6 +87,7 @@ export class OffboardingService {
     private readonly crypto: OrgSecretsCryptoService,
     private readonly notifications: NotificationsService,
     private readonly exits: ExitsService,
+    private readonly desk: DeskAccessService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -470,6 +472,9 @@ export class OffboardingService {
   async assetPage(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);
     if (!v.grants.has('asset.view')) throw new ForbiddenException('You cannot see the asset list.');
+    // Answer 2722: the Helpdesk's own ticket visibility (agents of the ticket's desk, collaborators, shares). Someone the
+    // desk refuses for now (e.g. a session without the company's two-step check) sees only the count.
+    const agent = await this.desk.actorOf(user as RequestUser, companyOf(ctx)).catch(() => null);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const a = await this.assetOr404(tx, org, v, id, 'asset.view');
@@ -499,6 +504,9 @@ export class OffboardingService {
       const cat = a.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: a.categoryId }, select: { name: true, usefulLifeYears: true, depreciationMethod: true, depreciationRate: true } }) : null;
       const money = this.seesMoney(v, a);
       const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
+      // Answer 2722: every viewer of the asset gets how many tickets are about it; only the ones they may see are listed.
+      const ticketCount = await tx.sdTicket.count({ where: { organizationId: org, assetId: a.id } });
+      const seen = agent && ticketCount ? await tx.sdTicket.findMany({ where: { AND: [await visibleTickets(tx, agent), { organizationId: org, assetId: a.id }] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50, select: { id: true, number: true, subject: true, systemState: true, createdAt: true } }) : [];
       return {
         today: todayIst(),
         canManage: this.reachesAsset(v, 'asset.manage', a),
@@ -528,6 +536,7 @@ export class OffboardingService {
         },
         holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence), ackNone: (open.ackEvidence as { method?: string } | null)?.method === 'none' } : null,
         history,
+        tickets: { count: ticketCount, rows: seen.map((t) => ({ id: t.id, number: t.number, subject: t.subject, state: t.systemState, raisedAt: t.createdAt.toISOString() })) },
       };
     });
   }

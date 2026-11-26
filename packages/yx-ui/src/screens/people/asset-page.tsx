@@ -1,10 +1,14 @@
 // IT assets (plan 26 Nov 2026), the part with no open question: one asset's page, opened from the register (PPL-25).
 // Details (with maker, model, invoice number and warranty) and History (added, changed, issued, confirmed, taken back).
-// Asset managers of its place edit the details. Tickets, licences and bookings join as tabs when their answers arrive.
+// Asset managers of its place edit the details. Answer 2722: the Tickets tab lists the Helpdesk tickets about the device
+// that the viewer may see there (agents of the ticket's desk); everyone else who sees the asset gets only the count.
+// Licences and bookings join as tabs when their answers arrive.
 import { useState } from 'react';
 import { Laptop, Pencil } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
+import { Link } from '../../components/button';
+import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
@@ -50,6 +54,16 @@ export interface AssetPageData {
   holder: { name: string; issuedOn: string; acknowledged: boolean; ackNone?: boolean } | null;
   /** Newest first; `at` is a day (YYYY-MM-DD) or a moment (ISO). */
   history: { id: string; at: string; who: string; what: string }[];
+  /** Answer 2722: how many Helpdesk tickets are about it, and the ones this viewer may see (newest first). */
+  tickets?: { count: number; rows: AssetTicket[] };
+}
+export interface AssetTicket {
+  id: string;
+  number: string;
+  subject: string;
+  /** The ticket's system state (new, open, pending, resolved, closed). */
+  state: string;
+  raisedAt: string;
 }
 export interface AssetDetailsInput {
   /** IT assets part 1 (answer 2712): a category from the company list. */
@@ -72,7 +86,10 @@ export interface LiveAssetPage {
   onSave?: (input: AssetDetailsInput) => Promise<unknown>;
   /** The company's categories (Settings 2.8) to choose from in Edit details. */
   categories?: { value: string; label: string }[];
+  /** Answer 2722: opens a listed ticket on the Helpdesk. */
+  onOpenTicket?: (id: string) => void;
 }
+type Tab = 'details' | 'history' | 'tickets';
 
 const SAMPLE_CATEGORIES = ['Laptop', 'Phone', 'SIM', 'Tools'].map((x) => ({ value: x, label: x }));
 const STATUS: Record<AssetStatus, { text: string; tone: BadgeTone }> = {
@@ -90,15 +107,15 @@ const inr = (s: string) => `₹${Number(s).toLocaleString('en-IN', { minimumFrac
 const keyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** The asset page: the designed view (sample data) or, with `live`, the real asset. */
-export function AssetPageScreen(props: { data: AssetPageData; tab?: 'details' | 'history'; editing?: boolean } | { live: LiveAssetPage }) {
+export function AssetPageScreen(props: { data: AssetPageData; tab?: Tab; editing?: boolean } | { live: LiveAssetPage }) {
   if ('live' in props) {
     const l = props.live;
     if (l.state === 'no-access') return <Frame onBack={l.onBack}><NoAccessState what="the assets" grantedBy="your IT or HR admin" /></Frame>;
     if (l.state === 'error') return <Frame onBack={l.onBack}><ErrorState title="We couldn't load this asset" description="Check your connection and try again." onRetry={l.onRetry} /></Frame>;
     if (l.state === 'loading' || !l.data) return <Frame onBack={l.onBack}><Skeleton height={360} /></Frame>;
-    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} />;
+    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} onOpenTicket={l.onOpenTicket} />;
   }
-  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} />;
+  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} onOpenTicket={() => undefined} />;
 }
 
 function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; children: React.ReactNode }) {
@@ -110,7 +127,7 @@ function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; ch
   );
 }
 
-function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories }: { data: AssetPageData; tab?: 'details' | 'history'; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories'] }) {
+function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, onOpenTicket }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; onOpenTicket?: LiveAssetPage['onOpenTicket'] }) {
   const [open, setOpen] = useState(editing);
   const a = data.asset;
   const ended = a.warrantyEndsOn != null && a.warrantyEndsOn < data.today;
@@ -139,6 +156,7 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
         <TabsList aria-label="Asset">
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          {data.tickets && <TabsTrigger value="tickets">{`Tickets (${data.tickets.count})`}</TabsTrigger>}
         </TabsList>
         <TabsContent value="details">
           <Card>
@@ -175,9 +193,45 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
             <Timeline aria-label="Asset history" items={data.history.map((h) => ({ id: h.id, actor: { name: h.who }, action: h.what, at: at(h.at) }))} today={day(data.today)} />
           </Card>
         </TabsContent>
+        {data.tickets && (
+          <TabsContent value="tickets">
+            <TicketsTab tickets={data.tickets} onOpenTicket={onOpenTicket} />
+          </TabsContent>
+        )}
       </Tabs>
       {open && onSave && <EditDetailsDrawer data={data} categories={categories} onClose={() => setOpen(false)} onSave={onSave} />}
     </Frame>
+  );
+}
+
+const STATE_TONE: Record<string, BadgeTone> = { new: 'info', open: 'info', pending: 'warning', resolved: 'success', closed: 'neutral' };
+const words = (n: number) => `${n} Helpdesk ${n === 1 ? 'ticket is' : 'tickets are'} about this device`;
+
+/** Answer 2722: the tickets this viewer may see on the Helpdesk; the rest only as a count. */
+function TicketsTab({ tickets, onOpenTicket }: { tickets: NonNullable<AssetPageData['tickets']>; onOpenTicket?: (id: string) => void }) {
+  const hidden = tickets.count - tickets.rows.length;
+  const cols: TableColumn<AssetTicket>[] = [
+    { key: 'number', header: 'Ticket', type: 'id', value: (t) => t.number, render: onOpenTicket ? (t) => <Link href={`#${t.id}`} onClick={(e) => (e.preventDefault(), onOpenTicket(t.id))}>{t.number}</Link> : undefined, width: 140 },
+    { key: 'subject', header: 'Subject', value: (t) => t.subject, width: 320 },
+    { key: 'state', header: 'Status', type: 'status', value: (t) => t.state.charAt(0).toUpperCase() + t.state.slice(1), statusTone: (_v, t) => STATE_TONE[t.state] ?? 'neutral', width: 120 },
+    { key: 'raisedAt', header: 'Raised', type: 'date', value: (t) => new Date(t.raisedAt), width: 140 },
+  ];
+  if (tickets.count === 0) return <Card><InlineAlert tone="info" title="No Helpdesk tickets are about this device." /></Card>;
+  if (!tickets.rows.length)
+    return (
+      <Card>
+        <InlineAlert tone="info" title={`${words(tickets.count)}.`}>
+          Only agents of the desks they are on see them.
+        </InlineAlert>
+      </Card>
+    );
+  return (
+    <Card>
+      <div className="yx-set-stack">
+        <DataTable label="Tickets about this device" columns={cols} rows={tickets.rows} getRowId={(t) => t.id} state="ready" />
+        {hidden > 0 && <InlineAlert tone="info" title={`${hidden} more ${hidden === 1 ? 'is' : 'are'} on desks you are not an agent of.`} />}
+      </div>
+    </Card>
   );
 }
 

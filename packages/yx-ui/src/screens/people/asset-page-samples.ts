@@ -34,6 +34,14 @@ export const ASSET_PAGE: AssetPageData = {
     { id: 'h2', at: '2025-08-20', who: 'Prakash Rao', what: 'issued it to Meera Iyer (New)' },
     { id: 'h1', at: '2025-08-14T09:05:00.000Z', who: 'Prakash Rao', what: 'added the asset' },
   ],
+  // Answer 2722: three tickets about it; this viewer is an agent of the IT desk that holds two.
+  tickets: {
+    count: 3,
+    rows: [
+      { id: 't2', number: 'IT-1042', subject: 'Battery drains in two hours', state: 'open', raisedAt: '2026-11-18T06:40:00.000Z' },
+      { id: 't1', number: 'IT-0977', subject: 'Screen flickers after waking up', state: 'resolved', raisedAt: '2026-10-02T04:15:00.000Z' },
+    ],
+  },
 };
 
 export const liveAssetPage = (over: Partial<LiveAssetPage> = {}): LiveAssetPage => ({ state: 'ready', onRetry: () => {}, data: ASSET_PAGE, onBack: () => {}, onSave: () => Promise.resolve({ id: 'a1' }), ...over });
