@@ -29564,5 +29564,19 @@
                               "Screens/People/PPL-31 · Certificate request"
                     ],
                     "note": ""
+          },
+          {
+                    "id": "MT-T2F-LINKSFRAME",
+                    "area": "Batch T2-F: LinksFrame is story-only (design-live guard)",
+                    "screen": "Storybook only (no app page)",
+                    "url": "",
+                    "account": "Developer",
+                    "steps": [
+                              "Run the kit guards (design-live-guard).",
+                              "Open any story that uses LinksFrame (for example Screens/Service desk stories)."
+                    ],
+                    "expected": "Step 1: the guard passes and no longer lists '_kit: LinksFrame' as a designed screen that is not live. Step 2: the story shows the app frame around the design as before. No app page renders LinksFrame.",
+                    "stories": [],
+                    "note": "A developer check, not a founder test."
           }
 ]
