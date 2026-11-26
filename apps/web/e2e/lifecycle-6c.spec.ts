@@ -36,7 +36,9 @@ test('assets → resignation accepted by HR → clearance from the asset return 
   await it.goto('/yx/people/assets');
   await it.getByRole('button', { name: 'Add asset' }).click();
   const drawer = it.getByRole('dialog');
-  await drawer.getByRole('textbox', { name: /Kind/ }).fill('Laptop');
+  // IT assets 2712: the kind is picked from the company's category list (Settings 2.8), not typed.
+  await drawer.getByRole('combobox', { name: 'Category' }).click();
+  await it.getByRole('option', { name: 'Laptop', exact: true }).click();
   await drawer.getByRole('textbox', { name: /^Name/ }).fill(name);
   await drawer.getByRole('textbox', { name: /Asset tag/ }).fill(tag);
   await drawer.getByRole('textbox', { name: /Cost/ }).fill('55000');
