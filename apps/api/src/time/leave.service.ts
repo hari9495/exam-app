@@ -42,7 +42,7 @@ import {
 import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween, localDate } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
-import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
+import { joinedRun, BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
 
 // M02 Part A leave on the shared engines: requests route through P03 (manager, then HR by the type's rule), the
 // ledger is the only balance (YX-LV-01), days are counted with the location's holidays and weekly offs (YX-LV-03),
@@ -324,33 +324,13 @@ export class LeaveService implements OnModuleInit {
           AND d.leave_on BETWEEN ${lo}::date AND ${hi}::date`;
       const { map: hol } = await holidaysFor(tx, org, f.locationId, lo, hi, f.employeeId);
       await book.prime([f.employeeId], lo, hi);
-      const off = async (d: string) => hol.has(d) || (await book.day(f, d)).weeklyOff;
-      const byDay = new Map<string, typeof around>();
-      for (const x of around) byDay.set(x.on, [...(byDay.get(x.on) ?? []), x]);
-      // The first working day before and after, and the days of this type joined to the request.
-      let run = total;
-      let before = addDays(dto.from, -1);
-      while (before >= lo && ((await off(before)) || (byDay.get(before) ?? []).some((x) => x.type === t.id))) {
-        run += (byDay.get(before) ?? []).filter((x) => x.type === t.id).reduce((s2, x) => s2 + x.portion, 0);
-        before = addDays(before, -1);
-      }
-      let after = addDays(dto.to, 1);
-      while (after <= hi && ((await off(after)) || (byDay.get(after) ?? []).some((x) => x.type === t.id))) {
-        run += (byDay.get(after) ?? []).filter((x) => x.type === t.id).reduce((s2, x) => s2 + x.portion, 0);
-        after = addDays(after, 1);
-      }
-      if (rules.maxConsecutiveDays !== null && rules.maxConsecutiveDays !== undefined && run > rules.maxConsecutiveDays) blocks.push(`${t.name} is at most ${daysText(rules.maxConsecutiveDays)} in a row, counting leave next to it. This would make ${daysText(run)}.`);
-      // The other types on the working days just outside the joined run.
-      for (const edge of [before, after]) {
-        for (const x of byDay.get(edge) ?? []) {
-          if (x.type === t.id) continue;
-          const theirs = parseRules(x.rules).notWithTypes ?? [];
-          if ((rules.notWithTypes ?? []).includes(x.type) || theirs.includes(t.id)) {
-            blocks.push(`${t.name} can't be taken next to ${x.name} (${fmt(edge)}).`);
-            break;
-          }
-        }
-      }
+      const off = new Set<string>();
+      for (let d = lo; d <= hi; d = addDays(d, 1)) if (hol.has(d) || (await book.day(f, d)).weeklyOff) off.add(d);
+      const j = joinedRun({ from: dto.from, to: dto.to, total, typeId: t.id, around, off, lo, hi });
+      if (rules.maxConsecutiveDays !== null && rules.maxConsecutiveDays !== undefined && j.run > rules.maxConsecutiveDays) blocks.push(`${t.name} is at most ${daysText(rules.maxConsecutiveDays)} in a row, counting leave next to it. This would make ${daysText(j.run)}.`);
+      // Another type on the working days just outside the joined run: refused when either type names the other.
+      const clash = j.edges.find((x) => (rules.notWithTypes ?? []).includes(x.type) || (parseRules(around.find((a) => a.type === x.type)!.rules).notWithTypes ?? []).includes(t.id));
+      if (clash) blocks.push(`${t.name} can't be taken next to ${around.find((a) => a.type === clash.type)!.name} (${fmt(clash.on)}).`);
     }
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
     // they will give it to HR, HR marks it verified (Special data), and approvers see only its status (YX-LV-09).

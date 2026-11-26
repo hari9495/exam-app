@@ -15,7 +15,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
 import { ErrorSummary, FieldRow, FormField, FormSection, useSaveErrors, useTooEarly } from '../../components/field';
-import { PersonPicker, Select, type SelectOption } from '../../components/select';
+import { MultiSelect, PersonPicker, Select, type SelectOption } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/menu';
@@ -2648,7 +2648,7 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
 /* ---------------- TIM-27 live ---------------- */
 
 const LIVE_SECTIONS = { basics: 'Basics', crediting: 'Crediting', counting: 'Counting', rules: 'Rules', yearend: 'Year end', absence: 'Absence & notice' } as const;
-const FIELD_SECTION: Record<string, keyof typeof LIVE_SECTIONS> = { 'lt-code': 'basics', 'lt-name': 'basics', 'lt-paid': 'basics', 'lt-paypct': 'basics', 'lt-maxMonth': 'rules', 'lt-maxDays': 'rules', 'lt-weekdays': 'rules', 'lt-encashMax': 'yearend' };
+const FIELD_SECTION: Record<string, keyof typeof LIVE_SECTIONS> = { 'lt-code': 'basics', 'lt-name': 'basics', 'lt-paid': 'basics', 'lt-paypct': 'basics', 'lt-maxMonth': 'rules', 'lt-maxDays': 'rules', 'lt-weekdays': 'rules', 'lt-row': 'rules', 'lt-encashMax': 'yearend' };
 /** "Partially paid" (TIM-27 Basics): one pay step of 1-99 % over the whole year. */
 const partPct = (r: LeaveRules) => (r.paySteps?.length === 1 && r.paySteps[0].days >= 366 && r.paySteps[0].percent > 0 && r.paySteps[0].percent < 100 ? r.paySteps[0].percent : null);
 const NOTICE_PERIOD_TEXT: Record<string, string> = { no_change: 'allowed', extends_last_day: 'moves the last working day later', sick_and_unpaid_only: 'only sick and unpaid leave' };
@@ -2696,6 +2696,7 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
     ...(pay === 'part' && (payPct === null || payPct < 1 || payPct > 99) ? [{ fieldId: 'lt-paypct', message: 'Enter a share between 1 and 99%.' }] : []),
     ...(r.maxDaysPerMonth != null && r.maxDays != null && r.maxDays > r.maxDaysPerMonth ? [{ fieldId: 'lt-maxDays', message: `More than the monthly limit of ${num(r.maxDaysPerMonth)} days. A request that big can never be approved.` }] : []),
     ...(r.allowedWeekdays && !r.allowedWeekdays.length ? [{ fieldId: 'lt-weekdays', message: 'Tick at least one day.' }] : []),
+    ...(r.maxConsecutiveDays != null && r.maxDays != null && r.maxDays > r.maxConsecutiveDays ? [{ fieldId: 'lt-row', message: `More than the limit in a row of ${num(r.maxConsecutiveDays)} days.` }] : []),
   ];
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
@@ -2884,6 +2885,14 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
                     })}
                   </div>
                 </FormField>
+                <FieldRow>
+                  <FormField id="lt-row" label="Most days in a row" optional helper="Requests that touch count together; weekly offs and holidays between join them. Leave empty for no limit." error={errorOf('lt-row')}>
+                    <NumberField value={r.maxConsecutiveDays ?? null} onChange={(v) => set('maxConsecutiveDays', v)} decimals min={0.5} max={366} />
+                  </FormField>
+                  <FormField id="lt-notwith" label="Can't be taken next to" optional helper="Leave types that can't touch this one, even across a weekend or holiday.">
+                    <MultiSelect aria-label="Can't be taken next to" value={r.notWithTypes ?? []} onChange={(v) => set('notWithTypes', v.length ? v : null)} options={d.types.filter((x) => x.active && x.id !== live.typeId).map((x) => ({ value: x.id, label: x.name }))} />
+                  </FormField>
+                </FieldRow>
                 <FieldRow>
                   {numField('certificateAfterDays', 'Ask for a document when leave is longer than (days)', 'Leave blank to never ask')}
                   <FormField id="lt-negative" label="Balance may go below zero by (days)" helper="0 for never. Future credits repay it first.">

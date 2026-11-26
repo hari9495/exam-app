@@ -414,6 +414,9 @@ export interface LeaveRules {
   maxRequestsPerMonth?: number | null;
   minGapDays?: number | null;
   allowedWeekdays?: number[] | null;
+  /** Answers 2756 / 2758: most days in a row (touching requests joined across weekly offs and holidays); types it can't touch. */
+  maxConsecutiveDays?: number | null;
+  notWithTypes?: string[] | null;
   /** TIM-27 Year end: cash-in limits and payout (null: the company's). */
   encashMaxDays?: number | null;
   encashMinLeft?: number | null;
