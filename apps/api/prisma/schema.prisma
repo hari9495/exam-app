@@ -16104,3 +16104,17 @@ model ReportSchedule {
   @@index([organizationId, createdBy], map: "report_schedules_org_idx")
   @@map("report_schedules")
 }
+
+/// E2 part 3 (O26): grade -> the largest amount someone of that grade approves, per request family. Empty by default.
+model ApprovalLimit {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  family         String   @db.VarChar(20)
+  gradeId        String   @map("grade_id") @db.Uuid
+  amount         Decimal  @db.Decimal(14, 2)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, family, gradeId], map: "approval_limits_org_family_grade_key")
+  @@map("approval_limits")
+}
