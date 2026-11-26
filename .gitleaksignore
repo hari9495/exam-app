@@ -18,3 +18,6 @@ d6ea28d461acbf37388c718a056dfbe19d6d2ddc:packages/yx-ui/src/screens/auth/data.ts
 df9ced4e98e574415baa8151732f16afd7e23479:packages/yx-ui/src/screens/settings/time-settings-live.ts:generic-api-key:100
 df9ced4e98e574415baa8151732f16afd7e23479:packages/yx-ui/src/screens/settings/time-settings-live.ts:generic-api-key:101
 df9ced4e98e574415baa8151732f16afd7e23479:packages/yx-ui/src/screens/settings/time-settings-live.ts:generic-api-key:102
+# Reviewed false positives (27 Nov 2026): a made-up kiosk set-up key in a kit test, and a sample webhook secret for a .test address in a design story.
+c098b9f9a5ce56c0020040fcd1dd31b00a63f313:packages/yx-ui/src/screens/time/devices-live.test.tsx:generic-api-key:58
+d75be5b050578c48b5931c0082db81ae2ddc1e5f:packages/yx-ui/src/screens/desk/esm-live.stories.tsx:generic-api-key:208
