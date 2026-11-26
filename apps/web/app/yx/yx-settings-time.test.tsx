@@ -94,6 +94,16 @@ describe('Settings S-2: Time & Leave pages', () => {
   });
 
   // Answer 1485: a leave admin changes Leave year but only reads Weekly offs; answer 1333: the menu offers it, read-only.
+  it('answer 2757: a leave admin turns on comp-off from the roster on Leave types (off until then)', async () => {
+    routes(['leave.settings.manage']);
+    show('leave-types');
+    const sw = await screen.findByRole('checkbox', { name: /Credit comp-off automatically when the roster/ });
+    expect(sw).not.toBeChecked();
+    await ue.click(sw);
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    await waitFor(() => expect(calls).toEqual([['PUT /org/settings', { key: 'leave.comp_off.auto_from_roster', value: 'on', scopeType: 'tenant' }]]));
+  });
+
   it('a leave admin saves Leave year; Weekly offs is in their menu and view only', async () => {
     routes(['leave.settings.manage']);
     const LEAVE = buildNav({ ...base, has: (k) => k === 'leave.settings.manage' });

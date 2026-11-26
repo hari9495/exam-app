@@ -1,6 +1,6 @@
 'use client';
 
-import type { LeaveHistoryPage, LeavePlan, LiveLeaveHome, LongAbsenceRow, MyCompOff, MyEncashment, MyLeave, PersonOption } from '@yukthix/ui/time';
+import type { LeaveHistoryPage, LeavePlan, LiveLeaveHome, LongAbsenceRow, MyCompOff, MyEncashment, MyLeave, PeersAway, PersonOption } from '@yukthix/ui/time';
 import { apiFetch } from './api-client';
 import { useAuth } from './auth-context';
 import { timeState, useTime, useTimeRead, useTimeWrite } from './yx-time';
@@ -17,6 +17,8 @@ export function useMyLeaveLive(opts: { startApplying?: boolean; onOpenCard?: () 
   const compOff = useTime<MyCompOff>('/me/comp-off');
   const encash = useTime<MyEncashment>('/me/encashment');
   const absence = useTime<{ absence: LongAbsenceRow | null }>('/me/long-absence');
+  // Answer 2760: peers away (read-only, "away" only).
+  const peers = useTime<PeersAway>('/me/peers-away');
   const write = useTimeWrite();
   const read = useTimeRead();
   return {
@@ -46,6 +48,7 @@ export function useMyLeaveLive(opts: { startApplying?: boolean; onOpenCard?: () 
     startApplying: opts.startApplying,
     compOff: { data: compOff.data ?? null, onClaim: (input) => write('/me/comp-off', 'POST', input, true, 'Comp-off claim sent to your manager'), onWithdraw: (cid) => write(`/me/comp-off/${id(cid)}/withdraw`, 'POST', undefined, true, 'Comp-off claim withdrawn') },
     encash: { data: encash.data ?? null, onRequest: (input) => write('/me/encashment', 'POST', input, true, 'Encashment sent for approval'), onWithdraw: (eid) => write(`/me/encashment/${id(eid)}/withdraw`, 'POST', undefined, true, 'Encashment request withdrawn') },
+    peers: { data: peers.data ?? null },
     absence: { data: absence.data?.absence ?? null, onAskReturn: (aid, on, note) => write(`/me/long-absence/${id(aid)}/return-date`, 'POST', { on, note }, true, 'Sent to HR to confirm') },
     onOpenCard: opts.onOpenCard,
   };

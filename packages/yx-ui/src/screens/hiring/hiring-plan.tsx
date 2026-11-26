@@ -2355,8 +2355,11 @@ export interface LiveInternalJobs {
   companyName: string;
   /** May this person apply now; when not, the reason in plain words (from the company rules). */
   eligibility: { eligible: boolean; title?: string; detail?: string };
-  /** The current manager is told (never asked): when the person applies, or when they reach the offer (company setting). */
-  manager: { name: string | null; when: 'on_apply' | 'at_offer' };
+  /**
+   * The current manager is told: when the person applies, or when they reach the offer (company setting). Answer 2761:
+   * with `release` (company setting), the manager is asked to release the person instead, and HR decides after 5 working days.
+   */
+  manager: { name: string | null; when: 'on_apply' | 'at_offer'; release?: boolean };
   /** Rejects with an Error whose message says why (already applied, no longer open, not eligible). */
   onApply: (input: InternalApplyInput) => Promise<void>;
 }
@@ -2422,8 +2425,8 @@ function useInternalApply(job: Job | undefined, live: LiveInternalJobs | undefin
   return { note, setNote, setResume, busy, problem, early, send };
 }
 
-const managerTold = (name: string | null, when: 'on_apply' | 'at_offer') =>
-  `${name ? `Your manager, ${name},` : 'Your manager'} is told ${when === 'on_apply' ? 'when you apply' : 'when you reach the offer stage'}. Test results for this job are visible only to its hiring manager and HR, not to your current manager.`;
+const managerTold = (name: string | null, when: 'on_apply' | 'at_offer', release?: boolean) =>
+  `${release ? `${name ? `Your manager, ${name},` : 'Your manager'} is asked to release you when you apply. An offer can be made only once they agree; if they have not answered in 5 working days, HR decides.` : `${name ? `Your manager, ${name},` : 'Your manager'} is told ${when === 'on_apply' ? 'when you apply' : 'when you reach the offer stage'}.`} Test results for this job are visible only to its hiring manager and HR, not to your current manager.`;
 
 function InternalApplyForm({ job, eligible, live, form }: { job: Job; eligible: boolean; live?: LiveInternalJobs; form?: ReturnType<typeof useInternalApply> }) {
   const f = form;
@@ -2435,7 +2438,7 @@ function InternalApplyForm({ job, eligible, live, form }: { job: Job; eligible: 
         </InlineAlert>
       )}
       <InlineAlert tone="info">
-        {live ? managerTold(live.manager.name, live.manager.when) : 'Your manager, Karthik Subramanian, is told when you reach the offer stage. Test results for this job are visible only to its hiring manager and HR, not to your current manager.'}
+        {live ? managerTold(live.manager.name, live.manager.when, live.manager.release) : 'Your manager, Karthik Subramanian, is told when you reach the offer stage. Test results for this job are visible only to its hiring manager and HR, not to your current manager.'}
       </InlineAlert>
       <FormField id="ia-note" label="Why are you interested?" required error={f?.early.errorOf('ia-note')}>
         {f ? <TextArea rows={4} value={f.note} onChange={f.setNote} maxLength={2000} placeholder={`What you would bring to ${job.title}`} /> : <TextArea rows={4} placeholder={`What you would bring to ${job.title}`} />}

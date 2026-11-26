@@ -38,6 +38,7 @@ import { CasesController, EthicsController, MisconductReportsController, MyCases
 import { LearningController } from '../learning/learning.controller';
 import { LibraryController } from '../library/library.controller';
 import { ApprovalPoliciesController } from '../workflow/approval-policies.controller';
+import { TimeController } from '../time/time.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -149,10 +150,20 @@ const IMPLICIT: Record<string, string[]> = {
   SurveysController: [],
   ModerationController: [],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets', 'myBookings', 'freeAssets', 'bookAsset', 'cancelMyBooking'], // IT assets answer 2715: one's own asset bookings (bookable assets only)
+  // Time and leave: the me/* routes are the caller's own (peers-away: only the caller's own peers, the same manager today);
+  // team/*, requests/:id and people/:employeeId/* are decided per person by the service (self, the manager chain, HR in
+  // scope); set-up, the balance grid and adjustments need their keys.
+  TimeController: [
+    'myLeave', 'myPeersAway', 'myLeaveHistory', 'preview', 'apply', 'resend', 'withdraw', 'cancel', 'cancelDays', 'extend', 'choose', 'unchoose', // my own leave
+    'myAttendance', 'punch', 'askWebDevice', 'regularise', 'workFromHome', 'onDuty', 'permission', 'withdrawFix', // my own attendance
+    'calendar', 'teamLeaveHome', 'teamToday', // my own team (implicit manager grant)
+    'request', // the requester, the approver whose task it is, or HR in scope
+    'nudge', 'muster', 'dayCard', 'personAttendance', 'personBalances', 'ledger', // attendance or leave scope per person
+  ],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController, PositionsController, ApprovalPoliciesController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController, PositionsController, ApprovalPoliciesController, TimeController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);
@@ -161,4 +172,16 @@ describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
       expect(undeclared.sort()).toEqual([...IMPLICIT[controller.name]].sort());
     });
   }
+});
+
+describe('time and leave keys (T2-A)', () => {
+  const keys = (m: string) => Reflect.getMetadata(PERMISSIONS_KEY, (TimeController.prototype as unknown as Record<string, object>)[m]);
+  it('adding a starter leave type needs leave.settings.manage', () => {
+    expect(keys('addStarter')).toEqual(['leave.settings.manage']);
+    expect(Reflect.getMetadata(PATH_METADATA, (TimeController.prototype as unknown as Record<string, object>).addStarter)).toBe('setup/types/starter/:key');
+  });
+  it("peers away is the caller's own (no key; the service reads only the caller's peers)", () => {
+    expect(keys('myPeersAway')).toBeUndefined();
+    expect(Reflect.getMetadata(PATH_METADATA, (TimeController.prototype as unknown as Record<string, object>).myPeersAway)).toBe('me/peers-away');
+  });
 });

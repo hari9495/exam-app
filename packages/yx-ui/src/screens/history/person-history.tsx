@@ -200,6 +200,8 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                     <dd>{a.grade?.name ?? '—'}</dd>
                     <dt>Skill class</dt>
                     <dd>{a.skillClass ? SKILL_CLASS_LABEL[a.skillClass] : 'Not set'}</dd>
+                    <dt>Manager or supervisor</dt>
+                    <dd>{a.supervisory ? 'Yes' : 'No'}</dd>
                     <dt>Department</dt>
                     <dd>{a.department?.name ?? '—'}</dd>
                     <dt>Location</dt>

@@ -39,6 +39,8 @@ export interface AssignmentFacts {
   grade: Ref | null;
   /** 5c-D2: unskilled, semi_skilled, skilled or highly_skilled; null when not set. */
   skillClass?: string | null;
+  /** Answer 2762: HR marked the job as a manager or supervisor. */
+  supervisory?: boolean;
   /** G1 (gap pass C1): contracted hours a week ("24.0"); null = full-time. */
   hoursPerWeek?: string | null;
   /** The normal week where the job is and the FTE it gives (null when no country pack covers it). */
@@ -102,6 +104,7 @@ export interface ChangePayload {
     designationId?: string;
     gradeId?: string | null;
     skillClass?: string | null;
+    supervisory?: boolean;
     hoursPerWeek?: string | null;
     employmentTypeId?: string;
     managerEmployeeId?: string | null;

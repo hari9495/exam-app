@@ -418,7 +418,7 @@ export class ApprovalsEngine {
   }
 
   /** Active people holding the HR Admin key set (org.settings.manage) through their profile or a role grant in force today. */
-  private async hrAdmins(tx: Tx, org: string): Promise<string[]> {
+  async hrAdmins(tx: Tx, org: string): Promise<string[]> {
     const profiles = (await tx.permissionProfile.findMany({ where: { organizationId: org, permissionsJson: { contains: '"org.settings.manage"' } }, select: { id: true } })).map((p) => p.id);
     if (!profiles.length) return [];
     const today = new Date(`${todayIst()}T00:00:00Z`);
@@ -794,6 +794,28 @@ export class ApprovalsEngine {
       return 1;
     }
     return 0;
+  }
+
+  /**
+   * A module's own timeout (answer 2761: no answer in 5 working days goes to HR): the open step of a pending request is
+   * also given to these people (never the requester or whoever raised it), like the engine's own escalation; any one of
+   * them may decide it. Returns how many got it. The caller sends `notices` after its transaction.
+   */
+  async handOver(tx: Tx, ctx: CompanyContext, requestId: string, toUserIds: string[], why: string, notices: Notice[]): Promise<number> {
+    const org = ctx.organizationId;
+    await tx.$queryRaw`SELECT id FROM wf_requests WHERE organization_id = ${org}::uuid AND id = ${requestId}::uuid FOR UPDATE`;
+    const req = await tx.wfRequest.findFirst({ where: { organizationId: org, id: requestId } });
+    if (!req || req.status !== 'pending') return 0;
+    const steps = req.steps as unknown as FrozenStep[];
+    const s = steps[req.currentStep];
+    const held = new Set((await tx.wfTask.findMany({ where: { organizationId: org, requestId, step: req.currentStep, status: 'open' }, select: { assigneeUserId: true } })).map((t) => t.assigneeUserId));
+    const to = (await this.active(tx, org, toUserIds)).filter((u) => u !== req.requesterUserId && u !== req.raisedByUserId && !held.has(u));
+    for (const u of to) await tx.wfTask.create({ data: { organizationId: org, requestId, step: req.currentStep, assigneeUserId: u } });
+    s.approverIds = [...new Set([...s.approverIds, ...to])];
+    await tx.wfRequest.update({ where: { id: requestId }, data: { steps: steps as unknown as Prisma.InputJsonValue, version: { increment: 1 } } });
+    await this.log(tx, org, requestId, null, req.currentStep, null, null, 'escalated', to.length ? why : `${why} (nobody to send it to)`, 'system');
+    if (to.length) notices.push({ to, requestId, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${requestId}`, text: `Escalated to you: ${s.name}`, actor: req.requesterUserId });
+    return to.length;
   }
 
   // ------------------------------------------------------------------------------------------ delegation

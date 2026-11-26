@@ -116,21 +116,23 @@ export const MOVE = 'entity_transfer' as const;
 export type Raisable = Exclude<ChangeType, 'join'> | typeof MOVE;
 export const kindLabel = (t: Raisable) => (t === MOVE ? 'Inter-entity transfer' : TYPE_LABEL[t]);
 export const RAISABLE: Exclude<ChangeType, 'join'>[] = ['promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'];
-export type ChangeField = 'locationId' | 'departmentId' | 'designationId' | 'gradeId' | 'skillClass' | 'employmentTypeId' | 'managerEmployeeId' | 'costCentreId';
+export type ChangeField = 'locationId' | 'departmentId' | 'designationId' | 'gradeId' | 'skillClass' | 'supervisory' | 'employmentTypeId' | 'managerEmployeeId' | 'costCentreId';
+/** Answer 2762: the job is a manager or supervisor role (payroll uses it for the labour welfare fund in Tamil Nadu and Delhi). */
+export const SUPERVISORY_LABEL: Record<string, string> = { yes: 'Manager or supervisor', no: 'Not a manager or supervisor' };
 /** 5c-D2: the minimum-wage skill class of the job (payroll checks pay against the state table for it). */
 export const SKILL_CLASS_LABEL: Record<string, string> = { unskilled: 'Unskilled', semi_skilled: 'Semi-skilled', skilled: 'Skilled', highly_skilled: 'Highly skilled' };
 /** PPL-04 design: each type asks only for what it needs (a transfer is the new location; a promotion the new job). */
 export const FIELDS: Record<Raisable, ChangeField[]> = {
-  promotion: ['designationId', 'gradeId'],
+  promotion: ['designationId', 'gradeId', 'supervisory'],
   transfer: ['locationId'],
   // The department and designation stay unless a new one is chosen (the engine checks the new entity may use them).
   entity_transfer: ['locationId', 'departmentId', 'designationId', 'employmentTypeId'],
-  redesignation: ['designationId', 'skillClass'],
+  redesignation: ['designationId', 'skillClass', 'supervisory'],
   manager_change: ['managerEmployeeId'],
   salary_revision: [],
   employment_type_change: ['employmentTypeId'],
   confirmation: [],
-  correction: ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'employmentTypeId', 'managerEmployeeId'],
+  correction: ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'supervisory', 'employmentTypeId', 'managerEmployeeId'],
   // System changes from the exit flow: shown in history, never raised here.
   notice: [],
   notice_withdrawal: [],
@@ -154,6 +156,7 @@ export const FIELD_LABEL: Record<ChangeField, string> = {
   designationId: 'Designation',
   gradeId: 'Grade',
   skillClass: 'Skill class',
+  supervisory: 'Manager or supervisor',
   employmentTypeId: 'Employment type',
   managerEmployeeId: 'Manager',
   costCentreId: 'Cost centre',
@@ -227,6 +230,7 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
       const v = d.values[f];
       if (!v) continue;
       if (f === 'costCentreId') assignment.costCentres = [{ costCentreId: v, percent: '100' }];
+      else if (f === 'supervisory') assignment.supervisory = v === 'yes';
       else assignment[f] = v;
     }
     if (d.dotted !== null && DOTTED_TYPES.has(type)) assignment.dottedLineManagerIds = d.dotted;

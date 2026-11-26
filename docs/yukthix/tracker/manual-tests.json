@@ -28990,5 +28990,160 @@
                               "Screens/Pay/PAY-28 · Arrears base confirmation (E3 · Rule changes and triggers, all three)"
                     ],
                     "note": "Positive and negative (api payroll-5g e2e: E3 trigger test (maker, switches, once per change, joining replace, confirmed base kept, other company and no-key refusals), E3 ESI April test, proposal preview and accept; payroll-pf-ceiling; kit offcycle-live E3 tests). Migrations 860 (switches, arrears_runs, proposal impact) and 861 (trigger sources)."
+          },
+          {
+                    "id": "MT-T2A-ROW-AND-TOUCH",
+                    "area": "T2-A (answers 2756, 2758): most days in a row; leave types that can't be taken next to each other (27 Nov 2026)",
+                    "screen": "Time › Set-up › a leave type › Rules (TIM-27); Apply leave",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin; an employee with balances of two types (for example EL and CL).",
+                    "steps": [
+                              "As HR set EL Most days in a row 3 and Most days in one request 4; Save. Clear the request limit and Save.",
+                              "Set EL Can't be taken next to: CL. Save.",
+                              "As the employee apply EL Thursday and Friday; then EL Monday and Tuesday of the next week.",
+                              "Apply CL on the Wednesday after a Monday-Tuesday EL; then CL on a Friday with EL the next Monday.",
+                              "Apply CL two working days away from EL."
+                    ],
+                    "expected": "Step 1: 'More than the limit in a row of 3 days.' and nothing saved; then saved. Step 3: the second request is refused: 'EL is at most 3 days in a row, counting leave next to it. This would make 4 days.' (the weekend joins them). Step 4: both refused: 'CL can't be taken next to EL (<date>).' (across the weekend too). Step 5: accepted. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-27 · Leave type (Rules tab)"
+                    ],
+                    "note": "Positive and negative (joined-run.spec 5 tests; kit leave-rules-live test; leave e2e unchanged and green). Rules in the type's rules JSON (no migration); either type naming the other refuses."
+          },
+          {
+                    "id": "MT-T2A-STARTERS",
+                    "area": "T2-A (answer 2754): starter leave types gallery (27 Nov 2026)",
+                    "screen": "Time › Set-up (TIM-28): Leave types › Add starter leave types; first set-up prompt",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin (leave.settings.manage company-wide); a second company with no leave types for the first set-up prompt.",
+                    "steps": [
+                              "In a company with no leave types open Time › Set-up. Press Choose starter leave types.",
+                              "Press Add on Casual leave, then on Earned leave and Maternity leave.",
+                              "Open Leave types: the three show '· starter'. Open Casual leave, change its name, Save.",
+                              "New policy: Casual 12 and Earned 15 carrying forward 30 are filled in.",
+                              "Negative: in the demo company (EL already exists) open Leave types › Add starter leave types: Earned leave shows Added with no Add button.",
+                              "Negative: as an employee or a manager, POST /time/setup/types/starter/casual: refused (403)."
+                    ],
+                    "expected": "Step 1: the drawer lists casual 12, sick 12, earned 15 carry 30, maternity 26 weeks, paternity 5 days, comp-off, leave without pay. Step 2: each Add gives a 5-second toast '<name> added' and the row turns to Added. Step 3: saved like any type. Step 4: the suggested days are filled. Step 5: no second EL. Step 6: 403. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-28 · Leave policies (No leave types yet · starter gallery)"
+                    ],
+                    "note": "Positive and negative (api leave-starters.spec 4; kit setup-live 3; web yx-time-starters 2). Migration 850 (leave_types.starter). State rules (Factories Act 1 day per 20 worked) stay as the factory leave table, not a starter."
+          },
+          {
+                    "id": "MT-T2A-SERVICE-BANDS",
+                    "area": "T2-A (answer 2755): service bands (experience levels) on a leave policy line (27 Nov 2026)",
+                    "screen": "Time › Set-up › a leave policy (TIM-28 drawer) › Edit a line › Service bands; Leave balances",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin; an employee who joined more than 2 years ago (and one who joined this year).",
+                    "steps": [
+                              "Open a policy, Edit Earned leave (15 a year). Add service band: after 2 years 18 days, most days held 45. Save from today.",
+                              "Add a second band after 1 year: the save is refused. Remove it and save.",
+                              "Run the accrual (or wait for the monthly credit): the long-serving employee's next credit is at 18 a year (1.5 a month); the new joiner's stays at 1.25.",
+                              "For someone whose anniversary is mid-month, check the credit of that month is still the old rate and the next one is the new rate.",
+                              "Open the policy: the earlier version still shows without bands (bands belong to the dated version)."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; the line reads '15 days a year, ... 18 after 2 years'. Step 2: 'Each band starts after more years than the one before.' and nothing saved. Step 3: only the yearly days change; carry forward is the same; credits over 45 lapse in the band. Step 4: the band applies from the first credit after the anniversary. Step 5: the old version is unchanged. No page scroll at 1278 x 635 with the drawer open.",
+                    "stories": [
+                              "Screens/Time/TIM-28 · Leave policies (Policy drawer)"
+                    ],
+                    "note": "Positive and negative (api service-bands.spec 7, time-maths and accrual-limits still green; kit setup-live 1). Bands live on the policy line JSON of the dated version (no migration). A band below a state floor is raised to it. Web: yx-time-service-bands (2)."
+          },
+          {
+                    "id": "MT-T2A-COMPOFF-ROSTER",
+                    "area": "T2-A (answer 2757): comp-off credited from the roster, company setting off by default (27 Nov 2026)",
+                    "screen": "Settings › Time & Leave › Leave types (3.6) › Company choices; Me › Leave › Comp-off",
+                    "url": "http://localhost:3000/yx/settings/time/leave-types",
+                    "account": "HR Admin or a leave admin; a manager who publishes the roster; an employee whose usual weekly off is Sunday.",
+                    "steps": [
+                              "Open Leave types settings: 'Credit comp-off automatically when the roster puts someone to work on a weekly off or holiday and they work it' is off (Starter default).",
+                              "With it off, publish a roster shift for the employee on a Sunday; the employee clocks in and works 8 hours. Next day: no comp-off credit appears.",
+                              "Turn the setting on and save. Run the accrual job (or wait up to 6 hours).",
+                              "Negative: a rostered Sunday worked only 2 hours, an ordinary weekday worked, and a Sunday already claimed (claim pending) get nothing.",
+                              "Claim a holiday worked that was not on the roster: the claim and the manager's approval work as before."
+                    ],
+                    "expected": "Step 1: off. Step 2: nothing credited. Step 3: Me › Leave › Comp-off shows a credit of 1 day 'Comp-off for rostered work on <date>' with its use-by date; the day is no longer offered for a claim. Step 4: no credit. Step 5: as today. 5-second toast on save; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings · Time & Leave (Leave types)"
+                    ],
+                    "note": "Positive and negative (api roster-comp-off.spec 3; kit time-settings-live; web yx-settings-time 1). Job creditRosteredCompOff runs with accruals; period key roster:<date> per person makes reruns safe. 'Take now, work later' stays as the comp-off type's negative balance. API e2e on the real database: time-t2a (10)."
+          },
+          {
+                    "id": "MT-T2A-OVERVIEW-CARDS",
+                    "area": "T2-A (answer 2759): manager leave overview cards (27 Nov 2026)",
+                    "screen": "Team › Leave (TIM-17 Manager)",
+                    "url": "http://localhost:3000/yx/time/team-leave",
+                    "account": "Manager panel@ (Divya) with reports; HR Admin for the setting.",
+                    "steps": [
+                              "As a report, apply casual leave for today (applied on its first day) and sick leave for yesterday.",
+                              "As the manager open Team › Leave: the cards 'Unplanned leave this month' and 'No leave in 90 days'.",
+                              "Check Away this week: the sick leave shows as 'Leave', never 'Sick leave'.",
+                              "As HR set 'Team leave: no leave taken means none approved in the last (days)' to 30 (Settings › Leave types). Reload Team › Leave.",
+                              "Negative: a report who joined 20 days ago with no leave is not counted under no leave in 30 days; leave applied a week ahead is not unplanned; a person with no reports sees no cards."
+                    ],
+                    "expected": "Step 2: unplanned counts the report (names only, no type); no-leave lists reports with no approved leave in 90 days. Step 3: 'Leave · <dates>'. Step 4: the card reads 'No leave in 30 days'. Step 5: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-17 · Leave home (Manager · overview cards)"
+                    ],
+                    "note": "Positive and negative (kit leave-mgr-live 2; web yx-time-team-overview 2). Setting leave.overview.no_leave_days (default 90). Unplanned is counted for leave starting this month (question 2830). Sick or medical types show as 'Leave' everywhere on the manager overview (away, who else is off). API e2e on the real database: time-t2a (10)."
+          },
+          {
+                    "id": "MT-T2A-PEERS-AWAY",
+                    "area": "T2-A (answer 2760): peers away (27 Nov 2026)",
+                    "screen": "Me › Leave (TIM-17 Employee): Peers away card",
+                    "url": "http://localhost:3000/yx/time/leave",
+                    "account": "Two employees with the same manager (for example two of panel@'s reports); one from another team.",
+                    "steps": [
+                              "Approve 2 days of sick leave next week for peer A.",
+                              "As peer B open Me › Leave: the Peers away card lists the two days with 'A · away'.",
+                              "Negative: the card shows no leave type, half day or times; pending leave of A is not shown; someone from another team never appears; an employee with no manager sees 'No one else has your manager.'",
+                              "Negative: GET /time/me/peers-away as a person shows only their own peers (no id can be passed)."
+                    ],
+                    "expected": "Step 2: read-only list for the next 14 days. Step 3 and 4: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-17 · Leave home (Employee · peers away)"
+                    ],
+                    "note": "Positive and negative (kit leave-live 2; web yx-time-peers 2). Peers are the people with the same manager today (current assignment). API e2e on the real database: time-t2a (10)."
+          },
+          {
+                    "id": "MT-T2A-LWF-SUPERVISOR",
+                    "area": "Payroll review M3 (answer 2762): manager or supervisor on the job record; Tamil Nadu and Delhi LWF exclusions (27 Nov 2026)",
+                    "screen": "People › a person › Changes (PPL-04 redesignation or correction); History (job facts); Payroll › December run",
+                    "url": "http://localhost:3000/yx/people",
+                    "account": "HR Admin with employee.change.manage; payroll admin for the December run; one person in Tamil Nadu on 40,000 a month and one in Delhi on 30,000.",
+                    "steps": [
+                              "Raise a correction for the Tamil Nadu person: Manager or supervisor = Manager or supervisor, from 1 Dec 2026. Approve it.",
+                              "Open the person's History: the job shows 'Manager or supervisor: Yes'.",
+                              "Run December payroll: the Tamil Nadu person has no LWF (20 / 40) line; a non-supervisor in Tamil Nadu still pays 20 / 40.",
+                              "Do the same for the Delhi person: no LWF (0.75 / 2.25) in December.",
+                              "Negative: a supervisor in Tamil Nadu on exactly 15,000 still pays; a transfer form never shows the field; a person not marked stays covered; a November run is unchanged."
+                    ],
+                    "expected": "As described; each LWF line cites IN.LWF IN-TN 2026-v3 or IN-DL 2026-v2 (verify). Toast on saving the change; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-04 · Changes"
+                    ],
+                    "note": "Positive and negative (api lwf-supervisors.spec 4, statutory golden cases; kit history.test 1). Migration 851: employee_assignments.supervisory (default false) and the two rule set versions from 1 Dec 2026, verify (CA to confirm the wage compared: the month's statutory gross earnings). Web: yx-people-supervisory (2)."
+          },
+          {
+                    "id": "MT-T2A-INTERNAL-RELEASE",
+                    "area": "T2-A (answers 2761, 2836): the current manager releases someone who applies for an internal job (27 Nov 2026)",
+                    "screen": "Settings › Hiring › Internal jobs; Hiring › Internal jobs (HIR-13, Apply sheet); Approvals (the manager's and HR's inbox); the candidate's offer",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "HR Admin (hr_admin profile); an employee past probation and 12 months in the role; their manager (panel@, Divya); a recruiter who makes offers; another company's admin.",
+                    "steps": [
+                              "Default: open Settings › Hiring › Internal jobs. 'The current manager releases the person before an offer' is off. As the employee apply for an internal job; as the recruiter make an offer on that application.",
+                              "As HR turn the setting on and save. As the employee open Hiring › Internal jobs and press Apply on another job: read the blue note, then send.",
+                              "As the manager open Approvals: the request 'Release <name> for the internal job <title>'. Before deciding, as the recruiter try to make an offer on the application.",
+                              "As the manager press Approve; then as the recruiter make the offer.",
+                              "Negative: the employee applies for a third job; the manager presses Reject with a reason; the recruiter tries an offer. As the applicant or another colleague, try to decide the release (they have no task); as another company's admin call POST /workflow/approvals/tasks/<task id>/decide.",
+                              "No answer: the employee applies for a fourth job and nobody decides. After 5 working days (Monday to Friday, less company-wide holidays; a holiday in between moves it a day) the hourly job runs (or run it in a test). Open Approvals as HR.",
+                              "Turn the setting off again and apply once more: the manager is only told; an application still waiting keeps waiting."
+                    ],
+                    "expected": "Step 1: the manager gets the usual 'applied for the internal job' notice; the offer is made. Step 2: toast 'Saved'; the Apply sheet says 'Your manager, <name>, is asked to release you when you apply. An offer can be made only once they agree; if they have not answered in 5 working days, HR decides.' Step 3: the request is in the manager's inbox (no 'applied' notice); the offer is refused: 'Their current manager has not released them yet…'. Step 4: the offer is made. Step 5: refused offer: 'Their current manager did not release them for this job, so no offer can be made.'; others cannot decide (403/404); another company 404. Step 6: HR Admins get 'Escalated to you: Current manager' (not the manager's manager); either HR or the manager can decide; it happens once. Step 7: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Hiring/HIR-13 · Internal jobs (Apply sheet · manager releases)",
+                              "Screens/Settings/6.1 Hiring (Internal jobs)"
+                    ],
+                    "note": "Positive and negative (api e2e hiring-internal-release 7: off by default, setting values and key, asked not told, offer refused while pending and after a refusal, only the manager decides, HR after 5 working days once, rerun, other company, off again, RLS; unit release.spec 3, offers and hiring-settings specs; kit hir-13-live and hiring-live; web yx-hiring-hir13 and yx-settings-hiring). Migration 852 (internal_applications release_status, release_wf_request_id, release_asked_at, release_hr_at). Engine request type hiring.internal_release; hourly sweep internal-release-handover at :35."
           }
 ]

@@ -414,6 +414,9 @@ export interface LeaveRules {
   maxRequestsPerMonth?: number | null;
   minGapDays?: number | null;
   allowedWeekdays?: number[] | null;
+  /** Answers 2756 / 2758: most days in a row (touching requests joined across weekly offs and holidays); types it can't touch. */
+  maxConsecutiveDays?: number | null;
+  notWithTypes?: string[] | null;
   /** TIM-27 Year end: cash-in limits and payout (null: the company's). */
   encashMaxDays?: number | null;
   encashMinLeft?: number | null;
@@ -448,6 +451,19 @@ export interface LeaveTypeRow {
   statutory?: StatutoryMinimum | null;
   /** Answer 2477: the dated versions of the rules and pay, newest first. */
   versions?: { validFrom: string; paid: boolean; rules: LeaveRules }[];
+  /** Answer 2754: the starter it was added from (null: made by HR), and the policy line it suggests. */
+  starter?: string | null;
+  suggestedLine?: Omit<PolicyLine, 'leaveTypeId'> | null;
+}
+
+/** Answer 2754: one starter leave type HR can add in one click. */
+export interface LeaveStarter {
+  key: string;
+  code: string;
+  name: string;
+  kind: string;
+  summary: string;
+  added: boolean;
 }
 
 export interface PolicyLine {
@@ -459,6 +475,8 @@ export interface PolicyLine {
   carryForwardMax: number | null;
   /** Answer 2342: the most days held at any time (null: no ceiling). */
   maxBalance?: number | null;
+  /** Answer 2755: service bands (whole years from joining); each changes the yearly days and the ceiling only. */
+  bands?: { fromYears: number; annualDays: number; maxBalance?: number | null }[];
 }
 
 export interface LocationRule {
@@ -478,6 +496,8 @@ export interface TimeSetup {
   today: string;
   /** HLP-12 answer 62: the injury leave type code (company setting) and whether the company has that type yet. */
   injuryLeave?: { code: string; missing: boolean };
+  /** Answer 2754: the starter gallery. */
+  starters?: LeaveStarter[];
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
   calendars: {
@@ -925,6 +945,17 @@ export interface TeamLeaveHome {
   /** Other approvals waiting for me (attendance, overtime, comp-off …). */
   otherWaiting: number;
   away: { employeeId: string; name: string; type: string; from: string; to: string }[];
+  /** Answer 2759: overview cards, counts and names only (never a leave type). */
+  cards?: { unplanned: { count: number; people: { employeeId: string; name: string; requests: number }[] }; noLeave: { days: number; count: number; people: { employeeId: string; name: string }[] } } | null;
+}
+
+/** Answer 2760: GET /time/me/peers-away. */
+export interface PeersAway {
+  from: string;
+  to: string;
+  /** How many peers I have (0: no one else has my manager). */
+  peers: number;
+  days: { on: string; names: string[] }[];
 }
 
 /** TIM-19 Manager: GET /time/requests/:id as someone else's request (team availability, balance after, my task). */

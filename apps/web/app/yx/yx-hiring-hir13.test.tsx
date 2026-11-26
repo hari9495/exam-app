@@ -57,6 +57,19 @@ describe('HIR-13 Internal jobs page', () => {
     expect((await screen.findAllByText('Applied for Senior QA Engineer')).length).toBeGreaterThan(0);
   });
 
+  it('answer 2761: with the release setting on, the sheet says the manager is asked; off, only told', async () => {
+    routes({ eligible: true, managerName: 'Divya Menon', tellManager: 'on_apply', managerRelease: true });
+    const { unmount } = wrap(<YxInternalJobsPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Apply for Senior QA Engineer' }));
+    expect(screen.getByText(/Your manager, Divya Menon, is asked to release you when you apply\. An offer can be made only once they agree/)).toBeInTheDocument();
+    unmount();
+    routes({ eligible: true, managerName: 'Divya Menon', tellManager: 'on_apply', managerRelease: false });
+    wrap(<YxInternalJobsPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Apply for Senior QA Engineer' }));
+    expect(screen.queryByText(/is asked to release you/)).toBeNull();
+    expect(screen.getByText(/Your manager, Divya Menon, is told when you apply/)).toBeInTheDocument();
+  });
+
   it('not eligible: the company rule shows and nothing is sent', async () => {
     routes({ eligible: false, reason: 'probation', title: 'You can apply once your probation is confirmed', detail: 'Your probation is due to end on 31 Mar 2027.', managerName: null, tellManager: 'at_offer' });
     wrap(<YxInternalJobsPage />);

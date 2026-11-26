@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PersonHistoryScreen, type PersonHistoryScreenProps } from './person-history';
-import { changeInput, draftForm, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
+import { changeInput, draftForm, FIELDS, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
 import { ChangeActionDrawer as ChangeDrawer, ChangeImpact as DesignImpact } from '../people/changes';
 import { EMPTY_HIRE, HireDrawer, hireInput, type HireDraft } from './hire';
 import { AS_OF, AS_OF_PAY, HISTORY, IMPACT, IMPACT_LOWERS_PAY, OPTIONS, PEOPLE, TODAY_ISO } from './data';
@@ -33,6 +33,14 @@ describe('changeInput (P06 §4.3, YX-HIS-12, R1)', () => {
   it('5c-D2: a new designation or a correction can set the skill class (a dated job fact)', () => {
     expect(changeInput(draft({ changeType: 'redesignation', values: { designationId: 'des-sr', skillClass: 'skilled' } }), OPTIONS).input?.payload).toEqual({ assignment: { designationId: 'des-sr', skillClass: 'skilled' } });
     expect(changeInput(draft({ changeType: 'correction', values: { skillClass: 'highly_skilled' } }), OPTIONS).input?.payload).toEqual({ assignment: { skillClass: 'highly_skilled' } });
+  });
+
+  it('answer 2762: HR marks the job as a manager or supervisor (or not) on a redesignation or a correction', () => {
+    expect(changeInput(draft({ changeType: 'redesignation', values: { designationId: 'des-sr', supervisory: 'yes' } }), OPTIONS).input?.payload).toEqual({ assignment: { designationId: 'des-sr', supervisory: true } });
+    expect(changeInput(draft({ changeType: 'correction', values: { supervisory: 'no' } }), OPTIONS).input?.payload).toEqual({ assignment: { supervisory: false } });
+    // Negative: a transfer never carries it, and a correction with nothing chosen asks for a value.
+    expect(FIELDS.transfer).not.toContain('supervisory');
+    expect(changeInput(draft({ changeType: 'correction', values: {} }), OPTIONS).errors.map((e) => e.message)).toContain('Choose at least one new value');
   });
 
   it('builds the payload for the kind of change, with pay as an amount or a percentage', () => {

@@ -126,3 +126,25 @@ describe('TIM-19 Manager (live)', () => {
     expect(await screen.findByText('Not found')).toBeInTheDocument();
   });
 });
+
+describe('answer 2759: overview cards (live)', () => {
+  const cards = { unplanned: { count: 6, people: ['Arjun Kulkarni', 'Meera Krishnan', 'Ravi Kumar', 'Divya R', 'Anil S', 'Kiran P'].map((name, i) => ({ employeeId: `e${i}`, name, requests: 1 })) }, noLeave: { days: 90, count: 1, people: [{ employeeId: 'e9', name: 'Suresh Pillai' }] } };
+  it('shows the counts and names, never a leave type', () => {
+    render(<LeaveHomeScreen mgrLive={mgr({ data: { ...HOME, waiting: [], away: [], cards } })} />);
+    const unplanned = screen.getByText('Unplanned leave this month').closest('div')!;
+    expect(within(unplanned).getByText('6')).toBeInTheDocument();
+    expect(within(unplanned).getByText('Arjun Kulkarni, Meera Krishnan, Ravi Kumar, Divya R, Anil S and 1 more')).toBeInTheDocument();
+    expect(within(unplanned).queryByText(/leave ·|Sick|Casual/)).not.toBeInTheDocument();
+    const none = screen.getByText('No leave in 90 days').closest('div')!;
+    expect(within(none).getByText('Suresh Pillai')).toBeInTheDocument();
+  });
+
+  it('negative: zero counts say so plainly; no cards from the server shows none', () => {
+    const { unmount } = render(<LeaveHomeScreen mgrLive={mgr({ data: { ...HOME, cards: { unplanned: { count: 0, people: [] }, noLeave: { days: 60, count: 0, people: [] } } } })} />);
+    expect(screen.getByText('Applied on or after the first day')).toBeInTheDocument();
+    expect(screen.getByText('Everyone has taken some leave')).toBeInTheDocument();
+    unmount();
+    render(<LeaveHomeScreen mgrLive={mgr()} />);
+    expect(screen.queryByText('Unplanned leave this month')).not.toBeInTheDocument();
+  });
+});

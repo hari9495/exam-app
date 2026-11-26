@@ -30,10 +30,10 @@ describe('Time & Leave settings (S-2): every hidden setting has a field', () => 
   it('the 40 settings that had no screen each sit on exactly one drawn page, with the starter value marked', () => {
     const keys = unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)));
     // 48 here (batch A item 7 added the two hourly-permission settings on 3.5, A9 the office-or-remote day rule, batch C item 16
-    // the five short-hours and breaks settings on 3.5, 2629 the block-leave next-year days); 3.11's one (timesheet.tool_suggestions)
-    // is on the Projects settings page.
-    expect(keys).toHaveLength(48);
-    expect(new Set(keys).size).toBe(48);
+    // the five short-hours and breaks settings on 3.5, 2629 the block-leave next-year days, 2757 comp-off from the roster, 2759 the no-leave window); 3.11's
+    // one (timesheet.tool_suggestions) is on the Projects settings page.
+    expect(keys).toHaveLength(50);
+    expect(new Set(keys).size).toBe(50);
     expect(TIME_SETTINGS['3.11']).toBeUndefined();
     // The one 3.11 is Projects' page: its pre-fill switch is owned by the projects API since P-3 (answer 1409).
     const v = { 'projects.enabled': 'on', 'timesheet.tool_suggestions': 'off' };
@@ -55,6 +55,9 @@ describe('Time & Leave settings (S-2): every hidden setting has a field', () => 
     expect(f('3.2', 'kiosk.methods')).toMatchObject({ kind: 'multiselect', value: ['pin', 'qr'] });
     expect(f('3.9', 'leave.year_start_month')).toMatchObject({ kind: 'select', value: '1', optionLabels: expect.objectContaining({ '4': 'April' }) });
     expect(f('3.5', 'attendance.wfh_monthly_limit')).toMatchObject({ value: '6', starter: false });
+    // Answer 2757: comp-off from the roster is a switch, off until HR turns it on.
+    expect(f('3.6', 'leave.comp_off.auto_from_roster')).toMatchObject({ kind: 'toggle', value: false, starter: true });
+    expect(timeSettingsChanges({ 'leave.comp_off.auto_from_roster': true }, DATA)).toEqual([{ key: 'leave.comp_off.auto_from_roster', value: 'on' }]);
     expect(f('3.2', 'attendance.phone_binding').locked).toMatch(/manages access/);
     expect(allSettings(timeSettingsPage(pageOf('3.2'), { ...DATA, canGuard: true }, ALL_LINKS)).find((d) => d.key === 'attendance.phone_binding')!.locked).toBeUndefined();
     // Answer 2477: turning phone binding on asks to confirm first (the high-impact confirm and step-up).

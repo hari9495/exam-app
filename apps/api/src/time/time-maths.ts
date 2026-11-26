@@ -130,6 +130,31 @@ export interface AccrualLine {
   frequency: 'yearly' | 'monthly';
   proRata: boolean;
   rounding: number;
+  /** Answer 2755: service bands (years from joining, ascending); a band changes the yearly days and the ceiling only. */
+  bands?: readonly ServiceBand[];
+}
+
+export interface ServiceBand {
+  fromYears: number;
+  annualDays: number;
+  /** The ceiling in this band (absent: the line's own). */
+  maxBalance?: number | null;
+}
+
+/** Whole years of service on `on`, counted from the joining date. */
+export function serviceYears(joinedOn: string, on: string): number {
+  if (on < joinedOn) return 0;
+  return Math.floor(day(on).diff(day(joinedOn), 'years').years + 1e-9);
+}
+
+/**
+ * Answer 2755: the band in force for a credit dated `on` (null: the line's own days). A credit is in a band once the
+ * anniversary has passed, so a new band applies from the next credit after it.
+ */
+export function bandOn(bands: readonly ServiceBand[] | undefined, joinedOn: string, on: string): ServiceBand | null {
+  if (!bands?.length) return null;
+  const years = serviceYears(joinedOn, on);
+  return [...bands].reverse().find((b) => years >= b.fromYears) ?? null;
 }
 
 export interface AccrualDue {
@@ -154,12 +179,15 @@ export function afterWait<T extends { on: string }>(dues: T[], joinedOn: string,
  * Answer 2342 (Oracle O10): the lapse lines that keep a balance at its ceiling as new credits come in, in date order. A
  * credit lapses only its own days over the ceiling (a balance already above it, e.g. carried in, is never cut here).
  */
-export function ceilingLapses(dues: readonly AccrualDue[], balance: number, max: number | null | undefined): AccrualDue[] {
-  if (max === null || max === undefined) return [];
+export function ceilingLapses(dues: readonly AccrualDue[], balance: number, ceiling: number | null | undefined | ((on: string) => number | null | undefined)): AccrualDue[] {
+  const maxOn = typeof ceiling === 'function' ? ceiling : () => ceiling;
   const out: AccrualDue[] = [];
   let run = balance;
   for (const d of [...dues].sort((a, b) => (a.on < b.on ? -1 : a.on > b.on ? 1 : 0))) {
     run = Math.round((run + d.days) * 100) / 100;
+    // Answer 2755: the ceiling of the band the credit falls in.
+    const max = maxOn(d.on);
+    if (max === null || max === undefined) continue;
     const over = Math.min(d.days, Math.round((run - max) * 100) / 100);
     if (over > 0) {
       out.push({ periodKey: `ceiling:${d.periodKey}`, on: d.on, days: -over });
@@ -170,13 +198,16 @@ export function ceilingLapses(dues: readonly AccrualDue[], balance: number, max:
 }
 
 export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string; /** TIM-25: long absences that earn no leave (monthly credits only). */ notEarning?: readonly { from: string; to: string }[]; /** TIM-29: a short year ends early (a leave-year change); its yearly credit is for its months only. */ yearEnd?: string }): AccrualDue[] {
-  if (line.annualDays <= 0) return [];
+  if (line.annualDays <= 0 && !line.bands?.some((b) => b.annualDays > 0)) return [];
   const start = day(o.yearStart);
   const yearEnd = o.yearEnd ?? start.plus({ years: 1 }).minus({ days: 1 }).toISODate()!;
+  let scale = 1;
   if (o.yearEnd) {
     const months = (day(yearEnd).year - start.year) * 12 + day(yearEnd).month - start.month + 1;
-    if (months < 12) line = { ...line, annualDays: line.frequency === 'yearly' ? (line.annualDays * months) / 12 : line.annualDays };
+    if (months < 12 && line.frequency === 'yearly') scale = months / 12;
   }
+  // Answer 2755: the yearly days of the band the credit dated `on` falls in.
+  const annualOn = (on: string) => (bandOn(line.bands, o.joinedOn, on)?.annualDays ?? line.annualDays) * scale;
   const last = o.exitedOn && o.exitedOn < yearEnd ? o.exitedOn : yearEnd;
   if (o.joinedOn > last) return [];
   const share = (from: string, to: string) => {
@@ -191,7 +222,7 @@ export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn:
   if (line.frequency === 'yearly') {
     const on = o.yearStart < o.joinedOn ? o.joinedOn : o.yearStart;
     if (on > o.upTo) return [];
-    const days = roundTo(line.annualDays * share(o.yearStart, yearEnd), line.rounding);
+    const days = roundTo(annualOn(on) * share(o.yearStart, yearEnd), line.rounding);
     return days > 0 ? [{ periodKey: `accrual:${o.yearStart}`, on, days }] : [];
   }
   const out: AccrualDue[] = [];
@@ -203,10 +234,10 @@ export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn:
     const f = from.toISODate()!;
     const s = share(f, to);
     if (s === 0) continue;
-    exact += (line.annualDays / 12) * s;
+    const on = f < o.joinedOn ? o.joinedOn : f;
+    exact += (annualOn(on) / 12) * s;
     const final = m === 11 || to >= last;
     const target = final ? Math.round(exact * 100) / 100 : roundTo(exact, line.rounding);
-    const on = f < o.joinedOn ? o.joinedOn : f;
     if (on > o.upTo) break;
     const days = Math.round((target - given) * 100) / 100;
     given = target;
