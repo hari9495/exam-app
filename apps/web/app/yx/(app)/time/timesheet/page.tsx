@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TimesheetScreen, type NotSentWeek, type MyTimesheet, type PrefillSuggestions, type PrefillTools, type TimeSummaryWeek } from '@yukthix/ui/time';
+import { TimesheetScreen, type MyProject, type NotSentWeek, type MyTimesheet, type PrefillSuggestions, type PrefillTools, type TimeSummaryWeek } from '@yukthix/ui/time';
 import { mondayOf, timeState, todayIndia, useTime, useTimeWrite } from '../../../../../lib/yx-time';
 import { useMyLeaveLive } from '../../../../../lib/yx-my-leave';
 
@@ -20,6 +20,8 @@ export default function YxTimesheetPage() {
   // Batch D A5: my past weeks not sent (12 weeks; Show older: a year).
   const [notSentWeeks, setNotSentWeeks] = useState(12);
   const notSent = useTime<{ weeks: NotSentWeek[] }>(`/me/timesheet/not-sent?weeks=${notSentWeeks}`);
+  // T2-D 55: my projects with my hours.
+  const myProjects = useTime<MyProject[]>('/me/timesheet/projects');
   const write = useTimeWrite();
   // Batch D A8: Request leave opens My leave's drawer here, so unsaved hours stay on the grid.
   const leave = useMyLeaveLive();
@@ -42,6 +44,7 @@ export default function YxTimesheetPage() {
         today,
         lastWeek: lastWeek.data ?? null,
         leave: { data: leave.data, live: leave },
+        myProjects: { state: timeState(myProjects), data: myProjects.data ?? null, onRetry: () => void myProjects.refetch() },
         notSent: { state: timeState(notSent), data: notSent.data ?? null, onShowOlder: notSentWeeks < 52 ? () => setNotSentWeeks(52) : undefined },
         onWeek: setWeek,
         onSave: (w, lines) => write('/me/timesheet', 'PUT', { week: w, lines }),

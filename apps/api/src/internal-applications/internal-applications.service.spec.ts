@@ -186,10 +186,12 @@ describe('InternalApplicationsService.myApplications', () => {
       pipelineEntry: { findMany: jest.fn().mockResolvedValue([{ id: 'e1', jobId: 'job-1', createdAt: day('2026-09-15'), rejected: false, archivedAt: null, job: { pipelineId: 'p1' }, status: { name: 'Screen', stage: { name: 'Screening', category: 'active', position: 2 } } }]) },
       job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1', title: 'Senior Engineer' }]) },
       pipelineStage: { findMany: jest.fn().mockResolvedValue([{ pipelineId: 'p1', position: 1 }]) },
+      // 2841: a release still waiting on the manager shows "Waiting for your manager".
+      internalApplication: { findMany: jest.fn().mockResolvedValue([{ entryId: 'e1' }]) },
     };
     const rows = await makeService(tx as any).svc.myApplications(ctx, 'user-1');
     expect(tx.pipelineEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { referrerUserId: 'user-1', enteredVia: 'internal' } }));
-    expect(rows).toEqual([{ entryId: 'e1', jobTitle: 'Senior Engineer', status: 'Interview', appliedAt: day('2026-09-15') }]);
+    expect(rows).toEqual([{ entryId: 'e1', jobTitle: 'Senior Engineer', status: 'Interview', appliedAt: day('2026-09-15'), waitingForManager: true }]);
   });
 });
 

@@ -28,6 +28,8 @@ export default function YxTimeSetupPage() {
         onOpenType: (tid) => router.push(`/yx/time/setup/types/${id(tid)}`),
         // HLP-12 answer 62: only when HR presses it.
         onAddInjuryLeave: () => write('/setup/types/injury-leave', 'POST', undefined, true, 'Injury leave added'),
+        // Answer 2754: the starter gallery (first set-up, and Leave types › Add starter leave types).
+        onAddStarter: (key) => write(`/setup/types/starter/${id(key)}`, 'POST', undefined, true, `${setup.data?.starters?.find((s) => s.key === key)?.name ?? 'Leave type'} added`),
         blockDates: {
           state: timeState(blocks),
           onRetry: () => void blocks.refetch(),

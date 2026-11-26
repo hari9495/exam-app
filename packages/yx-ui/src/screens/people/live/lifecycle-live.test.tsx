@@ -105,6 +105,24 @@ describe('Checklist templates (settings)', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ tasks: [expect.objectContaining({ key: 'appointment_letter', locked: true })] }));
   });
 
+  it('T2-F item 43: the checklist applies to an employment type (and place); empty means any', async () => {
+    const onSave = vi.fn(async () => ({}));
+    const applies = { legalEntities: [{ value: 'le1', label: 'Kaveri Foods' }], locations: [], departments: [], employmentTypes: [{ value: 'et1', label: 'Apprentice' }] };
+    render(<JourneyTemplatesScreen state="ready" data={DATA} teams={[]} catalogItems={[]} applies={applies} onUseStarter={vi.fn()} onSave={onSave} />);
+    await ue.click(screen.getByRole('button', { name: 'Edit checklist' }));
+    const sheet = screen.getByRole('dialog');
+    await ue.click(within(sheet).getByRole('combobox', { name: 'Employment type' }));
+    await ue.click(screen.getByRole('option', { name: 'Apprentice' }));
+    await ue.click(within(sheet).getByRole('button', { name: 'Save checklist' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ employmentTypeId: 'et1', legalEntityId: null, departmentId: null }));
+  });
+
+  it('negative (43): without the place lists there is no Applies to part', async () => {
+    render(<JourneyTemplatesScreen state="ready" data={DATA} teams={[]} catalogItems={[]} onUseStarter={vi.fn()} onSave={vi.fn()} />);
+    await ue.click(screen.getByRole('button', { name: 'Edit checklist' }));
+    expect(within(screen.getByRole('dialog')).queryByRole('combobox', { name: 'Employment type' })).toBeNull();
+  });
+
   it('offers the starter for leaving until it is copied', async () => {
     const onUseStarter = vi.fn(async () => ({}));
     render(<JourneyTemplatesScreen state="ready" data={DATA} teams={[]} catalogItems={[]} onUseStarter={onUseStarter} onSave={vi.fn()} />);

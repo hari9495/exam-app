@@ -606,6 +606,11 @@ export interface LiveOneOnOnes {
   onActionDone: (id: string, done: boolean) => Promise<unknown>;
   onHeld: () => Promise<unknown>;
   onReschedule: (on: string) => Promise<unknown>;
+  /** T2-C item 70 (answer 2843): agenda templates I may pick (the company's and my own); picking one fills the agenda. */
+  templates?: { value: string; label: string }[];
+  onUseTemplate?: (templateId: string) => Promise<unknown>;
+  /** A manager saves the open 1:1's agenda as their own template. */
+  onSaveTemplate?: (name: string, items: string[]) => Promise<unknown>;
 }
 
 export interface OneOnOneProps {
@@ -622,7 +627,7 @@ export interface OneOnOneProps {
   live?: LiveOneOnOnes;
 }
 
-type RecordLive = Pick<LiveOneOnOnes, 'owners' | 'goals' | 'onAgenda' | 'onSharedNotes' | 'onPrivateNote' | 'onAction' | 'onActionDone'>;
+type RecordLive = Pick<LiveOneOnOnes, 'owners' | 'goals' | 'onAgenda' | 'onSharedNotes' | 'onPrivateNote' | 'onAction' | 'onActionDone' | 'templates' | 'onUseTemplate' | 'onSaveTemplate'>;
 
 function AddActionSheet({ open, onOpenChange, o, live }: { open: boolean; onOpenChange: (o: boolean) => void; o: OneOnOne; live?: RecordLive }) {
   const owners = live?.owners ?? [
@@ -719,6 +724,56 @@ export function SuggestedAgendaPanel({ employee, items, onAdd }: { employee: str
   );
 }
 
+/** T2-C item 70 (answer 2843): pick a template to fill the agenda; a manager saves the agenda as their own template. */
+function AgendaTemplatePicker({ live, persona, agenda }: { live: RecordLive; persona: 'emp' | 'mgr'; agenda: string[] }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [tried, setTried] = useState(false);
+  const { busy, act } = useAct();
+  const templates = live.templates ?? [];
+  if (!templates.length && !(persona === 'mgr' && live.onSaveTemplate && agenda.length)) return null;
+  return (
+    <div className="yx-growth-row">
+      {templates.length > 0 && live.onUseTemplate && (
+        <>
+          <div className="yx-growth-grow">
+            <Select aria-label="Agenda template" placeholder="Start from a template" value={pick} onChange={setPick} options={templates} />
+          </div>
+          <Button loading={busy === 'template'} disabled={!pick} onClick={() => pick && void act('template', () => live.onUseTemplate!(pick), 'Template lines added to the agenda').then((ok) => ok && setPick(null))}>
+            Use template
+          </Button>
+        </>
+      )}
+      {persona === 'mgr' && live.onSaveTemplate && agenda.length > 0 && (
+        <Button onClick={() => (setTried(false), setName(''), setSaving(true))}>
+          Save agenda as my template
+        </Button>
+      )}
+      {saving && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setSaving(false)}
+          size="sm"
+          title="Save as my 1:1 template"
+          consequence={`Its ${agenda.length} agenda ${agenda.length === 1 ? 'line' : 'lines'} are kept for your next 1:1s. Only you see it.`}
+          confirmLabel="Save template"
+          onConfirm={async () => {
+            setTried(true);
+            if (name.trim().length < 2) return false;
+            if (!(await act('save-template', () => live.onSaveTemplate!(name.trim(), agenda), 'Saved as your 1:1 template'))) return false;
+            setSaving(false);
+          }}
+        >
+          <FormField id="oo-template-name" label="Template name" required error={tried && name.trim().length < 2 ? 'Name the template.' : null}>
+            <TextField value={name} onChange={setName} maxLength={80} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
 function OneOnOneRecord({ o, persona, suggested, live, actionOpen }: { o: OneOnOne; persona: 'emp' | 'mgr'; suggested?: OneOnOneProps['suggestedAgenda']; live?: RecordLive; actionOpen?: boolean }) {
   const [agenda, setAgenda] = useState(o.agenda);
   const [draft, setDraft] = useState('');
@@ -773,6 +828,7 @@ function OneOnOneRecord({ o, persona, suggested, live, actionOpen }: { o: OneOnO
             Add item
           </Button>
         </div>
+        {live && (o.status ?? 'planned') === 'planned' && <AgendaTemplatePicker live={live} persona={persona} agenda={shownAgenda.map((a) => a.text)} />}
       </section>
       {suggested && persona === 'mgr' && (
         <SuggestedAgendaPanel
@@ -950,7 +1006,7 @@ export function OneOnOneScreen({ persona, device: deviceProp, items, openId, sug
     { key: 'open', header: 'Open actions', type: 'number', value: openActions, width: 120 },
     { key: 'status', header: 'Status', type: 'status', value: (r) => (r.last && (today.getTime() - r.last.getTime()) / 86400000 > 35 ? 'Overdue' : 'On schedule'), statusTone: (v) => (v === 'Overdue' ? 'danger' : 'success'), width: 130 },
   ];
-  const recordLive: RecordLive | undefined = live && { owners: live.owners, goals: live.goals, onAgenda: live.onAgenda, onSharedNotes: live.onSharedNotes, onPrivateNote: live.onPrivateNote, onAction: live.onAction, onActionDone: live.onActionDone };
+  const recordLive: RecordLive | undefined = live && { owners: live.owners, goals: live.goals, onAgenda: live.onAgenda, onSharedNotes: live.onSharedNotes, onPrivateNote: live.onPrivateNote, onAction: live.onAction, onActionDone: live.onActionDone, templates: live.templates, onUseTemplate: live.onUseTemplate, onSaveTemplate: live.onSaveTemplate };
   // The record remounts when the server sends a new version, so its notes start from what was saved.
   const record = (o: OneOnOne) => <OneOnOneRecord key={live ? JSON.stringify([o.id, o.shared, o.privateNote]) : o.id} o={o} persona={persona} suggested={suggestedAgenda} live={recordLive} actionOpen={actionOpen} />;
   const recordBody = current ? record(current) : live?.recordState === 'error' ? <ErrorState title="We couldn’t load this 1:1" description="Check your connection and try again." onRetry={live.onRetry} /> : <Skeleton height={320} />;

@@ -434,7 +434,7 @@ export class HiringRequisitionsService implements OnModuleInit {
         requesterUserId: userId,
         raisedByUserId: userId,
         steps: [{ name: 'Finance and HR', approvers: [{ kind: 'users', userIds: approvers.slice(0, 25) }], mode: 'any', selfApproval: 'never' }],
-        payload: {},
+        payload: { positions: total, budget },
         payloadFields: [],
         fallbackUserIds: await this.admins(tx, org, [userId]),
         fallbackWording: { who: 'the company admins', check: 'Check who approves requisitions and headcount plans' },
@@ -508,14 +508,17 @@ export class HiringRequisitionsService implements OnModuleInit {
       await this.checkSeatOpenings(tx, c, job);
 
       // The company's requisition chain is the route (D3), its steps resolved to people now, as the older engine did.
-      const chain = await tx.approvalChain.findFirst({ where: { organizationId: org, gate: 'requisition', enabled: true }, include: { steps: { orderBy: { position: 'asc' } } } });
+      // E2 part 6: once the company has its own requisition policy, the old chain is not read and every requisition goes
+      // through the policy (its required steps below still apply).
+      const own = await this.engine.hasPolicy(tx, c, REQUISITION_TYPE);
+      const chain = own ? null : await tx.approvalChain.findFirst({ where: { organizationId: org, gate: 'requisition', enabled: true }, include: { steps: { orderBy: { position: 'asc' } } } });
       const chainSteps: ChainStepInput[] = (chain?.steps ?? []).map((s) => ({ position: s.position, name: s.name, approverType: s.approverType as ChainStepInput['approverType'], approverUserIds: s.approverUserIds ? (JSON.parse(s.approverUserIds) as string[]) : [], managerLevel: s.managerLevel, groupId: s.groupId }));
       const { resolved } = await resolveSteps(tx, { steps: chainSteps, submitterUserId: userId, gate: 'requisition', subjectId: job.id, organizationId: org });
       const steps: StepSpec[] = resolved.map((r) => ({ name: r.name, approvers: [{ kind: 'users', userIds: r.approverUserIds }], mode: 'any', selfApproval: 'never' }));
       if (check.extra) steps.push({ name: 'Outside the plan', approvers: [{ kind: 'users', userIds: (await this.planApprovers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never', required: true });
       // A manager's request never opens a job alone: without a route, recruiting (the job managers) approves it.
-      if (!steps.length && raisedByManager) steps.push({ name: 'Recruiting', approvers: [{ kind: 'users', userIds: (await this.jobManagers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never', required: true });
-      if (!steps.length) {
+      if (!steps.length && !own && raisedByManager) steps.push({ name: 'Recruiting', approvers: [{ kind: 'users', userIds: (await this.jobManagers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never', required: true });
+      if (!steps.length && !own) {
         // Neither a chain nor a reason for the extra step: the requisition opens at once (the older auto-pass).
         await tx.job.update({ where: { id: job.id }, data: { status: 'open' } });
         await audit(tx, c, 'ats.requisition.opened', 'job', job.id, { route: 'none' });
@@ -536,8 +539,10 @@ export class HiringRequisitionsService implements OnModuleInit {
         requesterUserId: userId,
         raisedByUserId: userId,
         steps,
-        payload: {},
+        // E2: the values a requisition policy's rules test, and the job's hiring manager (answer 2647).
+        payload: { openings: job.headcount ?? 1, outside_plan: job.outsidePlan ? 'yes' : 'no', replacement: job.requisitionReason === 'replacement' ? 'yes' : 'no', ...(job.hiringManagerId ? { hiring_manager_id: job.hiringManagerId } : {}) },
         payloadFields: [],
+        alwaysRoute: own,
         fallbackUserIds: await this.admins(tx, org, [userId]),
         fallbackWording: { who: 'the company admins', check: 'Check who approves requisitions and headcount plans' },
       });

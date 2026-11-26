@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScopeContext, SETTINGS, SettingDef, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, has, implicitSql, inScopeSql, tenantWide } from '../access/scope';
-import { DayRule, Floor, HolidayOn, WeeklyOffRule, addDays, eachDay, isWeeklyOff, localDate } from './time-maths';
+import { DayRule, Floor, HolidayOn, ServiceBand, WeeklyOffRule, addDays, eachDay, isWeeklyOff, localDate } from './time-maths';
 import { substituteDays } from './holiday-rules';
 import { LeaveYearChange, StatutoryMinimum, leaveYearWith, pickPolicy } from './leave-rules';
 import type { MaternityValues } from './time-rules';
@@ -64,6 +64,10 @@ export interface LeaveRules {
   minGapDays: number | null;
   /** T2-A (D8): the only weekdays it can be taken on, 0 Sunday to 6 Saturday (null: any day). */
   allowedWeekdays: number[] | null;
+  /** Answer 2756: the most days of this type in a row, counting requests that touch each other (weekly offs and holidays between join them). null: no limit. */
+  maxConsecutiveDays: number | null;
+  /** Answer 2758: leave types this type cannot touch (with only weekly offs or holidays between). null: none. */
+  notWithTypes: string[] | null;
   /** TIM-27 Year end: the most days cashed in a leave year (null: the company's leave.encashment.max_days). */
   encashMaxDays: number | null;
   /** Days that must stay after cashing in (null: the company's leave.encashment.min_left). */
@@ -93,7 +97,7 @@ export interface PayStep {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, maxRequestsPerMonth: null, minGapDays: null, allowedWeekdays: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, maxRequestsPerMonth: null, minGapDays: null, allowedWeekdays: null, maxConsecutiveDays: null, notWithTypes: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -124,6 +128,12 @@ export function parseRules(input: unknown): LeaveRules {
     if (!Array.isArray(r.allowedWeekdays) || !r.allowedWeekdays.length || r.allowedWeekdays.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) throw new BadRequestException('Choose the weekdays it can be taken on, or leave it open to every day.');
     r.allowedWeekdays = [...new Set(r.allowedWeekdays)].sort();
     if (r.allowedWeekdays.length === 7) r.allowedWeekdays = null;
+  }
+  if (r.maxConsecutiveDays !== null && !halfStep(r.maxConsecutiveDays, 0.5, 366)) throw new BadRequestException('Most days in a row is 0.5 to 366, in half days.');
+  if (r.maxConsecutiveDays !== null && r.maxDays !== null && r.maxDays > r.maxConsecutiveDays) throw new BadRequestException(`Most days in one request is more than the limit in a row of ${r.maxConsecutiveDays}.`);
+  if (r.notWithTypes !== null) {
+    if (!Array.isArray(r.notWithTypes) || !r.notWithTypes.length || r.notWithTypes.length > 30 || r.notWithTypes.some((x) => typeof x !== 'string' || !UUID_RE.test(x))) throw new BadRequestException('Choose the leave types it cannot be taken next to, or none.');
+    r.notWithTypes = [...new Set(r.notWithTypes)];
   }
   if (r.encashDivisor !== null && r.encashDivisor !== 26 && r.encashDivisor !== 30) throw new BadRequestException('The daily rate for cashing in is monthly pay divided by 26 or 30.');
   if (r.longAbsence !== null && r.longAbsence !== 'pause' && r.longAbsence !== 'continue') throw new BadRequestException('Choose whether crediting stops or continues during a long absence.');
@@ -179,6 +189,8 @@ export interface PolicyLine {
   carryForwardMax: number | null;
   /** Answer 2342 (Oracle O10): the most days held at any time (null: no ceiling); a credit over it lapses at once. */
   maxBalance?: number | null;
+  /** Answer 2755: service bands, part of this dated policy version; each changes only the yearly days and the ceiling. */
+  bands?: ServiceBand[];
 }
 
 export function parseLines(input: unknown, typeIds: ReadonlySet<string>): PolicyLine[] {
@@ -186,7 +198,7 @@ export function parseLines(input: unknown, typeIds: ReadonlySet<string>): Policy
   const seen = new Set<string>();
   return input.map((x, i) => {
     if (!isObj(x)) throw new BadRequestException(`Line ${i + 1} is not in the expected shape.`);
-    for (const k of Object.keys(x)) if (!['leaveTypeId', 'annualDays', 'frequency', 'proRata', 'rounding', 'carryForwardMax', 'maxBalance'].includes(k)) throw new BadRequestException(`Line ${i + 1} has an unknown part "${k.slice(0, 20)}".`);
+    for (const k of Object.keys(x)) if (!['leaveTypeId', 'annualDays', 'frequency', 'proRata', 'rounding', 'carryForwardMax', 'maxBalance', 'bands'].includes(k)) throw new BadRequestException(`Line ${i + 1} has an unknown part "${k.slice(0, 20)}".`);
     const id = String(x.leaveTypeId);
     if (!typeIds.has(id)) throw new BadRequestException(`Line ${i + 1}: choose a leave type of this company.`);
     if (seen.has(id)) throw new BadRequestException('Each leave type appears once in a policy.');
@@ -200,7 +212,25 @@ export function parseLines(input: unknown, typeIds: ReadonlySet<string>): Policy
     const mx = x.maxBalance ?? null;
     if (mx !== null && !halfStep(mx, 0.5, 400)) throw new BadRequestException(`Line ${i + 1}: the most days held is 0.5 to 400, in half days.`);
     if (mx !== null && cf !== null && (cf as number) > (mx as number)) throw new BadRequestException(`Line ${i + 1}: carry forward is more than the most days held.`);
-    return { leaveTypeId: id, annualDays: x.annualDays as number, frequency: x.frequency, proRata: x.proRata, rounding: x.rounding as number, carryForwardMax: cf as number | null, ...(mx !== null ? { maxBalance: mx as number } : {}) };
+    const bands = parseBands(x.bands ?? null, i);
+    return { leaveTypeId: id, annualDays: x.annualDays as number, frequency: x.frequency, proRata: x.proRata, rounding: x.rounding as number, carryForwardMax: cf as number | null, ...(mx !== null ? { maxBalance: mx as number } : {}), ...(bands.length ? { bands } : {}) };
+  });
+}
+
+/** Answer 2755: up to 10 bands, from 1 to 50 years of service, each later band starting later. */
+function parseBands(input: unknown, i: number): ServiceBand[] {
+  if (input === null) return [];
+  if (!Array.isArray(input) || input.length > 10) throw new BadRequestException(`Line ${i + 1}: add up to 10 service bands.`);
+  let last = 0;
+  return input.map((b) => {
+    if (!isObj(b) || Object.keys(b).some((k) => !['fromYears', 'annualDays', 'maxBalance'].includes(k))) throw new BadRequestException(`Line ${i + 1}: a service band is not in the expected shape.`);
+    if (!Number.isInteger(b.fromYears) || (b.fromYears as number) < 1 || (b.fromYears as number) > 50) throw new BadRequestException(`Line ${i + 1}: a service band starts after 1 to 50 whole years.`);
+    if ((b.fromYears as number) <= last) throw new BadRequestException(`Line ${i + 1}: each service band starts after more years than the one before.`);
+    last = b.fromYears as number;
+    if (!halfStep(b.annualDays, 0, 366)) throw new BadRequestException(`Line ${i + 1}: days a year in a service band are 0 to 366, in half days.`);
+    const mx = b.maxBalance ?? null;
+    if (mx !== null && !halfStep(mx, 0.5, 400)) throw new BadRequestException(`Line ${i + 1}: the most days held in a service band is 0.5 to 400, in half days.`);
+    return { fromYears: b.fromYears as number, annualDays: b.annualDays as number, ...(mx !== null ? { maxBalance: mx as number } : {}) };
   });
 }
 

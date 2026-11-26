@@ -58,6 +58,18 @@ describe('Asset suppliers (live)', () => {
     expect(onSave).toHaveBeenLastCalledWith('s1', { name: 'Dell India Pvt Ltd', gstin: '29AABCD1234E1Z5', contacts: [{ name: 'Suresh Kumar', email: 'suresh.kumar@dell.example', phone: '+91 98450 12345' }], notes: 'Laptops and their on-site service.', retired: true, version: 3 });
   });
 
+  it('negative (answer 2823): a site asset manager edits a supplier without Status; the save leaves its status as it is', async () => {
+    const onSave = vi.fn().mockResolvedValue({ id: 's1' });
+    show(<AssetSuppliersScreen live={liveSuppliers({ onSave, canRetire: false })} />);
+    await ue.click(screen.getByRole('link', { name: 'Dell India Pvt Ltd' }));
+    const d = await screen.findByRole('dialog');
+    expect(within(d).queryByRole('radio', { name: 'Retired' })).toBeNull();
+    expect(within(d).getByText('Active. Only company-wide asset managers retire or restore a supplier.')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Save supplier' }));
+    expect(onSave).toHaveBeenCalledWith('s1', expect.not.objectContaining({ retired: expect.anything() }));
+    expect(onSave.mock.calls[0][1]).toMatchObject({ name: 'Dell India Pvt Ltd', version: 3 });
+  });
+
   it('negative: without asset.manage there is no Add supplier and names are not links; a load error offers Retry', async () => {
     const { unmount } = show(<AssetSuppliersScreen live={liveSuppliers({ canManage: false })} />);
     expect(screen.queryByRole('button', { name: 'Add supplier' })).toBeNull();

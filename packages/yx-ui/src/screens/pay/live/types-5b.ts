@@ -125,6 +125,9 @@ export interface PayComponent {
   prorated: boolean;
   onPayslip: boolean;
   inCtc: boolean;
+  /** E3 (answer 2651): recalculate back-dated pay when a salary change or a joining date reaches a paid month. */
+  arrearsOnSalaryChange?: boolean;
+  arrearsOnJoining?: boolean;
   prorationText: string | null;
   rounding: 'none' | 'rupee' | 'up_rupee';
   ledger: string | null;

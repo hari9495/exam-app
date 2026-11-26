@@ -282,3 +282,47 @@ export function blockWindowProblem(w: { from: string; to: string; today: string;
   if (!w.nextYearDays || w.from > addDays(w.today, w.nextYearDays)) return 'next_year_late';
   return w.to > w.nextYearEnd ? 'beyond_next_year' : null;
 }
+
+/** One active leave day of the person around a request. */
+export interface AroundDay {
+  on: string;
+  portion: number;
+  type: string;
+}
+const nextDay = (d: string, by: number) => {
+  const x = new Date(`${d}T00:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + by);
+  return x.toISOString().slice(0, 10);
+};
+/**
+ * Answers 2756 / 2758: the days of `typeId` joined to a request (the request's own `total` plus leave of the same type
+ * that touches it, weekly offs and holidays between joining them), and the working days just before and after that run
+ * (where another type would "touch" it). Looks no further than `lo` / `hi`.
+ */
+export function joinedRun(i: { from: string; to: string; total: number; typeId: string; around: readonly AroundDay[]; off: ReadonlySet<string>; lo: string; hi: string }) {
+  const byDay = new Map<string, AroundDay[]>();
+  for (const x of i.around) byDay.set(x.on, [...(byDay.get(x.on) ?? []), x]);
+  const same = (d: string) => (byDay.get(d) ?? []).filter((x) => x.type === i.typeId);
+  let run = i.total;
+  let before = nextDay(i.from, -1);
+  while (before >= i.lo && (i.off.has(before) || same(before).length)) {
+    run += same(before).reduce((t, x) => t + x.portion, 0);
+    before = nextDay(before, -1);
+  }
+  let after = nextDay(i.to, 1);
+  while (after <= i.hi && (i.off.has(after) || same(after).length)) {
+    run += same(after).reduce((t, x) => t + x.portion, 0);
+    after = nextDay(after, 1);
+  }
+  return { run, before, after, edges: [...(byDay.get(before) ?? []), ...(byDay.get(after) ?? [])].filter((x) => x.type !== i.typeId).map((x) => ({ ...x, on: x.on })) };
+}
+
+/**
+ * Answer 2757: comp-off for a day the published roster put the person to work on their usual weekly off or a full
+ * holiday, credited without a claim when the company turns it on. Worked minutes decide a half or full day, as for a
+ * claim; a day already claimed or credited (overtime, holiday on a weekly off) gets nothing more.
+ */
+export function rosterCompOffDays(d: { usualOff: boolean; fullHoliday: boolean; rostered: boolean; workedMinutes: number; halfDayMinutes: number; fullDayMinutes: number; claimed: boolean; credited: boolean }): number {
+  if (!d.rostered || (!d.usualOff && !d.fullHoliday) || d.claimed || d.credited) return 0;
+  return d.workedMinutes >= d.fullDayMinutes ? 1 : d.workedMinutes >= d.halfDayMinutes ? 0.5 : 0;
+}

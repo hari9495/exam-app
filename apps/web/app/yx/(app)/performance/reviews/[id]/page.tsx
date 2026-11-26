@@ -45,6 +45,7 @@ export default function YxReviewPage() {
         onSkip: (agree, text) => (agree ? write('POST', `${base}/skip/agree`, { comment: text }) : write('POST', `${base}/send-back`, { reason: text })),
         onReopen: (reason) => write('POST', `${base}/reopen`, { reason }),
         onAddOther: (employeeId) => write('POST', `${base}/other-reviewers`, { employeeId }),
+        onHideKudos: (kudosId, hidden) => write('POST', `${base}/kudos/${encodeURIComponent(kudosId)}`, { hidden }),
         assistant,
         // PRF-07 page (builder 2): nominating 360° reviewers, when the cycle has them and I may nominate.
         nominateHref: peerOn && canNominate ? `/yx/performance/reviews/${encodeURIComponent(id)}/nominations` : null,

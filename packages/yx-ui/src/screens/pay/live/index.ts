@@ -39,7 +39,7 @@ export type { LivePayrollSetup, SetupStep, SetupLink, GroupInput, GoLiveReadines
 export { CompensationScreen, TemplateBuilderScreen, ComponentLibraryScreen, PayslipLayoutScreen } from '../comp-setup';
 export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, type LivePayslipLayout, type SplitSuggestion, type CompensationHistoryItem, type SplitFreshness } from '../comp-setup-live';
 export { ArrearsBaseScreen, ActuarialScreen, BonusComputationScreen } from '../offcycle';
-export type { LiveArrears, LiveActuarial } from '../offcycle-live';
+export type { LiveArrears, LiveActuarial, LiveArrearsChanges, RuleProposal, ArrearsJobRow } from '../offcycle-live';
 // PAY-25 payroll reports (design with `live`).
 export { defaultMonth, effectiveFilters } from '../reports-live';
 export type { LivePayrollReports, PayReport, PayReportKind, ReportFilters, ReportOptions, ReportsAccessRequest } from '../reports-live';
@@ -108,3 +108,5 @@ export { PayrollBudgetScreen, type PayrollBudgetScreenProps, type PayrollBudget,
 export { MyFlexBenefitsScreen, FlexSettlementScreen, FlexLedgerTable, type LiveMyFlexBenefits, type LiveFlexSettlement, type FlexLedgerView, type FlexLedgerRowView, type FlexOverview, type FlexSettlementPerson, type FlexSettleResult } from '../flex-benefits';
 // Enterprise E4 (O19-O20): PAY-62 the ledger mapping with the suspense account.
 export { LedgerMappingScreen, NET_PAY_LINE, SUSPENSE_LINE, type LedgerMappingInput, type LedgerMappingOptions, type LedgerMappingRow } from '../ledger-mapping';
+// T2-B 63: Me › My pay › My salary.
+export { MySalaryScreen, type LiveMySalary } from '../my-salary';

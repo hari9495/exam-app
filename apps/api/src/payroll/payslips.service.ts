@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
+import JSZip from 'jszip';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -296,20 +297,72 @@ export class PayslipsService {
     });
   }
 
+  /** T2-B 65 (answer 2863): the person's own published payslips of a tax year ("2026-27"), oldest first. */
+  private async yearSlips(tx: Tx, c: CompanyContext, taxYear: string) {
+    const start = Number(taxYear.slice(0, 4));
+    const me = await this.mine(tx);
+    const slips = await tx.payslip.findMany({
+      where: { organizationId: c.organizationId, employeeId: { in: me }, status: 'approved', runId: { not: null }, periodStart: { gte: new Date(`${start}-04-01T00:00:00Z`), lt: new Date(`${start + 1}-04-01T00:00:00Z`) } },
+      orderBy: [{ periodStart: 'asc' }, { runType: 'desc' }],
+      take: 60,
+    });
+    const pub = await this.published(tx, c.organizationId, slips.map((s) => s.runId!));
+    return slips.filter((s) => pub.has(s.runId!));
+  }
+
+  /** T2-B 65: a single-use 60-second link to one zip of a tax year's payslips (the person's own, published). */
+  async yearLink(ctx: TenantContext, user: ScopeUser, taxYear: string) {
+    const v = await this.viewer(user);
+    const m = /^(\d{4})-(\d{2})$/.exec(taxYear);
+    if (!m || (Number(m[1]) + 1) % 100 !== Number(m[2])) throw new BadRequestException('Give the tax year as 2026-27.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const slips = await this.yearSlips(tx, c, taxYear);
+      const last = slips[slips.length - 1];
+      if (!last) throw new NotFoundException('You have no payslips for that tax year.');
+      const token = randomBytes(32).toString('base64url');
+      await tx.payslipLink.create({
+        data: { organizationId: c.organizationId, legalEntityId: last.legalEntityId, employeeId: last.employeeId, payslipId: last.id, tokenHash: tokenHash(token), purpose: 'year', userId: v.userId!, expiresAt: new Date(Date.now() + LINK_SECONDS * 1000) },
+      });
+      await audit(tx, c, 'payroll.payslip.year_link_issued', 'payslip', last.id, { employeeId: last.employeeId, taxYear, payslips: slips.length });
+      return { path: `/payroll/payslip-downloads/${token}`, expiresInSeconds: LINK_SECONDS, payslips: slips.length };
+    });
+  }
+
   /** Uses the link once, as the person it was made for; the PDF is drawn from the stored lines and watermarked. */
   async download(ctx: TenantContext, user: ScopeUser, token: string) {
     const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const gone = () => new NotFoundException('This link has been used or has expired. Ask for a new one.');
-      const l = await tx.payslipLink.findFirst({ where: { organizationId: c.organizationId, tokenHash: tokenHash(token), purpose: 'pdf' } });
-      if (!l || l.userId !== v.userId || l.usedAt || l.expiresAt < new Date()) throw gone();
-      if (!(await tx.payslipLink.updateMany({ where: { id: l.id, usedAt: null }, data: { usedAt: new Date() } })).count) throw gone();
-      const s = await this.ownSlip(tx, c, l.payslipId);
-      const me = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: v.userId! }, select: { name: true, email: true } });
-      const file = await this.render(tx, c.organizationId, s, { watermark: `${me?.name || me?.email || 'Employee'} · downloaded ${istNow()} IST` });
-      await audit(tx, c, 'payroll.payslip.downloaded', 'payslip', s.id, { employeeId: s.employeeId, sha256: sha256(file), resultHash: s.resultHash });
-      return { file, name: `payslip-${dateOf(s.periodStart).slice(0, 7)}.pdf`, contentType: 'application/pdf' };
-    });
+    return inCompany(
+      this.tenantPrisma,
+      ctx,
+      async (tx, c) => {
+        const gone = () => new NotFoundException('This link has been used or has expired. Ask for a new one.');
+        const l = await tx.payslipLink.findFirst({ where: { organizationId: c.organizationId, tokenHash: tokenHash(token), purpose: { in: ['pdf', 'year'] } } });
+        if (!l || l.userId !== v.userId || l.usedAt || l.expiresAt < new Date()) throw gone();
+        if (!(await tx.payslipLink.updateMany({ where: { id: l.id, usedAt: null }, data: { usedAt: new Date() } })).count) throw gone();
+        const s = await this.ownSlip(tx, c, l.payslipId);
+        const me = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: v.userId! }, select: { name: true, email: true } });
+        const watermark = `${me?.name || me?.email || 'Employee'} · downloaded ${istNow()} IST`;
+        if (l.purpose === 'year') {
+          // T2-B 65: every published payslip of the link's tax year, each drawn and audited as a single download is.
+          const month = dateOf(s.periodStart).slice(0, 7);
+          const start = Number(month.slice(5)) >= 4 ? Number(month.slice(0, 4)) : Number(month.slice(0, 4)) - 1;
+          const taxYear = `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+          const zip = new JSZip();
+          for (const x of await this.yearSlips(tx, c, taxYear)) {
+            const pdf = await this.render(tx, c.organizationId, x, { watermark });
+            zip.file(`payslip-${dateOf(x.periodStart).slice(0, 7)}${x.runType === 'offcycle' ? `-offcycle-${x.id.slice(0, 8)}` : ''}.pdf`, pdf);
+            await audit(tx, c, 'payroll.payslip.downloaded', 'payslip', x.id, { employeeId: x.employeeId, sha256: sha256(pdf), resultHash: x.resultHash, taxYear });
+          }
+          const file = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+          return { file, name: `payslips-${taxYear}.zip`, contentType: 'application/zip' };
+        }
+        const file = await this.render(tx, c.organizationId, s, { watermark });
+        await audit(tx, c, 'payroll.payslip.downloaded', 'payslip', s.id, { employeeId: s.employeeId, sha256: sha256(file), resultHash: s.resultHash });
+        return { file, name: `payslip-${dateOf(s.periodStart).slice(0, 7)}.pdf`, contentType: 'application/pdf' };
+      },
+      // A year is up to a dozen or so PDFs drawn in this transaction.
+      { timeout: 60_000 },
+    );
   }
 
   /**

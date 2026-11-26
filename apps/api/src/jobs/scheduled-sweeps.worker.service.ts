@@ -31,6 +31,7 @@ import { CrmConsentsService } from '../talent-crm/consents.service';
 import { VisitorsService } from '../visitors/visitors.service';
 import { WalkInsService } from '../visitors/walkins.service';
 import { AccessRequestsService } from '../access/access-requests.service';
+import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
 import { NotFoundRetentionService } from '../help/not-found-retention.service';
 import { AssistantService } from '../help/assistant/assistant.service';
 import { IncidentsService } from '../platform/incidents.service';
@@ -101,6 +102,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     companyDocs: CompanyDocsService,
     reportSchedules: ReportSchedulesService,
     assetAlerts: AssetAlertsService,
+    internalApplications: InternalApplicationsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -164,6 +166,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'asset-contract-alerts': () => assetAlerts.contractSweep(),
       'asset-licence-alerts': () => assetAlerts.licenceSweep(),
       'asset-booking-alerts': () => assetAlerts.bookingSweep(),
+      // Answer 2761.
+      'internal-release-handover': () => internalApplications.releaseHandOver(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

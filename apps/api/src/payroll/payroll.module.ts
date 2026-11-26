@@ -32,6 +32,7 @@ import { PaySetupService } from './setup.service';
 import { PayStructuresService } from './structures.service';
 import { EmployeeHistoryModule } from '../employee-history/employee-history.module';
 import { PayrollJobs } from './payroll-jobs';
+import { ArrearsJobs } from './arrears-jobs';
 import { RulesEngineModule } from '../rules-engine/rules-engine.module';
 import { Payroll5gController } from './payroll-5g.controller';
 import { ArrearsService } from './arrears.service';
@@ -64,7 +65,7 @@ import { ServiceDeskModule } from '../service-desk/service-desk.module';
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule, RulesEngineModule, DocumentsModule, ServiceDeskModule],
   controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController, StatutoryController, Payroll5gController, Payroll5jController, Payroll5hController, PublicConsultantController, Payroll5iController, Payroll5iMoreController, PayrollBonusController, PayrollReportsController, FlexBenefitsController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, GoLiveService, PayrollIntakeService, PayrollJobs, ConsultantsService, SpecialPayService, EwaService, EquityService, ActuarialService, CountryPackService, BonusService, PayReportsService, FlexBenefitsService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, ArrearsJobs, FnfService, GoLiveService, PayrollIntakeService, PayrollJobs, ConsultantsService, SpecialPayService, EwaService, EquityService, ActuarialService, CountryPackService, BonusService, PayReportsService, FlexBenefitsService],
   exports: [StatutoryRegistersService, PayPeriodsService, PayDocumentsService, ExchangeFilesService, PayrollIntakeService, SpecialPayService, PayStructuresService, ConsultantsService],
 })
 export class PayrollModule {}

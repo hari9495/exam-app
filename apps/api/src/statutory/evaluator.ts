@@ -151,11 +151,13 @@ export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number
  * LWF in its deduction months: fixed amounts, or (H10, Haryana) a rate of the month's wage up to a cap, rounded as the
  * rule says (to the rupee by default), with the employer paying a multiple of the employee share.
  */
-export function lwf(rs: RuleSet, i: { month: number; wage?: Prisma.Decimal.Value; daysEmployed?: number }) {
+export function lwf(rs: RuleSet, i: { month: number; wage?: Prisma.Decimal.Value; daysEmployed?: number; supervisory?: boolean }) {
   const v = need(rs, 'lwf');
   // Review M3: a state may cover only people employed for some days (Tamil Nadu: 30 days).
   const tooNew = v.minDaysEmployed !== undefined && i.daysEmployed !== undefined && i.daysEmployed < Number(v.minDaysEmployed);
-  const due = (v.months as number[]).includes(i.month) && !tooNew;
+  // Answer 2762 (review M3): managers and supervisors earning above the state's level are not covered (Tamil Nadu 15,000, Delhi 2,500 a month).
+  const excluded = v.supervisorAbove !== undefined && i.supervisory === true && D(i.wage ?? 0).gt(D(v.supervisorAbove as string));
+  const due = (v.months as number[]).includes(i.month) && !tooNew && !excluded;
   if (!due) return { employee: ZERO, employer: ZERO, citation: cite(rs) };
   if (v.rate === undefined) return { employee: D(v.employee as string), employer: D(v.employer as string), citation: cite(rs) };
   const employee = Prisma.Decimal.min(round(D(i.wage ?? 0).mul(D(v.rate as string)), String(v.rounding ?? 'nearest')), D(v.cap as string));

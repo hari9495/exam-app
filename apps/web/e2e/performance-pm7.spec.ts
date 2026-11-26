@@ -13,11 +13,11 @@ test('comp review: start a cycle, open it, and a change outside the matrix needs
   await signIn(page, 'admin@demo-org.test', 'DevAdmin123!');
   await page.waitForURL((url) => !url.pathname.includes('sign-in'));
   // The matrix uses the rating scale: the performance starters come first (as in PM6).
-  await page.goto('/yx/settings/performance');
+  await page.goto('/yx/settings/talent/performance');
   const starters = page.getByRole('button', { name: 'Use the starters' });
-  await expect(starters.or(page.getByRole('tab', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
+  await expect(starters.or(page.getByRole('table', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
   if (await starters.isVisible()) await starters.click();
-  await expect(page.getByRole('tab', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('table', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
   await page.goto('/yx/performance/comp');
   const create = page.getByRole('button', { name: 'New comp cycle' });
   const starter = page.getByRole('button', { name: 'Use the starter matrix' });

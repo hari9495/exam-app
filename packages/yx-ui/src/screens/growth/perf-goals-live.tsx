@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { GoalGapsCard, type GoalGaps } from './goal-gaps';
 import { GoalProgressSummary } from './goal-summary';
-import { Check, Download, Plus, Target, Trash2 } from 'lucide-react';
+import { Check, Download, Plus, Target, Trash2, Upload } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Text } from '../../components/foundations';
@@ -26,6 +26,8 @@ import { useNarrow } from '../../components/stepper';
 import { countText, formatDate } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import type { CheckinInput, Choice, GoalDetail, GoalInput, GoalPeriod } from '../performance/live/types';
+import type { GoalTemplate } from '../settings/goal-templates-live';
+import { GoalImportDialog, type GoalImportPreview, type GoalImportResult } from './goal-import';
 import { CoachCard, GoalTree, GrowthFrame, ProgressRing, StageTrack } from './growth-kit';
 import { goalProgress, krProgress, reviewStages, weightCheck, type Goal, type GoalConfidence } from './growth-logic';
 import { GoalCheckInSheet, type LiveCoach } from './perf-goals';
@@ -393,7 +395,7 @@ type KrDraft = { title: string; unit: string; direction: 'up' | 'down' | 'hit'; 
 const DIRECTION = { up: 'Increase to', down: 'Decrease to', hit: 'Reach' } as const;
 
 /** Add a goal, or change one (an approved goal of a person changes only with a reason the manager approves). */
-export function GoalFormDrawer({ goal, periodId, ownerTypes, departments, alignOptions, onClose, onSave }: { goal: GoalDetail | null; periodId: string; ownerTypes: ('person' | 'team' | 'company')[]; departments: Choice[]; alignOptions: { id: string; title: string; owner: string }[]; onClose: () => void; onSave: (g: GoalInput) => Promise<unknown> }) {
+export function GoalFormDrawer({ goal, periodId, ownerTypes, departments, alignOptions, templates = [], onClose, onSave }: { goal: GoalDetail | null; periodId: string; ownerTypes: ('person' | 'team' | 'company')[]; departments: Choice[]; alignOptions: { id: string; title: string; owner: string }[]; templates?: GoalTemplate[]; onClose: () => void; onSave: (g: GoalInput) => Promise<unknown> }) {
   const [ownerType, setOwnerType] = useState(goal?.ownerType ?? ownerTypes[0]);
   const [title, setTitle] = useState(goal?.title ?? '');
   const [description, setDescription] = useState(goal?.description ?? '');
@@ -406,6 +408,17 @@ export function GoalFormDrawer({ goal, periodId, ownerTypes, departments, alignO
   const [failed, setFailed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const changingActive = goal?.status === 'active' && goal.ownerType === 'person';
+  // T2-C item 71 (answer 2844): a new goal can start from a template that fits the person; everything stays editable.
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const fromTemplate = (id: string | null) => {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setTitle(t.title);
+    setDescription(t.description ?? '');
+    setKind(t.kind);
+    setKrs(t.kind === 'okr' ? t.keyResults.map((k) => ({ title: k, unit: '', direction: 'up' as const, start: 0, target: null, weight: 1 })) : []);
+  };
   const set = (i: number, patch: Partial<KrDraft>) => setKrs((ks) => ks.map((k, j) => (j === i ? { ...k, ...patch } : k)));
   const errors = [
     ...(title.trim().length >= 3 ? [] : [{ fieldId: 'gd-title', message: 'Say what the goal is, in at least 3 characters.' }]),
@@ -461,7 +474,12 @@ export function GoalFormDrawer({ goal, periodId, ownerTypes, departments, alignO
             <Segment label="Whose goal" value={ownerType} onChange={setOwnerType} options={ownerTypes.map((o) => ({ value: o, label: o === 'company' ? 'Company' : o === 'team' ? 'A team' : 'Mine' }))} />
           </FormField>
         )}
-        <FormField id="gd-title" label="Goal" required error={v.errorOf('gd-title')}>
+        {!goal && templates.length > 0 && (
+        <FormField id="gd-template" label="Start from a template" optional helper="Fills the form; change anything before you save.">
+          <Select aria-label="Start from a template" value={templateId} onChange={fromTemplate} options={templates.map((t) => ({ value: t.id, label: t.title }))} searchable />
+        </FormField>
+      )}
+      <FormField id="gd-title" label="Goal" required error={v.errorOf('gd-title')}>
           <TextField value={title} onChange={setTitle} maxLength={200} />
         </FormField>
         <FormField id="gd-desc" label="Details" optional>
@@ -652,6 +670,11 @@ export interface LiveMyGoals {
   onCreate: (input: GoalInput) => Promise<unknown>;
   onSave: (id: string, input: GoalInput) => Promise<unknown>;
   onSubmit: () => Promise<unknown>;
+  /** T2-C item 71 (answer 2844): goal templates that fit me (for Add goal). */
+  goalTemplates?: GoalTemplate[];
+  /** CSV import for holders of the goal-setting key (preview first, then all rows or none). */
+  onImportPreview?: (csv: string) => Promise<GoalImportPreview>;
+  onImport?: (csv: string) => Promise<GoalImportResult>;
   onCheckIn: (id: string, input: CheckinInput) => Promise<unknown>;
   onDrop: (id: string, reason: string) => Promise<unknown>;
   onCascade: (id: string, employeeIds: string[]) => Promise<unknown>;
@@ -664,6 +687,7 @@ export function LiveMyGoalsScreen({ live, defaultDialog }: { live: LiveMyGoals; 
   const phone = useNarrow();
   const done = useDone();
   const [dialog, setDialog] = useState<GoalDialog | null>(defaultDialog ? { kind: defaultDialog } : null);
+  const [importing, setImporting] = useState(false);
   const [checkInId, setCheckInId] = useState<string | null>(null);
   // "Align to a goal": the chosen goal's form opens once the goal is loaded.
   const [editWhenLoaded, setEditWhenLoaded] = useState(false);
@@ -908,6 +932,7 @@ export function LiveMyGoalsScreen({ live, defaultDialog }: { live: LiveMyGoals; 
 
   const dialogs = (
     <>
+      {importing && live.onImport && live.onImportPreview && <GoalImportDialog open onOpenChange={(o) => !o && setImporting(false)} onPreview={live.onImportPreview} onImport={live.onImport} />}
       {dialog?.kind === 'add' && live.periodId && (
         <GoalFormDrawer
           goal={null}
@@ -915,6 +940,7 @@ export function LiveMyGoalsScreen({ live, defaultDialog }: { live: LiveMyGoals; 
           ownerTypes={['person']}
           departments={[]}
           alignOptions={live.alignOptions}
+          templates={live.goalTemplates}
           onClose={() => setDialog(null)}
           onSave={async (input) => {
             await live.onCreate(input);
@@ -1077,6 +1103,7 @@ export function LiveMyGoalsScreen({ live, defaultDialog }: { live: LiveMyGoals; 
         actions={
           <>
             {live.periods.length > 0 && periodSelect}
+            {live.state === 'ready' && period?.status === 'open' && live.onImport && live.onImportPreview && <Button icon={Upload} onClick={() => setImporting(true)}>Import goals</Button>}
             {live.state === 'ready' &&
               period?.status === 'open' &&
               (live.persona === 'emp' ? (

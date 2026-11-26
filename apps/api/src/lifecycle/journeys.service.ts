@@ -51,7 +51,7 @@ export interface StartInput {
   subjectId: string;
   anchorOn: string;
   templateId?: string | null;
-  place: { legalEntityId: string; locationId: string; departmentId: string | null };
+  place: { legalEntityId: string; locationId: string; departmentId: string | null; employmentTypeId?: string | null };
   ownerUserId: string | null;
   managerEmployeeId: string | null;
   personUserId: string | null;
@@ -98,6 +98,7 @@ export class LifecycleJourneysService implements OnModuleInit {
       legalEntityId: t.legalEntityId,
       locationId: t.locationId,
       departmentId: t.departmentId,
+      employmentTypeId: t.employmentTypeId,
       starterKey: t.starterKey,
       active: t.active,
       version: t.version,
@@ -125,7 +126,16 @@ export class LifecycleJourneysService implements OnModuleInit {
       const teams = await tx.userGroup.findMany({ where: { organizationId: org }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
       const items = await tx.sdCatalogItem.findMany({ where: { organizationId: org, state: 'published' }, select: { id: true, name: true, deskId: true }, orderBy: { name: 'asc' } });
       const desks = await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: items.map((i) => i.deskId) } }, select: { id: true, name: true } });
-      return { teams: teams.map((t) => ({ value: t.id, label: t.name })), catalogItems: items.map((i) => ({ value: i.id, label: i.name, desk: desks.find((d) => d.id === i.deskId)?.name ?? '' })) };
+      // T2-F item 43: where a checklist applies (each optional).
+      const pick = (rows: { id: string; name: string }[]) => rows.map((r) => ({ value: r.id, label: r.name }));
+      const where = { organizationId: org, archivedAt: null };
+      const applies = {
+        legalEntities: pick(await tx.legalEntity.findMany({ where, select: { id: true, name: true }, orderBy: { name: 'asc' } })),
+        locations: pick(await tx.location.findMany({ where, select: { id: true, name: true }, orderBy: { name: 'asc' } })),
+        departments: pick(await tx.department.findMany({ where, select: { id: true, name: true }, orderBy: { name: 'asc' } })),
+        employmentTypes: pick(await tx.employmentType.findMany({ where, select: { id: true, name: true }, orderBy: { name: 'asc' } })),
+      };
+      return { ...applies, teams: teams.map((t) => ({ value: t.id, label: t.name })), catalogItems: items.map((i) => ({ value: i.id, label: i.name, desk: desks.find((d) => d.id === i.deskId)?.name ?? '' })) };
     });
   }
 
@@ -145,7 +155,7 @@ export class LifecycleJourneysService implements OnModuleInit {
     return this.saveTemplate(ctx, user, null, { kind: s.kind, name: s.name.replace(' (starter)', ''), starterKey: s.key, active: !isLifeEvent(s.kind), tasks: s.tasks.map((t) => ({ ...t, config: t.config ?? {} })) });
   }
 
-  async saveTemplate(ctx: TenantContext, user: ScopeUser, id: string | null, dto: { kind: JourneyKind; name: string; legalEntityId?: string | null; locationId?: string | null; departmentId?: string | null; starterKey?: string; active: boolean; version?: number; tasks: TemplateTaskInput[] }) {
+  async saveTemplate(ctx: TenantContext, user: ScopeUser, id: string | null, dto: { kind: JourneyKind; name: string; legalEntityId?: string | null; locationId?: string | null; departmentId?: string | null; employmentTypeId?: string | null; starterKey?: string; active: boolean; version?: number; tasks: TemplateTaskInput[] }) {
     await this.mayEditTemplate(user, dto.legalEntityId);
     const problem = checkTemplateTasks(dto.tasks.map((t) => ({ key: t.key, dependsOn: t.dependsOn ?? [], dueOffsetDays: t.dueOffsetDays })));
     if (problem) throw new BadRequestException(problem);
@@ -157,7 +167,7 @@ export class LifecycleJourneysService implements OnModuleInit {
         if (!cur) throw new NotFoundException('No such checklist.');
         if (cur.legalEntityId !== (dto.legalEntityId ?? null)) await this.mayEditTemplate(user, cur.legalEntityId);
         if (cur.kind !== dto.kind) throw new BadRequestException('A checklist cannot change what it is for.');
-        const n = await tx.journeyTemplate.updateMany({ where: { organizationId: org, id, version: dto.version ?? -1 }, data: { name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, active: dto.active, version: { increment: 1 } } });
+        const n = await tx.journeyTemplate.updateMany({ where: { organizationId: org, id, version: dto.version ?? -1 }, data: { name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, employmentTypeId: dto.employmentTypeId ?? null, active: dto.active, version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this checklist. Reload it.');
         t = await tx.journeyTemplate.findFirstOrThrow({ where: { organizationId: org, id } });
       } else {
@@ -166,7 +176,7 @@ export class LifecycleJourneysService implements OnModuleInit {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`journey-starter:${org}:${dto.starterKey}`}))`;
           if (await tx.journeyTemplate.findFirst({ where: { organizationId: org, starterKey: dto.starterKey }, select: { id: true } })) throw new ConflictException('You already have a copy of this starter. Reload the page to see it.');
         }
-        t = await tx.journeyTemplate.create({ data: { organizationId: org, kind: dto.kind, name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, starterKey: dto.starterKey ?? null, active: dto.active, createdBy: c.userId ?? null } });
+        t = await tx.journeyTemplate.create({ data: { organizationId: org, kind: dto.kind, name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, employmentTypeId: dto.employmentTypeId ?? null, starterKey: dto.starterKey ?? null, active: dto.active, createdBy: c.userId ?? null } });
       }
       // Only the law's tasks are locked, and they stay in every copy of a starter, locked; only their owner and day may change.
       for (const x of dto.tasks) x.locked = false;
@@ -245,8 +255,9 @@ export class LifecycleJourneysService implements OnModuleInit {
       return t;
     }
     const all = await tx.journeyTemplate.findMany({ where: { organizationId: org, kind, active: true }, orderBy: { createdAt: 'desc' } });
-    const fits = all.filter((t) => (!t.legalEntityId || t.legalEntityId === place.legalEntityId) && (!t.locationId || t.locationId === place.locationId) && (!t.departmentId || t.departmentId === place.departmentId));
-    const score = (t: Template) => Number(Boolean(t.legalEntityId)) + Number(Boolean(t.locationId)) * 2 + Number(Boolean(t.departmentId)) * 2;
+    // T2-F item 43: an employment type counts as much as a department.
+    const fits = all.filter((t) => (!t.legalEntityId || t.legalEntityId === place.legalEntityId) && (!t.locationId || t.locationId === place.locationId) && (!t.departmentId || t.departmentId === place.departmentId) && (!t.employmentTypeId || t.employmentTypeId === place.employmentTypeId));
+    const score = (t: Template) => Number(Boolean(t.legalEntityId)) + Number(Boolean(t.locationId)) * 2 + Number(Boolean(t.departmentId)) * 2 + Number(Boolean(t.employmentTypeId)) * 2;
     const best = fits.sort((a, b) => score(b) - score(a))[0];
     if (!best) throw new BadRequestException(kind === 'onboarding' ? 'There is no active onboarding checklist yet. Set one up in Settings › Onboarding checklists (start from the YukthiX starter).' : 'There is no active offboarding checklist yet.');
     return best;

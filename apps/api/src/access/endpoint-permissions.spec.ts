@@ -37,6 +37,9 @@ import { AnnouncementsController, ModerationController, MyEngageController, Surv
 import { CasesController, EthicsController, MisconductReportsController, MyCasesController } from '../cases/cases.controller';
 import { LearningController } from '../learning/learning.controller';
 import { LibraryController } from '../library/library.controller';
+import { ApprovalPoliciesController } from '../workflow/approval-policies.controller';
+import { TimeController } from '../time/time.controller';
+import { TimeOpsController } from '../time/time-ops.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -99,19 +102,19 @@ const IMPLICIT: Record<string, string[]> = {
   // M06 PM1: performance set-up is all behind perf.setup.manage.
   PerformanceSetupController: [],
   // PRF-01: the home; each part is the viewer's own, their team's, or HR's with perf.cycle.manage (checked by the service).
-  PerformanceHomeController: ['home'],
+  PerformanceHomeController: ['home', 'expectations'], // T2-C 68: one's own expectations, or a report's for the manager chain
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
-  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap'], // batch F item 30: the manager's own team, checked in the service
+  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap', 'goalTemplates'], // batch F item 30: the manager's own team, checked in the service
   // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
   // G4: the report library (entries follow their area's keys) and company documents (the service decides per folder).
   LibraryController: ['reports', 'favourite', 'documents', 'file', 'schedulesList', 'schedule', 'endSchedule'],
   LearningController: ['me', 'mySkills', 'teamSkills', 'personSkills', 'assessSkill', 'decideSkill', 'addOwnSkill', 'raiseTeamNeed', 'feedbackDue', 'react', 'checks', 'check', 'roles', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'scormSave', 'itemFile', 'certificatePdf', 'team', 'person'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   // counts: the record's Performance tab, counts only; the service checks who may ask.
-  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions', 'myNotes', 'addNote', 'editNote', 'deleteNote'], // batch F item 32: the author alone (service and RLS)
+  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions', 'myNotes', 'addNote', 'editNote', 'deleteNote', 'agendaTemplates', 'addAgendaTemplate', 'updateAgendaTemplate', 'deleteAgendaTemplate', 'agendaFromTemplate'], // batch F item 32: the author alone (service and RLS)
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope); pdf: the same
   // view as a file (PRF-05 / PRF-06).
-  PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
+  PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther', 'hideKudos'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
   PerformancePeerController: ['nominations', 'options', 'nominate', 'send', 'approveAll', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
   // PM6: the board is open to its facilitator, HR and the managers of the people in it (decided per session).
@@ -138,6 +141,9 @@ const IMPLICIT: Record<string, string[]> = {
   PeopleRegistersController: [],
   RestructureController: [],
   PositionsController: [],
+  // E2: approval rules, limits, "Try it", the hiring move and notices; every route has its key (pay types also check
+  // the pay approve key inside).
+  ApprovalPoliciesController: [],
   // Batch G2 item 12: announcements need engage.announce; the feed is one's own (audience checked per announcement).
   AnnouncementsController: [],
   // Items 100, 73, 74, 75: my spaces, an invitation, my own team or a readable post (404 otherwise).
@@ -145,10 +151,20 @@ const IMPLICIT: Record<string, string[]> = {
   SurveysController: [],
   ModerationController: [],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets', 'myBookings', 'freeAssets', 'bookAsset', 'cancelMyBooking'], // IT assets answer 2715: one's own asset bookings (bookable assets only)
+  // Time and leave: the me/* routes are the caller's own (peers-away: only the caller's own peers, the same manager today);
+  // team/*, requests/:id and people/:employeeId/* are decided per person by the service (self, the manager chain, HR in
+  // scope); set-up, the balance grid and adjustments need their keys.
+  TimeController: [
+    'myLeave', 'myPeersAway', 'myLeaveHistory', 'preview', 'apply', 'resend', 'withdraw', 'cancel', 'cancelDays', 'extend', 'choose', 'unchoose', // my own leave
+    'myAttendance', 'punch', 'askWebDevice', 'regularise', 'workFromHome', 'onDuty', 'permission', 'withdrawFix', // my own attendance
+    'calendar', 'teamLeaveHome', 'teamToday', // my own team (implicit manager grant)
+    'request', // the requester, the approver whose task it is, or HR in scope
+    'nudge', 'muster', 'dayCard', 'personAttendance', 'personBalances', 'ledger', // attendance or leave scope per person
+  ],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController, PositionsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController, PositionsController, ApprovalPoliciesController, TimeController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);
@@ -157,4 +173,24 @@ describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
       expect(undeclared.sort()).toEqual([...IMPLICIT[controller.name]].sort());
     });
   }
+});
+
+describe('time and leave keys (T2-A)', () => {
+  const keys = (m: string) => Reflect.getMetadata(PERMISSIONS_KEY, (TimeController.prototype as unknown as Record<string, object>)[m]);
+  it('adding a starter leave type needs leave.settings.manage', () => {
+    expect(keys('addStarter')).toEqual(['leave.settings.manage']);
+    expect(Reflect.getMetadata(PATH_METADATA, (TimeController.prototype as unknown as Record<string, object>).addStarter)).toBe('setup/types/starter/:key');
+  });
+  it("peers away is the caller's own (no key; the service reads only the caller's peers)", () => {
+    expect(keys('myPeersAway')).toBeUndefined();
+    expect(Reflect.getMetadata(PATH_METADATA, (TimeController.prototype as unknown as Record<string, object>).myPeersAway)).toBe('me/peers-away');
+  });
+});
+
+describe('timesheet routes (T2-D)', () => {
+  it("my projects are the caller's own (no key; the service reads only the caller's allocations and weeks)", () => {
+    const m = (TimeOpsController.prototype as unknown as Record<string, object>).myProjects;
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, m)).toBeUndefined();
+    expect(Reflect.getMetadata(PATH_METADATA, m)).toBe('me/timesheet/projects');
+  });
 });

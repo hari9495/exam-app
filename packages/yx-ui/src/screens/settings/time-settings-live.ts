@@ -126,6 +126,8 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
       { section: 'Company choices', key: 'leave.probation.leave', synonyms: ['probation'] },
       { section: 'Company choices', key: 'leave.comp_off.claim_within_days', synonyms: ['comp-off', 'compensatory off'] },
       { section: 'Company choices', key: 'leave.comp_off.expiry_days', synonyms: ['comp-off'] },
+      { section: 'Company choices', key: 'leave.comp_off.auto_from_roster', synonyms: ['comp-off', 'roster'] },
+      { section: 'Company choices', key: 'leave.overview.no_leave_days', synonyms: ['no leave taken', 'team overview'] },
       { section: 'Company choices', key: 'leave.block_leave.days' },
       { section: 'Company choices', key: 'leave.block_leave.next_year_days', synonyms: ['block leave', 'next year'] },
     ],
@@ -159,6 +161,7 @@ export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }
       { section: 'Mid-month changes', key: 'payroll.mid_period.exit', synonyms: ['leaver', 'proration'] },
       { section: 'Mid-month changes', key: 'payroll.mid_period.revision', synonyms: ['increment', 'arrears'] },
       { section: 'Mid-month changes', key: 'payroll.mid_period.cutoff_day', synonyms: ['cut-off'] },
+      { section: 'Back-dated pay', key: 'payroll.arrears.auto_draft', synonyms: ['arrears', 'back-dated', 'retro pay'] },
       { section: 'Changes to these settings', key: 'payroll.settings.second_person', synonyms: ['second approver', 'maker checker', 'four eyes'] },
       { section: 'Changes to these settings', key: 'payroll.settings.lapse_days', synonyms: ['expire', 'pending change'] },
     ],
@@ -287,6 +290,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Over-limit and payment', key: 'expense.route.default', synonyms: ['reimbursement', 'pay claims'] },
       { section: 'Over-limit and payment', key: 'expense.route.payout_above', synonyms: ['direct payout'] },
       { section: 'Over-limit and payment', key: 'expense.payroll_cutoff_day', synonyms: ['payroll cut-off'] },
+      { section: 'Advances, travel and cards', key: 'expense.advance.enabled', synonyms: ['advances on', 'advances off', 'imprest'] },
+      { section: 'Advances, travel and cards', key: 'expense.advance.cap', synonyms: ['advance limit', 'advance cap', 'grade'] },
       { section: 'Advances, travel and cards', key: 'expense.advance.settle_days', synonyms: ['advance settlement', 'imprest'] },
       { section: 'Advances, travel and cards', key: 'expense.advance.recovery_instalments' },
       { section: 'Advances, travel and cards', key: 'expense.card.match_amount_within', synonyms: ['corporate card', 'card statement'] },
@@ -310,6 +315,10 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: '360° and calibration', key: 'perf.anonymity.min_responses', synonyms: ['360 anonymity'] },
       { section: '360° and calibration', key: 'perf.report.min_cell', synonyms: ['distribution'] },
       { section: '360° and calibration', key: 'perf.feedback.default_visibility', synonyms: ['feedback'] },
+      // Batch T2-C item 72 (answer 2845): the company bell-curve guide, off by default; the drawn Rating / Guide share table.
+      { section: '360° and calibration', key: 'perf.calibration.default_guide', synonyms: ['bell curve', 'normalisation'] },
+      { section: '360° and calibration', key: 'perf.calibration.guide_shares', synonyms: ['bell curve', 'calibration guide'], list: { columns: ['Rating', 'Guide share'], addLabel: 'Add rating', helper: 'A guide only: it fills a new calibration session, which can change it, and never blocks sign-off. Use the rating names of your scale.' } },
+      { section: '360° and calibration', key: 'perf.calibration.guide_tolerance', synonyms: ['bell curve tolerance'] },
       { section: 'Compensation review and PIP', key: 'perf.comp.budget_overrun', synonyms: ['comp budget', 'increment budget'] },
       { section: 'Compensation review and PIP', key: 'perf.pay_band.visible', synonyms: ['pay band'] },
       { section: 'Compensation review and PIP', key: 'perf.pay_equity.flag_pct', synonyms: ['pay equity'] },
@@ -523,7 +532,9 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
       : {};
     // Answer 2123: a comma list shown as a table (one row a value); saved back by timeSettingsListChanges.
     if (d.text && p.list) {
-      const rows = value ? value.split(',').map((v) => v.trim()).filter(Boolean).map((v) => [v]) : [];
+      // Two columns (answer 2845): each value is 'name:number', shown as the name and the number with ' %'.
+      const cell = (v: string) => (p.list!.columns.length === 2 ? [v.slice(0, v.lastIndexOf(':')).trim(), `${v.slice(v.lastIndexOf(':') + 1).trim()} %`] : [v]);
+      const rows = value ? value.split(',').map((v) => v.trim()).filter(Boolean).map(cell) : [];
       return { ...base, ...(p.list.helper ? { helper: p.list.helper } : {}), kind: 'list', columns: p.list.columns, rows, addLabel: p.list.addLabel };
     }
     // S-7: text HR writes (topics one a line, what joiners bring).
@@ -566,7 +577,10 @@ export function timeSettingsChanges(values: Record<string, SettingValue>, data: 
 export function timeSettingsListChanges(rows: Record<string, string[][]>, data: TimeSettingsData): { key: string; value: string }[] {
   return Object.entries(rows).flatMap(([key, list]) => {
     if (!data.registry[key]?.text) return [];
-    const names = [...new Set(list.map((r) => (r[0] ?? '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean))];
+    const name = (r: string[]) => (r[0] ?? '').replace(/[,:]/g, ' ').replace(/\s+/g, ' ').trim();
+    // Two columns (answer 2845): 'name:number' pairs; the API refuses shares that do not add up to 100.
+    if (list.some((r) => r.length >= 2)) return [{ key, value: list.filter((r) => name(r)).map((r) => `${name(r)}:${parseFloat((r[1] ?? '').replace(/[^0-9.]/g, '')) || 0}`).join(',') }];
+    const names = [...new Set(list.map(name).filter(Boolean))];
     return [{ key, value: names.join(',') }];
   });
 }

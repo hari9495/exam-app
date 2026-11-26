@@ -24,7 +24,7 @@ import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
 import { LeaveHistoryDrawer, type LeaveHistoryPage, type LeaveHistoryQuery } from './leave-history-live';
-import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveRequestDetailView, TeamLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
+import type { ApplyForForm, HrBalances, PeersAway, HrLeaveHome, LeaveRequestDetailView, TeamLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -2460,6 +2460,8 @@ export interface LiveLeaveHome {
   absence?: { data: LongAbsenceRow | null; onAskReturn: (id: string, on: string, note: string) => Promise<unknown> };
   /** My leave card (TIM-21 employee). */
   onOpenCard?: () => void;
+  /** Answer 2760: my peers away in the next two weeks ("away" only). */
+  peers?: { data: PeersAway | null };
   /** Batch A item 2 (C2): my full leave history, a page at a time. */
   onHistory?: (q: LeaveHistoryQuery) => Promise<LeaveHistoryPage>;
 }
@@ -2623,6 +2625,23 @@ const halvesText = (r: LiveRequest) => `${r.fromHalf === 'second' ? ' · from th
 /** Approved leave can be cancelled up to the start of last month (the API's own limit). */
 const cancellable = (r: LiveRequest, today: string) => r.status === 'approved' && r.to >= isoAdd(`${today.slice(0, 7)}-01`, -31);
 
+/** Answer 2760: peers (the same manager today) away in the next two weeks. Read-only; never the type of leave or times. */
+function PeersAwayCard({ data }: { data: PeersAway }) {
+  return (
+    <Card title="Peers away">
+      {data.peers === 0 ? <p className="yx-tim-muted">No one else has your manager.</p> : data.days.length === 0 ? <p className="yx-tim-muted">None of your peers is away in the next two weeks.</p> : (
+        <ul className="yx-tim-list" aria-label="Peers away">
+          {data.days.map((x) => (
+            <li key={x.on}>
+              <span className="yx-tim-list__main"><span><DayDate date={isoDate(x.on)} /></span><span className="yx-tim-muted">{x.names.join(', ')} · away</span></span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
   const d = live.data;
   const [apply, setApply] = useState(Boolean(live.startApplying));
@@ -2724,7 +2743,8 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
                   )}
                 </Card>
               </div>
-              <div data-span="5">
+              <div data-span="5" className="yx-tim-stack">
+                {live.peers?.data && <PeersAwayCard data={live.peers.data} />}
                 <Card title="Upcoming holidays">
                   {!d.holidays.calendar ? (
                     <EmptyState compact title="No holiday calendar yet" description="HR has not set up holidays for your location." />
@@ -3510,6 +3530,21 @@ const sampleRecordAbsence: RecordAbsenceProps = {
 /** "Also off: Ravi Kumar (Casual leave), …" from the server's team availability. */
 const offLine = (others: { name: string; type: string }[], label = 'Also off') => othersLine(others.map((o) => ({ text: `${o.name} (${o.type})` })), label);
 
+/** Names, the first five, then "and N more". */
+const someNames = (people: { name: string }[], count: number) => `${people.slice(0, 5).map((p) => p.name).join(', ')}${count > 5 ? ` and ${count - 5} more` : ''}`;
+
+/** Answer 2759: the manager's overview cards. Counts and names only: never which type of leave (sick leave stays private). */
+function OverviewCards({ cards }: { cards: NonNullable<TeamLeaveHome['cards']> }) {
+  return (
+    <Kpis
+      items={[
+        { label: 'Unplanned leave this month', value: cards.unplanned.count, note: cards.unplanned.count ? someNames(cards.unplanned.people, cards.unplanned.count) : 'Applied on or after the first day' },
+        { label: `No leave in ${cards.noLeave.days} days`, value: cards.noLeave.count, note: cards.noLeave.count ? someNames(cards.noLeave.people, cards.noLeave.count) : 'Everyone has taken some leave' },
+      ]}
+    />
+  );
+}
+
 /** TIM-17 Manager, live: my team's leave waiting for me (approve here or open it), other approvals, who is away. */
 function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
   const d = live.data;
@@ -3559,6 +3594,7 @@ function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
               </Card>
             </div>
             <div data-span="5" className="yx-tim-stack">
+              {d.cards && <OverviewCards cards={d.cards} />}
               <Card title="Away this week" actions={<Button size="sm" onClick={() => live.onNavigate(live.hrefs.calendar)}>Open leave calendar</Button>}>
                 {d.away.length === 0 ? <p className="yx-tim-muted">No one in your team is away this week.</p> : (
                   <ul className="yx-tim-list">

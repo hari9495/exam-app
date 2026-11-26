@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { OneOnOneScreen, cadenceLabel, type Choice, type OneOnOne, type OneOnOnePair, type OneOnOneRow, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { OneOnOneScreen, cadenceLabel, type AgendaTemplate, type Choice, type OneOnOne, type OneOnOnePair, type OneOnOneRow, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { day, designState, usePerf, usePerfWrite, useSuggestedAgenda, refused } from '../../../../../lib/yx-performance';
 
 // PRF-11 1:1s, the designed screen with live data: one row per pair (my manager, my direct reports), the record in a
@@ -32,6 +32,8 @@ export function OneOnOnesPage({ openId }: { openId: string | null }) {
   const write = usePerfWrite();
   // PRF-16: the suggested agenda for the open 1:1, only when I am its manager (the API answers 404 to anyone else).
   const agenda = useSuggestedAgenda(openId);
+  // T2-C item 70 (answer 2843): agenda templates I may pick (the company's and my own).
+  const templates = usePerf<AgendaTemplate[]>(openId ? '/one-on-one-templates' : null);
   const base = openId ? `/one-on-ones/${encodeURIComponent(openId)}` : '';
   const m = open.data;
   const pairs = data.data?.pairs ?? [];
@@ -78,6 +80,9 @@ export function OneOnOnesPage({ openId }: { openId: string | null }) {
         onActionDone: (actionId, done) => write('PUT', `${base}/actions/${encodeURIComponent(actionId)}`, { done }),
         onHeld: () => write('PUT', base, { status: 'held', version: m?.version }),
         onReschedule: (on) => write('PUT', base, { on, version: m?.version }),
+        templates: (templates.data ?? []).map((t) => ({ value: t.id, label: `${t.name} (${t.company ? 'company' : 'mine'})` })),
+        onUseTemplate: (templateId) => write('POST', `${base}/agenda/from-template`, { templateId }),
+        onSaveTemplate: (name, items) => write('POST', '/one-on-one-templates', { name, items }),
       }}
     />
   );

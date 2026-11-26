@@ -91,7 +91,9 @@ export class PayStructuresService {
     if (dto.codeWagePart && dto.codeExclusion) throw new BadRequestException('A component is either part of the Code wage or an exclusion, not both.');
     if (dto.pfBelowCeiling && !dto.pfWage) throw new BadRequestException('"Only below the PF ceiling" is a kind of PF wage: set the component as PF wage too.');
     const proration = dto.prorationText ? plain(() => checkFormula(dto.prorationText!, new Set(PAY_VARIABLES))) : null;
-    return { name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, pfBelowCeiling: !!dto.pfBelowCeiling, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
+    // E3 (answer 2651): "recalculate when" defaults from the flags: regular (prorated) earnings follow, one-off pay does not.
+    const regular = dto.kind === 'earning' && (dto.prorated ?? true);
+    return { arrearsOnSalaryChange: dto.arrearsOnSalaryChange ?? regular, arrearsOnJoining: dto.arrearsOnJoining ?? regular, name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, pfBelowCeiling: !!dto.pfBelowCeiling, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
   }
 
   createComponent(ctx: TenantContext, user: ScopeUser, dto: ComponentDto) {
@@ -125,7 +127,7 @@ export class PayStructuresService {
       this.need(v, 'payroll.template.manage');
       if (!tenantWide(v, 'payroll.template.manage')) throw new ForbiddenException('The starter template is company-wide: it needs payroll.template.manage for the whole company.');
       const added = await tx.payComponent.createMany({
-        data: [...STARTER_COMPONENTS, ...FNF_COMPONENTS, ...MODULE_COMPONENTS].map(({ statutory, ...s }) => ({ organizationId: c.organizationId, ...s, taxable: s.taxable ?? true, statutory: statutory ?? null, createdBy: c.userId })),
+        data: [...STARTER_COMPONENTS, ...FNF_COMPONENTS, ...MODULE_COMPONENTS].map(({ statutory, ...s }) => ({ organizationId: c.organizationId, ...s, taxable: s.taxable ?? true, statutory: statutory ?? null, createdBy: c.userId, ...(statutory ? {} : { arrearsOnSalaryChange: s.kind === 'earning' && (s.prorated ?? true), arrearsOnJoining: s.kind === 'earning' && (s.prorated ?? true) }) })),
         skipDuplicates: true,
       });
       let templateId: string | null = null;
@@ -481,7 +483,8 @@ export class PayStructuresService {
 
   /**
    * PAY-12 history: every salary of the person's employment (newest first, corrected ones left out) with who asked for
-   * it, who approved it and why, plus pay changes still waiting or turned down. Same access as the salary in force:
+   * it, who approved it and why, plus pay changes still waiting or turned down (for payroll; the person sees only their
+   * approved salaries, without names, answer 2860). Same access as the salary in force:
    * the person themselves, or employee.salary.view over them; a view by someone else is audited (no amounts logged).
    */
   compensationHistory(ctx: TenantContext, user: ScopeUser, employeeId: string, asOn = todayIst()) {
@@ -519,6 +522,8 @@ export class PayStructuresService {
             .map((k) => ({ kind: 'request' as const, changeId: k.id, status: k.status, validFrom: iso(k.effectiveDate), validTo: null, annualCtc: ctcOf(k), previousCtc: null, changeType: k.changeType, reason: k.reason, requestedBy: who(k.requestedBy), requestedAt: k.requestedAt, decidedBy: who(k.decidedBy), decidedAt: k.decidedAt, template: template(k.id), decisionNote: k.decisionNote })),
         ].sort((x, y) => (y.validFrom ?? '').localeCompare(x.validFrom ?? ''));
         if (own !== employeeId) await audit(tx, c, 'payroll.compensation.history_viewed', 'employee', employeeId, { asOn, items: items.length });
+        // Answer 2860: a person's own history is their approved salaries only, without who asked or approved.
+        if (own === employeeId) return items.filter((x) => x.kind === 'salary').map((x) => ({ ...x, requestedBy: null, decidedBy: null }));
         return items;
       }),
     );

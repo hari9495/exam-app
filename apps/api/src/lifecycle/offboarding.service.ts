@@ -219,12 +219,13 @@ export class OffboardingService {
           await freezeSettlementIn(tx, c, k.id, 'asset_returned');
         }
       }
-      // IT assets answer 2718: clearing a leaver's licence seat item frees the seat (audited on the licence).
-      if (i.licenceSeatId && dto.action === 'clear') {
+      // IT assets answers 2718, 2825: clearing or waiving a leaver's licence seat item frees the seat (they leave either
+      // way; audited on the licence).
+      if (i.licenceSeatId) {
         const seat = await tx.assetLicenceSeat.findFirst({ where: { organizationId: org, id: i.licenceSeatId, freedOn: null } });
         if (seat) {
           await tx.assetLicenceSeat.update({ where: { id: seat.id }, data: { freedOn: asDate(todayIst()), freedBy: c.userId ?? null, freeReason: (dto.note?.trim() || 'Freed at exit clearance').slice(0, 200), version: { increment: 1 } } });
-          await audit(tx, c, 'asset.licence.seat.freed', 'asset_licence', seat.licenceId, { seatId: seat.id, personId: seat.personId, exitCaseId: k.id });
+          await audit(tx, c, 'asset.licence.seat.freed', 'asset_licence', seat.licenceId, { seatId: seat.id, personId: seat.personId, exitCaseId: k.id, clearance: dto.action });
         }
       }
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
@@ -389,7 +390,7 @@ export class OffboardingService {
                   acknowledged: Boolean(o.ackEvidence),
                   ackNone: (o.ackEvidence as { method?: string } | null)?.method === 'none',
                   leavingOn,
-                  ...(manage && leavingOn ? { recoveryDefault: recoveryAmount(basis, cat?.defaultRecovery, a.cost, cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, todayIst(), cat) : null) } : {}),
+                  ...(manage && leavingOn ? { recoveryDefault: recoveryAmount(basis, cat?.defaultRecovery, a.cost, cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, leavingOn, cat) : null) } : {}),
                 }
               : null,
           };
@@ -578,7 +579,10 @@ export class OffboardingService {
     });
   }
 
-  /** PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers. */
+  /**
+   * PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers.
+   * Answer 2826: their licence seats too, by the same rule (asset.view over the seat's licence place).
+   */
   async personAssets(ctx: TenantContext, user: ScopeUser, employeeId: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -592,7 +596,13 @@ export class OffboardingService {
       const assets = await tx.asset.findMany({ where: { organizationId: org, id: { in: open.map((o) => o.assetId) } } });
       const shown = assets.filter((a) => self || team || this.reachesAsset(v, 'asset.view', a));
       if (!self && !team && !v.grants.has('asset.view')) throw new NotFoundException('Not found');
+      const seats = await tx.assetLicenceSeat.findMany({ where: { organizationId: org, personId: emp.personId, freedOn: null }, orderBy: { givenOn: 'desc' } });
+      const licences = (await tx.assetLicence.findMany({ where: { organizationId: org, id: { in: seats.map((x) => x.licenceId) } } })).filter((l) => self || team || reachesPlace(v, 'asset.view', l));
       return {
+        seats: seats.flatMap((x) => {
+          const l = licences.find((y) => y.id === x.licenceId);
+          return l ? [{ seatId: x.id, software: l.software, softwareVersion: l.softwareVersion, expiresOn: l.expiresOn ? iso(l.expiresOn) : null, givenOn: iso(x.givenOn) }] : [];
+        }),
         rows: open.flatMap((o) => {
           const a = shown.find((x) => x.id === o.assetId);
           return a ? [{ tag: a.tag, name: a.name, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) }] : [];

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { TenantContext, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
@@ -7,6 +7,9 @@ import { validatePdfUpload } from '../public-applications/pdf-validation';
 import { NotificationsService } from '../notifications/notifications.service';
 import { companyContext, inCompany, type CompanyContext, type Tx } from '../org-structure/org-structure.service';
 import { settingFor } from '../people/probation';
+import { ApprovalsEngine, type Notice, type Outcome } from '../workflow/approvals-engine.service';
+import { holidaysNear } from '../lifecycle/settlement';
+import { workingDaysAfter } from '../lifecycle/exit-rules';
 import { ApplyInternalDto } from './dto/internal-application.dto';
 import { internalEligibility, roleSince, type InternalEligibility, type InternalRules } from './internal-eligibility';
 
@@ -18,12 +21,35 @@ export interface InternalApplicationRow {
   jobTitle: string;
   status: InternalStatus;
   appliedAt: Date;
+  /** Answer 2841: the current manager has not yet released the applicant (hiring.internal.manager_release). */
+  waitingForManager: boolean;
 }
 
 export type TellManager = 'on_apply' | 'at_offer';
 
 /** GET internal-applications/eligibility: may this person apply, why not, and what happens to their manager. */
-export type EligibilityView = InternalEligibility & { managerName: string | null; tellManager: TellManager; rules: InternalRules };
+export type EligibilityView = InternalEligibility & { managerName: string | null; tellManager: TellManager; rules: InternalRules; managerRelease: boolean };
+
+/** Answer 2761: the approvals-engine request type for the current manager releasing someone for an internal job. */
+export const RELEASE_TYPE = 'hiring.internal_release';
+/** Answer 2836: working days (Monday to Friday less the company-wide holidays) the manager has before HR decides too. */
+export const RELEASE_WORKING_DAYS = 5;
+const LOOKUP: TenantContext = { organizationId: null, isSuperAdmin: true };
+
+/**
+ * Answer 2761: why no offer can be made on this pipeline entry yet (null: nothing stops it). The current manager must
+ * release an internal applicant first when the company asked for that when they applied.
+ */
+export async function releaseProblem(tx: Pick<Tx, 'internalApplication'>, organizationId: string, entryId: string): Promise<string | null> {
+  const a = await tx.internalApplication.findFirst({ where: { organizationId, entryId, releaseStatus: { in: ['pending', 'refused'] } }, select: { releaseStatus: true } });
+  if (!a) return null;
+  return a.releaseStatus === 'pending'
+    ? 'Their current manager has not released them yet. You can make an offer once the manager agrees, or HR decides if the manager has not answered in 5 working days.'
+    : 'Their current manager did not release them for this job, so no offer can be made.';
+}
+
+/** Answer 2836: is a release asked on `askedOn` past its 5 working days on `today`? The manager has all 5 days in full. */
+export const releaseOverdue = (askedOn: string, today: string, holidays: ReadonlySet<string>) => workingDaysAfter(askedOn, RELEASE_WORKING_DAYS, holidays) < today;
 
 const istDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -34,7 +60,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 // hiring.internal.*, defaults past probation and 12 months in the current role); the current manager is told, never
 // asked, when the person applies or (setting) when they reach the offer.
 @Injectable()
-export class InternalApplicationsService {
+export class InternalApplicationsService implements OnModuleInit {
   private readonly logger = new Logger(InternalApplicationsService.name);
 
   constructor(
@@ -43,7 +69,59 @@ export class InternalApplicationsService {
     // Optional so older unit tests build without them (a résumé needs storage; a manager notice needs notifications).
     @Optional() private readonly blobStorage?: BlobStorageService,
     @Optional() private readonly notifications?: NotificationsService,
+    @Optional() private readonly engine?: ApprovalsEngine,
   ) {}
+
+  onModuleInit() {
+    this.engine?.register({ key: RELEASE_TYPE, label: 'Release for an internal job', risk: 'normal', autoActions: false, onDecided: (tx, req, o) => this.releaseDecided(tx, req, o), requesterLink: () => '/yx/hiring/internal-jobs' });
+  }
+
+  /** Answer 2761: the manager (or HR after the wait) decided; an offer can follow only once released. */
+  private async releaseDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome) {
+    const org = req.organizationId;
+    const n = await tx.internalApplication.updateMany({ where: { organizationId: org, releaseWfRequestId: req.id, releaseStatus: 'pending' }, data: { releaseStatus: outcome === 'approved' ? 'approved' : 'refused' } });
+    if (n.count) await AuditService.recordIn(tx, { organizationId: org, isSuperAdmin: false }, { actorUserId: null, action: outcome === 'approved' ? 'internal_application.released' : 'internal_application.release_refused', entityType: 'internal_application', entityId: req.subjectId, metadata: { wfRequestId: req.id } });
+  }
+
+  /**
+   * Answer 2761 (hourly, safe to rerun): a release with no decision after 5 working days (Monday to Friday less the
+   * company-wide holidays, answer 2836) goes to the company's HR Admins too; any of them, or the manager, decides. The
+   * engine's own timeout would go to the manager's manager, so this is the module's own. Claimed by release_hr_at.
+   */
+  async releaseHandOver(now = new Date(), only?: string[]): Promise<number> {
+    const engine = this.engine;
+    if (!engine) return 0;
+    const orgs = await this.tenantPrisma.forTenant(LOOKUP, (tx) => tx.internalApplication.groupBy({ by: ['organizationId'], where: { releaseStatus: 'pending', releaseHrAt: null, ...(only ? { organizationId: { in: only } } : {}) } }));
+    let n = 0;
+    for (const { organizationId } of orgs) {
+      const ctx: TenantContext = { organizationId, isSuperAdmin: false };
+      const notices: Notice[] = [];
+      try {
+        n += await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+          const rows = await tx.internalApplication.findMany({ where: { organizationId, releaseStatus: 'pending', releaseHrAt: null, releaseWfRequestId: { not: null } }, orderBy: { releaseAskedAt: 'asc' }, take: 200 });
+          if (!rows.length) return 0;
+          const asked = (r: (typeof rows)[number]) => istDay(r.releaseAskedAt ?? r.createdAt);
+          const today = istDay(now);
+          const holidays = await holidaysNear(tx, organizationId, null, asked(rows[0]!), today);
+          const hr = await engine.hrAdmins(tx, organizationId);
+          let moved = 0;
+          for (const r of rows) {
+            if (!releaseOverdue(asked(r), today, holidays)) continue;
+            const { count } = await tx.internalApplication.updateMany({ where: { id: r.id, releaseStatus: 'pending', releaseHrAt: null }, data: { releaseHrAt: now } });
+            if (!count) continue;
+            const to = await engine.handOver(tx, c, r.releaseWfRequestId!, hr, 'No answer from the manager in 5 working days: sent to HR', notices);
+            await AuditService.recordIn(tx, c, { actorUserId: null, action: 'internal_application.release_to_hr', entityType: 'internal_application', entityId: r.id, metadata: { wfRequestId: r.releaseWfRequestId, hr: to } });
+            moved++;
+          }
+          return moved;
+        });
+        if (notices.length) await engine.send(ctx, notices);
+      } catch (e) {
+        this.logger.error(`internal release hand-over ${organizationId}: ${(e as Error).message}`);
+      }
+    }
+    return n;
+  }
 
   /** Open jobs that show on Internal jobs, never one the person is the hiring manager of. */
   async openJobs(context: TenantContext, userId: string) {
@@ -72,6 +150,7 @@ export class InternalApplicationsService {
       monthsInRole: Number(await settingFor(tx, c, 'hiring.internal.months_in_role', { legalEntityId: '' })),
     };
     const tellManager = (await settingFor(tx, c, 'hiring.internal.tell_manager', { legalEntityId: '' })) as TellManager;
+    const managerRelease = (await settingFor(tx, c, 'hiring.internal.manager_release', { legalEntityId: '' })) === 'on';
     const employee = await tx.employee.findFirst({ where: { organizationId: org, userId }, select: { id: true } });
     const employment = employee
       ? await tx.employment.findFirst({ where: { organizationId: org, employeeId: employee.id, joinedOn: { lte: day }, OR: [{ exitedOn: null }, { exitedOn: { gte: day } }] }, orderBy: { joinedOn: 'desc' }, select: { id: true } })
@@ -92,7 +171,7 @@ export class InternalApplicationsService {
       today,
     });
     const managerName = manager ? [manager.preferredName || manager.givenName, manager.familyName].filter(Boolean).join(' ') : null;
-    return { view: { ...result, managerName, tellManager, rules } as EligibilityView, employeeId: employee?.id ?? null, managerUserId: manager?.userId ?? null };
+    return { view: { ...result, managerName, tellManager, rules, managerRelease } as EligibilityView, employeeId: employee?.id ?? null, managerUserId: manager?.userId ?? null };
   }
 
   async apply(context: TenantContext, userId: string, dto: ApplyInternalDto) {
@@ -109,7 +188,8 @@ export class InternalApplicationsService {
       resumePath = await this.blobStorage.upload(`candidates/${orgId}/${randomUUID()}.pdf`, Buffer.from(dto.resumeBase64, 'base64'), 'application/pdf');
     }
 
-    let out: { entryId: string; applicationId: string; jobTitle: string; managerUserId: string | null; tell: TellManager; applicantName: string };
+    let out: { entryId: string; applicationId: string; jobTitle: string; managerUserId: string | null; tell: TellManager; applicantName: string; release: boolean };
+    const notices: Notice[] = [];
     try {
       const c = companyContext(context);
       out = await this.tenantPrisma.forTenant(c, async (tx) => {
@@ -157,11 +237,34 @@ export class InternalApplicationsService {
         // The hiring team reads the person's own words with the application's notes.
         await tx.pipelineFeedback.create({ data: { organizationId: orgId, entryId: entry.id, authorUserId: userId, note: `Why I am interested: ${note}` } });
         const tell = view.tellManager;
+        const manager = managerUserId && managerUserId !== userId ? managerUserId : null;
+        // Answer 2761: with the setting on, the manager is asked (not just told) to release the person; no offer until then.
+        const release = Boolean(view.managerRelease && manager && this.engine);
         const application = await tx.internalApplication.create({
-          data: { organizationId: orgId, entryId: entry.id, jobId: job.id, applicantUserId: userId, employeeId: employeeId!, note, managerUserId: managerUserId && managerUserId !== userId ? managerUserId : null, managerToldAt: tell === 'on_apply' && managerUserId && managerUserId !== userId ? new Date() : null },
+          data: { organizationId: orgId, entryId: entry.id, jobId: job.id, applicantUserId: userId, employeeId: employeeId!, note, managerUserId: manager, managerToldAt: manager && (release || tell === 'on_apply') ? new Date() : null },
         });
+        const applicantName = user.name ?? user.email;
+        if (release) {
+          const sub = await this.engine!.submit(tx, c, {
+            type: RELEASE_TYPE,
+            subjectType: 'internal_application',
+            subjectId: application.id,
+            title: `Release ${applicantName} for the internal job ${job.title}`,
+            summary: [{ label: 'Internal job', value: job.title }, { label: 'If there is no answer', value: 'HR decides after 5 working days' }],
+            subjectPersonId: employeeId,
+            requesterUserId: userId,
+            raisedByUserId: userId,
+            steps: [{ name: 'Current manager', approvers: [{ kind: 'users', userIds: [manager!] }], mode: 'any', selfApproval: 'never' }],
+            payload: {},
+            payloadFields: [],
+            fallbackUserIds: await this.engine!.hrAdmins(tx, orgId),
+            fallbackWording: { who: 'HR', check: 'Check who the person reports to.' },
+          });
+          notices.push(...sub.notices);
+          await tx.internalApplication.update({ where: { id: application.id }, data: { releaseStatus: 'pending', releaseWfRequestId: sub.id, releaseAskedAt: new Date() } });
+        }
         await recomputeGlobalStage(tx, orgId, candidate.id);
-        return { entryId: entry.id, applicationId: application.id, jobTitle: job.title, managerUserId: application.managerUserId, tell, applicantName: user.name ?? user.email };
+        return { entryId: entry.id, applicationId: application.id, jobTitle: job.title, managerUserId: application.managerUserId, tell, applicantName, release };
       });
     } catch (e) {
       // Two presses at once: the second loses the unique (job, candidate) race.
@@ -169,8 +272,9 @@ export class InternalApplicationsService {
       throw e;
     }
 
-    await this.audit.record(context, { actorUserId: userId, action: 'internal_application.submitted', entityType: 'pipeline_entry', entityId: out.entryId, metadata: { jobId: dto.jobId, resume: Boolean(resumePath), managerTold: out.tell === 'on_apply' && Boolean(out.managerUserId) } });
-    if (out.tell === 'on_apply' && out.managerUserId) await this.tellManager(context, userId, out.managerUserId, out.applicationId, `${out.applicantName} applied for the internal job ${out.jobTitle}`);
+    await this.audit.record(context, { actorUserId: userId, action: 'internal_application.submitted', entityType: 'pipeline_entry', entityId: out.entryId, metadata: { jobId: dto.jobId, resume: Boolean(resumePath), managerTold: out.tell === 'on_apply' && Boolean(out.managerUserId), releaseAsked: out.release } });
+    if (out.release) await this.engine!.send(context, notices);
+    else if (out.tell === 'on_apply' && out.managerUserId) await this.tellManager(context, userId, out.managerUserId, out.applicationId, `${out.applicantName} applied for the internal job ${out.jobTitle}`);
     return { id: out.entryId };
   }
 
@@ -228,11 +332,13 @@ export class InternalApplicationsService {
       const firstActive = new Map<string, number>();
       for (const s of firsts) if (!firstActive.has(s.pipelineId)) firstActive.set(s.pipelineId, s.position);
       const jobById = new Map(jobs.map((j) => [j.id, j]));
+      const waiting = new Set((await tx.internalApplication.findMany({ where: { entryId: { in: entries.map((e) => e.id) }, releaseStatus: 'pending' }, select: { entryId: true } })).map((a) => a.entryId));
       return entries.map((e) => ({
         entryId: e.id,
         jobTitle: jobById.get(e.jobId)?.title ?? '(role removed)',
         status: internalStatus(e.rejected, Boolean(e.archivedAt), e.status?.stage ?? null, e.job?.pipelineId ? firstActive.get(e.job.pipelineId) : undefined),
         appliedAt: e.createdAt,
+        waitingForManager: waiting.has(e.id),
       }));
     });
   }

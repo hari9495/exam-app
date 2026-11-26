@@ -3,7 +3,7 @@
 // key; the acknowledgement method ("Click to accept" or "None"; "E-sign" waits for the e-sign partner) and the F&F
 // recovery of an asset not returned. Answer 2720: a category may number its tags (LAP-2026-0042). Answer 2713: a category
 // depreciates straight line over its useful life (default) or declining balance at a yearly rate; "Written-down value"
-// is the asset's net book value on the day (a management figure, not the tax books).
+// is the asset's net book value on the leaver's last working day (answer 2820; a management figure, not the tax books).
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
@@ -59,7 +59,7 @@ export function assetSettingsPage(page: SettingsPageDef, design: SettingsPageDef
     d.key === 'asset.ack_method'
       ? { ...d, kind: 'radio', helper: 'E-sign comes when the e-sign partner is chosen.' }
       : d.key === 'asset.recovery_basis'
-        ? { ...d, kind: 'radio', helper: 'Written-down value is the asset’s net book value on the day, from its category’s depreciation. Without a cost, purchase date or depreciation, HR decides the amount.', showWhen: { key: 'asset.recovery_to_fnf', equals: true } }
+        ? { ...d, kind: 'radio', helper: 'Written-down value is the asset’s net book value on the leaver’s last working day, from its category’s depreciation. Without a cost, purchase date or depreciation, HR decides the amount.', showWhen: { key: 'asset.recovery_to_fnf', equals: true } }
         : d.key === 'asset.warranty_alert_days'
           ? { ...d, kind: 'radio', helper: 'Asset managers of the asset’s place are told once. An ended warranty shows in red on the register.' }
           : d.key === 'asset.contract_alert_days'

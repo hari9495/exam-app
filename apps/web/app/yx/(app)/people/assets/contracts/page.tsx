@@ -10,7 +10,7 @@ import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../../lib/yx
 
 // People › Asset contracts (IT assets part 3, answer 2717): contracts with their supplier, place, renewal, notice and
 // covered assets; ?open=<id> opens one (from an asset page). Read with asset.view; asset managers of a contract's place
-// change it; the value only for money holders. The API checks every call.
+// change it and renew an express one (answer 2824); the value only for money holders. The API checks every call.
 function Contracts() {
   const router = useRouter();
   const open = useSearchParams().get('open');
@@ -34,6 +34,7 @@ function Contracts() {
         locations: places.locations,
         assets: (assets.data?.rows ?? []).map((a) => ({ value: a.id, label: `${a.tag} · ${a.name}` })),
         onSave: (id, x) => (id ? write('PUT', `/lifecycle/asset-contracts/${encodeURIComponent(id)}`, x) : write('POST', '/lifecycle/asset-contracts', x)),
+        onRenew: (id, version) => write('POST', `/lifecycle/asset-contracts/${encodeURIComponent(id)}/renew`, { version }),
         onOpenAsset: (id) => router.push(`/yx/people/assets/${encodeURIComponent(id)}`),
         open,
       }}

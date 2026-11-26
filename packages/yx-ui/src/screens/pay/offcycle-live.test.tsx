@@ -5,6 +5,8 @@ import { ActuarialScreen, ArrearsBaseScreen } from './offcycle';
 import type { LiveActuarial, LiveArrears } from './offcycle-live';
 import type { ActuarialView } from './live/types-5i';
 import type { Recovery, Worksheet } from './live/types-5j';
+import { ToastProvider } from '../../components/notify';
+import { ARREARS_JOBS, RULE_OPEN, RULE_READY } from './arrears-changes-fixtures';
 
 // The designed PAY-28 (arrears list and worksheet) and PAY-38 (actuarial) screens with the live page's data.
 
@@ -75,6 +77,20 @@ describe('Arrears and recoveries (PAY-28 live)', () => {
     const dlg = await openSheet('Lakshmi Devi');
     expect(within(dlg).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
     expect(within(dlg).getByText('You made this worksheet, so someone else approves it.')).toBeInTheDocument();
+  });
+
+  it('2850: whoever approved the salary change cannot approve its arrears; a third person can', async () => {
+    const fromChange = { ...READY, changeApprovedBy: 'u-hr' };
+    const { unmount } = render(<ArrearsBaseScreen live={arrears({ me: 'u-hr', worksheets: [fromChange] })} />);
+    let dlg = await openSheet('Lakshmi Devi');
+    expect(within(dlg).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(within(dlg).getByText('You approved the salary change, so a third person approves its arrears.')).toBeInTheDocument();
+    unmount();
+    const live = arrears({ me: 'u-third', worksheets: [fromChange] });
+    render(<ArrearsBaseScreen live={live} />);
+    dlg = await openSheet('Lakshmi Devi');
+    await ue.click(within(dlg).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(live.onApprove).toHaveBeenCalledWith(fromChange));
   });
 
   it('hides Approve and Write off without the permission', async () => {
@@ -271,5 +287,44 @@ describe('Actuarial valuation (PAY-38 live)', () => {
     unmount();
     render(<ActuarialScreen live={actuarial({ state: 'no-access', data: null })} />);
     expect(screen.getByText(/You don't have access to actuarial valuations/)).toBeInTheDocument();
+  });
+});
+
+describe('E3: rule changes and triggers (PAY-28 live)', () => {
+  const changes = (o: Partial<NonNullable<LiveArrears['changes']>> = {}) => ({ proposals: [RULE_OPEN, RULE_READY], jobs: ARREARS_JOBS, canDecide: true, onPreview: vi.fn(async () => ({})), onAccept: vi.fn(async () => ({})), onDismiss: vi.fn(async () => ({})), ...o });
+  it('works out the impact, then accepts; what triggers drafted is listed with what was not drafted and why', async () => {
+    const c = changes();
+    render(<ToastProvider><ArrearsBaseScreen live={arrears({ changes: c, tab: 'changes' })} /></ToastProvider>);
+    const open = screen.getByRole('row', { name: /IN\.PT/ });
+    expect(within(open).getByText('Not worked out')).toBeInTheDocument();
+    // Negative: accepting before the impact is worked out says why and sends nothing.
+    await ue.click(within(open).getByRole('button', { name: 'Accept' }));
+    expect(screen.getByText(/Work out the impact of IN\.PT 2026-v3 first/)).toBeInTheDocument();
+    expect(c.onAccept).not.toHaveBeenCalled();
+    await ue.click(within(open).getByRole('button', { name: 'Work out the impact' }));
+    await waitFor(() => expect(c.onPreview).toHaveBeenCalledWith(RULE_OPEN));
+    const ready = screen.getByRole('row', { name: /IN\.LWF/ });
+    expect(within(ready).getByText(/9,120/)).toBeInTheDocument();
+    await ue.click(within(ready).getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(c.onAccept).toHaveBeenCalledWith(RULE_READY));
+    expect((await screen.findAllByText('Accepted. The worksheets are being drafted.')).length).toBeGreaterThan(0);
+    expect(screen.getByText('No salary from the joining date yet')).toBeInTheDocument();
+    expect(screen.getByText(/Lakshmi Devi/)).toBeInTheDocument();
+  });
+  it('dismissing needs a reason; without the arrears key there are no buttons', async () => {
+    const c = changes();
+    const { unmount } = render(<ToastProvider><ArrearsBaseScreen live={arrears({ changes: c, tab: 'changes' })} /></ToastProvider>);
+    await ue.click(within(screen.getByRole('row', { name: /IN\.PT/ })).getByRole('button', { name: 'Dismiss' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Dismiss' }));
+    expect(within(dialog).getByText(/10 characters or more/)).toBeInTheDocument();
+    expect(c.onDismiss).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'Settled by hand last month');
+    await ue.click(within(dialog).getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(c.onDismiss).toHaveBeenCalledWith(RULE_OPEN, 'Settled by hand last month'));
+    unmount();
+    render(<ArrearsBaseScreen live={arrears({ changes: changes({ canDecide: false }), tab: 'changes' })} />);
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Work out the impact' })).toBeNull();
   });
 });

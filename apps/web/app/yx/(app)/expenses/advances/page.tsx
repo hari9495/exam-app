@@ -11,7 +11,8 @@ export default function YxAdvancesPage() {
   const sp = useScopeParams();
   const router = useRouter();
   const perms = useYxPermissions();
-  const mine = useExp<{ advances: AdvanceSummary[] }>('/advances');
+  // T2-B 67: `policy` says whether advances are on and the most one can be.
+  const mine = useExp<{ advances: AdvanceSummary[]; policy?: { enabled: boolean; cap: string | null } | null }>('/advances');
   const approvals = useExp<{ advances: AdvanceSummary[] }>(withParams('/advances?view=approvals', sp.entity));
   const payout = useExp<{ advances: AdvanceSummary[] }>(withParams('/advances?view=payout', sp.entity), perms.has('expense.payout.manage'));
   const write = useExpWrite();
@@ -30,6 +31,7 @@ export default function YxAdvancesPage() {
         },
         onRequestTrip: () => router.push(`${EXP_LINKS.trips}?new=1`),
         onOpen: (id) => router.push(EXP_LINKS.advance(id)),
+        policy: mine.data?.policy ?? null,
       }}
     />
   );

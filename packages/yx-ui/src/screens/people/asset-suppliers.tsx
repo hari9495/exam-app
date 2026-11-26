@@ -42,8 +42,10 @@ export interface LiveSuppliers {
   state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: SupplierRow[];
-  /** asset.manage holders add, change and retire suppliers. */
+  /** asset.manage holders add and change suppliers. */
   canManage: boolean;
+  /** Answer 2823: only company-wide asset managers retire or restore one (left out: true). */
+  canRetire?: boolean;
   /** null: a new supplier. */
   onSave: (id: string | null, input: SupplierInput) => Promise<unknown>;
 }
@@ -55,12 +57,12 @@ const PHONE = /^\+?[0-9][0-9 ()-]{5,19}$/;
 const MAX_CONTACTS = 5;
 
 /** The supplier list: the designed view (sample data) or, with `live`, the company's list. */
-export function AssetSuppliersScreen(props: { rows: SupplierRow[]; canManage?: boolean; show?: Show; open?: 'new' | string } | { live: LiveSuppliers }) {
+export function AssetSuppliersScreen(props: { rows: SupplierRow[]; canManage?: boolean; canRetire?: boolean; show?: Show; open?: 'new' | string } | { live: LiveSuppliers }) {
   if ('live' in props) return <SupplierList {...props.live} />;
-  return <SupplierList state="ready" onRetry={() => undefined} rows={props.rows} canManage={props.canManage ?? true} onSave={() => Promise.resolve()} show={props.show} open={props.open} />;
+  return <SupplierList state="ready" onRetry={() => undefined} rows={props.rows} canManage={props.canManage ?? true} canRetire={props.canRetire} onSave={() => Promise.resolve()} show={props.show} open={props.open} />;
 }
 
-function SupplierList({ state, onRetry, rows, canManage, onSave, show: initialShow = 'active', open: initialOpen }: LiveSuppliers & { show?: Show; open?: 'new' | string }) {
+function SupplierList({ state, onRetry, rows, canManage, canRetire = true, onSave, show: initialShow = 'active', open: initialOpen }: LiveSuppliers & { show?: Show; open?: 'new' | string }) {
   const [show, setShow] = useState<Show>(initialShow);
   const [open, setOpen] = useState<'new' | string | null>(initialOpen ?? null);
   const shown = rows.filter((r) => r.retired === (show === 'retired'));
@@ -120,7 +122,7 @@ function SupplierList({ state, onRetry, rows, canManage, onSave, show: initialSh
           </div>
         </Card>
       )}
-      {canManage && (open === 'new' || editing) && <SupplierDrawer key={open} supplier={editing} onClose={() => setOpen(null)} onSave={onSave} />}
+      {canManage && (open === 'new' || editing) && <SupplierDrawer key={open} supplier={editing} canRetire={canRetire} onClose={() => setOpen(null)} onSave={onSave} />}
     </PeopleFrame>
   );
 }
@@ -129,7 +131,7 @@ type ContactDraft = { name: string; email: string; phone: string };
 const blank = (): ContactDraft => ({ name: '', email: '', phone: '' });
 const filled = (c: ContactDraft) => Boolean(c.name.trim() || c.email.trim() || c.phone.trim());
 
-function SupplierDrawer({ supplier, onClose, onSave }: { supplier: SupplierRow | null; onClose: () => void; onSave: LiveSuppliers['onSave'] }) {
+function SupplierDrawer({ supplier, canRetire, onClose, onSave }: { supplier: SupplierRow | null; canRetire: boolean; onClose: () => void; onSave: LiveSuppliers['onSave'] }) {
   const { toast } = useToast();
   const [name, setName] = useState(supplier?.name ?? '');
   const [gstin, setGstin] = useState(supplier?.gstin ?? '');
@@ -168,7 +170,7 @@ function SupplierDrawer({ supplier, onClose, onSave }: { supplier: SupplierRow |
         gstin: g || null,
         contacts: contacts.filter(filled).map((c) => ({ name: c.name.trim(), email: c.email.trim() || null, phone: c.phone.trim() || null })),
         notes: notes.trim() || null,
-        ...(supplier ? { retired: status === 'retired', version: supplier.version } : {}),
+        ...(supplier ? { ...(canRetire ? { retired: status === 'retired' } : {}), version: supplier.version } : {}),
       });
       toast({ tone: 'success', title: `${name.trim()} saved.` });
       onClose();
@@ -240,10 +242,15 @@ function SupplierDrawer({ supplier, onClose, onSave }: { supplier: SupplierRow |
         <FormField id="sp-notes" label="Notes" optional helper="What they supply, account numbers, escalation route.">
           <TextArea rows={3} value={notes} onChange={setNotes} maxLength={500} />
         </FormField>
-        {supplier && (
+        {supplier && canRetire && (
           <FormField id="sp-status" label="Status" helper="A retired supplier leaves the pickers. Assets and contracts that name it keep it.">
             <Segment<Show> label="Status" value={status} onChange={setStatus} options={[{ value: 'active', label: 'Active' }, { value: 'retired', label: 'Retired' }]} />
           </FormField>
+        )}
+        {supplier && !canRetire && (
+          <Text as="p" size="sm" tone="secondary">
+            {`${supplier.retired ? 'Retired.' : 'Active.'} Only company-wide asset managers retire or restore a supplier.`}
+          </Text>
         )}
       </div>
     </Drawer>

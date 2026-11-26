@@ -1,15 +1,6 @@
 {
-  "liveCopies": [
-    "hiring: ApprovalRoutesScreen",
-    "hiring: JobBoardsScreen",
-    "performance: CompCyclesScreen",
-    "performance: PerformanceReportsScreen",
-    "performance: PerformanceSetupScreen",
-    "performance: PipsScreen",
-    "performance: ReviewerBlocksScreen"
-  ],
+  "liveCopies": [],
   "notLive": [
-    "_kit: LinksFrame",
     "growth: AiCourseDraftScreen",
     "growth: MyTestsScreen",
     "growth: PerksScreen",
@@ -56,7 +47,6 @@
     "platform-a: RequestSheetPhone",
     "platform-a: RequestSheetScreen",
     "platform-a: RequestTypeBuilderScreen",
-    "platform-a: RuleBuilderScreen",
     "platform-b: AgentActionsLogScreen",
     "platform-b: AgentPlanDesk",
     "platform-b: AgentPlanPhone",
@@ -73,7 +63,6 @@
     "platform-b: FeatureRequestsScreen",
     "platform-b: ImpactPreviewDrawer",
     "platform-b: JobsErrorsScreen",
-    "platform-b: LookupTableScreen",
     "platform-b: LookupTablesScreen",
     "platform-b: NoticeOfChangePanel",
     "platform-b: PayoutReadinessScreen",
@@ -86,7 +75,6 @@
     "platform-b: SwitchOnScreen",
     "platform-b: TalkToUsDialog",
     "platform-b: TemplateGalleryScreen",
-    "platform-b: TestPreviewDrawer",
     "platform-b: TrialExtensionDialog",
     "platform-b: TrialReadOnlyPhone",
     "platform-b: TrialReadOnlyScreen",

@@ -1,4 +1,4 @@
-import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
+import { InternalApplicationsService, releaseProblem } from '../internal-applications/internal-applications.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { minorHold } from '../talent-crm/minor';
 import { Prisma } from '@prisma/client';
@@ -253,7 +253,10 @@ export class OfferBuilderService implements OnModuleInit {
 
   /** The route the builder shows before sending: the chain's steps and, when above the range, the extra step. */
   async routePreview(tx: Tx, c: CompanyContext, job: { hiringManagerId: string | null; legalEntityId: string | null }, sender: string | null) {
-    const steps = await this.chainSteps(tx, c.organizationId, null, sender);
+    // Review "Nice": with a company policy, the preview comes from the engine's route(), the function submit uses.
+    const steps: StepSpec[] = (await this.engine.hasPolicy(tx, c, OFFER_TYPE))
+      ? (await this.engine.route(tx, c, { type: OFFER_TYPE, subjectType: 'offer', subjectId: NONE, title: '', summary: [], subjectPersonId: null, requesterUserId: sender, raisedByUserId: sender, steps: [], payload: job.hiringManagerId ? { hiring_manager_id: job.hiringManagerId } : {}, payloadFields: [], fallbackUserIds: [], alwaysRoute: true })).steps.map((s) => ({ name: s.name, approvers: [{ kind: 'users', userIds: s.approverIds }], mode: 'any' }))
+      : await this.chainSteps(tx, c.organizationId, null, sender);
     const band = await this.bandApprovers(tx, c, job, sender);
     const ids = [...new Set([...steps.flatMap((s) => (s.approvers[0] as { userIds: string[] }).userIds), ...band.ids])];
     const users = ids.length ? await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: ids } }, select: { id: true, name: true } }) : [];
@@ -308,6 +311,9 @@ export class OfferBuilderService implements OnModuleInit {
       // HIR-05 under 18 (rule set HIR.MINOR): no offer until a parent or guardian consents.
       const minor = await minorHold(tx, org, e.candidateId, todayIst(), 'offer');
       if (minor) throw new ConflictException(minor);
+      // Answer 2761: an internal applicant's current manager releases them first (company setting).
+      const held = await releaseProblem(tx, org, e.id);
+      if (held) throw new ConflictException(held);
       if (await tx.offer.findFirst({ where: { organizationId: org, pipelineEntryId: e.id, status: { in: ['draft', 'pending_approval', 'approved', 'sent', 'accepted'] } }, select: { id: true } })) throw new ConflictException('This application already has an open offer. Revise that offer instead.');
       const w = await this.work(tx, org, e.job, dto, dto.startDate);
       const letter = await this.letterOf(tx, org, e.job.legalEntityId, dto.templateId);
@@ -376,13 +382,15 @@ export class OfferBuilderService implements OnModuleInit {
       if (o.status !== 'draft') throw new ConflictException('Only a draft offer can be sent for approval.');
       if (o.pipelineEntry.candidate.erasedAt) throw new BadRequestException('This candidate’s details were erased.');
       const cur = o.currentVersion ? await tx.offerVersion.findFirst({ where: { organizationId: org, offerId, version: o.currentVersion } }) : null;
-      const steps = await this.chainSteps(tx, org, offerId, userId);
+      // E2 part 6: once the company has its own offer policy, the old chain is not read and every offer goes through it.
+      const own = await this.engine.hasPolicy(tx, c, OFFER_TYPE);
+      const steps = own ? [] : await this.chainSteps(tx, org, offerId, userId);
       const position = (cur?.bandPosition ?? 'none') as BandPosition;
       if (bandAddsStep(position)) {
         const b = await this.bandApprovers(tx, c, o.pipelineEntry.job, userId);
         steps.push({ name: b.label, approvers: [{ kind: 'users', userIds: b.ids }], mode: 'any', selfApproval: 'never', required: true });
       }
-      if (!steps.length) {
+      if (!steps.length && !own) {
         await tx.offer.update({ where: { id: offerId }, data: { status: 'approved' } });
         await audit(tx, c, 'ats.offer.auto_approved', 'offer', offerId, { version: o.currentVersion });
         return { status: 'approved' as const };
@@ -403,8 +411,10 @@ export class OfferBuilderService implements OnModuleInit {
         requesterUserId: userId,
         raisedByUserId: userId,
         steps,
-        payload: {},
+        // E2: the values an offer policy's rules test, and the job's hiring manager (answer 2647).
+        payload: { ...(cur ? { amount: Number(cur.annualCtc) } : {}), above_range: bandAddsStep(position) ? 'yes' : 'no', ...(o.pipelineEntry.job.hiringManagerId ? { hiring_manager_id: o.pipelineEntry.job.hiringManagerId } : {}) },
         payloadFields: [],
+        alwaysRoute: own,
         fallbackUserIds: admins,
         fallbackWording: { who: 'the company admins', check: 'Check who approves offers' },
       });

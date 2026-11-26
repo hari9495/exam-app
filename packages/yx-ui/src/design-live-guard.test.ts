@@ -56,7 +56,8 @@ for (const f of files(join(UI, 'src'), (p) => p.endsWith('.tsx') && !/\.(stories
     const name = ts.isFunctionDeclaration(n) && n.name ? n.name.text : ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer)) ? n.name.text : null;
     if (!name || !/^[A-Z]/.test(name)) return;
     USES.set(name, new Set([...(USES.get(name) ?? []), ...used(n)]));
-    if (f.startsWith(SCREENS)) SCREEN_AREA.set(name, area(f));
+    // T2-F: _kit/story-frame.tsx holds story-only frames (LinksFrame draws the app around design stories); never a screen.
+    if (f.startsWith(SCREENS) && !f.endsWith('story-frame.tsx')) SCREEN_AREA.set(name, area(f));
     if (f.startsWith(SCREENS)) (rel(f).includes('/live/') ? IN_LIVE : OUTSIDE_LIVE).add(name);
   });
 
@@ -114,7 +115,7 @@ describe('design-live guard', () => {
   if (process.env.YX_GUARD_WRITE) writeFileSync(join(__dirname, 'design-live-guard.known.json'), `${JSON.stringify(gaps, null, 2)}\n`);
 
   it('(d) no live page renders a screen that only a "Live" copy story shows', () => {
-    expect(gaps.liveCopies.filter((g) => !KNOWN.liveCopies.includes(g)), 'Render the designed screen (with `live`) instead of a live-only copy.').toEqual([]);
+    expect(gaps.liveCopies.filter((g) => !(KNOWN.liveCopies as string[]).includes(g)), 'Render the designed screen (with `live`) instead of a live-only copy.').toEqual([]);
     expect(KNOWN.liveCopies.filter((g) => !gaps.liveCopies.includes(g)), 'Fixed: remove these from design-live-guard.known.json').toEqual([]);
   });
 

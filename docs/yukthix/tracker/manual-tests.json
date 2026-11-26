@@ -28921,5 +28921,681 @@
                               "Screens/Learning/LRN-06 · Nomination / enrolment (all six)"
                     ],
                     "note": "Positive and negative (api scorm.spec 19: manifest 1.2/2004/broken/entity/escape, each zip limit and refusal, bridge fields, oversize suspend data, tokens, CSP; e2e learning-scorm 5: upload refusals and keys, launch link on the content origin, serving refusals (app host, unsigned, tampered, expired, other package, other company, pending and infected files), CSP and no cookies, allowed fields only, oversize 400, other learner and other company 404, completion and certificate through the usual path; kit scorm-bridge 3 and learn-scorm-live 5). Migration 840 (learning_scorm_files, learning_scorm_attempts, scorm columns on learning_course_items). scorm-again 3.5.0, MIT. Multi-frame packages (frames inside the package) need a browser check: frame-ancestors on an opaque sandboxed parent."
+          },
+          {
+                    "id": "MT-IT-ASSETS-FOLLOWUPS",
+                    "area": "IT assets follow-ups (answers 2820, 2823, 2824, 2825, 2826)",
+                    "screen": "People › Asset suppliers; People › Asset contracts (Renew); exit clearance (licence seat); People › a person › Assets tab; Settings 2.8 Assets (recovery)",
+                    "url": "http://localhost:3000/yx/people/assets/contracts",
+                    "account": "IT / Admin coordinator (company-wide asset.manage); a site IT person with asset.manage on one location only; HR Admin; the person's manager (panel@, Divya); a peer employee; another company's admin.",
+                    "steps": [
+                              "2820: In Settings 2.8 set Recovery amount to Written-down value. Issue a laptop with a cost and purchase date to someone, start an end-of-contract exit with the last day 60 days ahead. Open their F&F (payroll hand-off) and the register's return form. Then put the letters on hold (a new revision) and look again.",
+                              "2823: As the site IT person open People › Asset suppliers, add a supplier, open it and change the notes. Then try to retire one through the API (PUT retired: true). As IT (company-wide) open the same supplier.",
+                              "2824: As IT open People › Asset contracts, open an express contract and press Renew, then Renew in the confirm. Open a tacit contract. As an asset.view-only person open the express one. POST /renew on a tacit contract, with a stale version, and as another company.",
+                              "2825: Give a licence seat to a leaver; as IT open My clearance, waive the licence-seat item without a reason, then with a reason. Open People › Software licences.",
+                              "2826: Open the person's record › Assets tab as HR with asset.view, as their manager and as the person. Then as a peer open /yx/people/<their id> (Assets), and as another company's admin call /lifecycle/people/<id>/assets."
+                    ],
+                    "expected": "2820: the recovery equals the net book value on the last working day (not today) on both, and the new revision keeps the same amount; Settings says 'net book value on the leaver's last working day'. 2823: the site person adds and saves the supplier (toast) but sees no Status, only 'Active. Only company-wide asset managers retire or restore a supplier.'; the API refuses retire with 403; IT sees Status and retires (audited). 2824: the confirm says 'It runs 12 months more: the end moves from <end> to <end + 12 months>. The start stays <start>.', then toast '<number> renewed to <new end>.' and the drawer shows 'renewed 1 time'; a tacit contract and a view-only person have no Renew; the API answers 400 (tacit), 409 (stale), 404 (other company), 403 (no asset.manage). 2825: no reason: 'Say why it is waived.' and nothing changes; with a reason the item is waived and the licence's seats used drop by one (audit asset.licence.seat.freed). 2826: HR, the manager and the person see a 'Licence seats' card under the assets (software and version, given, expires or 'No expiry') and the tab count includes them; the peer gets no Assets tab and the other company 404. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset suppliers (Edit supplier · site asset manager, no retire)",
+                              "Screens/People/PPL-25 · Asset contracts (Contract · express, with Renew; Contract · Renew pressed)",
+                              "Screens/People/PPL-03 · Person record (Assets tab (assets and licence seats); Assets tab · manager)"
+                    ],
+                    "note": "Positive and negative in lifecycle-6c e2e: 2820 (NBV on the last day, kept by a later revision, register default the same), 2823 (site 403 on retire and restore, edit ok, company-wide ok, audited, other company 404), 2824 (end moves by the length, audited 'by: hand', stale 409, tacit 400, view-only/finance/employee 403, other company 404, an edit keeps the renewals), 2825 (waive without reason 400, other company refused, waive frees, count drops, audited), 2826 (view, manager, self see seats; peer and other company 404; asset.view at another place sees no seat; a freed seat leaves). Kit tests: asset-suppliers, asset-contracts, record-panels-live. Route POST lifecycle/asset-contracts/:id/renew (asset.manage). No migration."
+          },
+          {
+                    "id": "MT-E2-RULES",
+                    "area": "Enterprise E2 (answers 2644-2650, 2785-2789): the approval rules editor, Try it, approval limits, the move of the old hiring routes and the hiring notices",
+                    "screen": "Settings › Approval policies (PLT-12 with the PLT-32 rule builder and the PLT-57 Try it drawer); Settings › Approval limits (PLT-34); Hiring › Approvals (the same editor for requisitions and offers)",
+                    "url": "http://localhost:3000/yx/settings/approval-policies",
+                    "account": "HR Admin (org.settings.manage, no pay keys); a payroll approver who also holds org.settings.manage (payroll.run.approve in every entity); HR who only read the structure (org.structure.view); a manager raising a requisition; another company's HR Admin.",
+                    "steps": [
+                              "As HR Admin open Settings › Approval policies. Look at the Request type list: areas Time and leave, Expenses, Hiring, Organisation, Pay, Exits and letters. Choose Pay: Payroll run, then Pay: One-time pay, then Exits and letters: Resignation, then Hiring: Requisition.",
+                              "On Requisition press Add rule. Press Done with nothing filled. Then name it 'Many openings', condition Openings is greater than 3, add a step 'Department head' (Manager's manager). Press Done. In the Otherwise card add a step 'Hiring manager' (Hiring manager). Press Save as version 1.",
+                              "In the side panel type Openings 5 and press Try it; then Openings 1 and Try it. Press Try on a past request, choose a recent requisition and press Run.",
+                              "As a manager raise a requisition for 5 openings and send it; open Approvals as the department head and as the hiring manager.",
+                              "Negative saves: add a step 'Up the chain to the approval limit' on Expense claim before any limits; add a step 'Up the chain to a grade' while two grades share a rank; set 'Holders of a key' with All on a key many people hold (for example expense.report.view); choose a group, delete that group in another tab, then save.",
+                              "Open Settings › Approval limits. Type ₹50,000 for one grade under Expenses and save. Switch to Pay and save (as the HR Admin without pay keys).",
+                              "As the payroll approver open One-time pay and add a step with a named person who does not hold payroll.run.approve; then a step 'Manager'; then a step with the Finance group whose members hold the key. Save each.",
+                              "On Requisition open the Notices tab, open Reminder, type a subject with {summary}, then with {title}, a message with {requester} and {link}; save. Send a requisition and wait for or trigger the reminder; read the email.",
+                              "Open Hiring › Approvals. Read the 'Move from the old hiring routes' card, then press Move for the type that matches.",
+                              "Negative access: as HR who only read the structure open all three pages; as another company's HR Admin call GET /api/v1/workflow/policies/ats.requisition/try with a request id from the first company."
+                    ],
+                    "expected": "Step 1: Payroll run says 'Payroll run approvals are built in and cannot change' with no Save; One-time pay and Resignation show 'Built-in steps first' then 'Your add-on steps'; Requisition shows Rules and Notices tabs. Step 2: 'Give the rule a name…', 'Add at least one step.'; then 'Rule 1 · Many openings' with 'When Openings is greater than 3.'; toast 'Requisition approvals saved' (5 s), header 'Version 1'. Step 3: 'Matches: Many openings.' with the department head; 'Matches: Otherwise.' with the hiring manager; the past request shows the same people it was sent to, with 'Always added' on required steps such as Outside the plan. Step 4: the department head gets the task; the manager who raised it never approves it. Step 5: each refused in words: 'Set the approval limits for expenses first…', 'Grades X and Y share rank N in <entity>…', 'more than 25 people can hold … Choose \"Any one\"', 'that group is not in this company'. Step 6: toast 'Expenses limits saved'; Pay: 'Changing who approves this needs payroll.run.approve in every legal entity…'. Step 7: '…would route pay approvals to people without payroll.run.approve: <name>'; 'on pay approvals choose named people, a group…'; the group step saves. Step 8: '{summary}' is refused before saving; the email subject and text are yours with the title, requester, step and link filled in, nothing from the request's details, and a name with < or > shows as text. Step 9: differences listed as Step / For a request from / Old route / New rules / Why; Move moves only the matching type (toast), the other stays listed. Step 10: read-only pages with 'View only' and no Save, no Move, no Try it; the other company gets 404. No page scroll at 1278 x 635 on the editor's first view.",
+                    "stories": [
+                              "Screens/Platform/E2 · Approval rules editor (all 14)",
+                              "Screens/Hiring/HIR-32 · Job boards"
+                    ],
+                    "note": "Positive and negative (api workflow-e2-editor e2e 12, approval-rules unit 11, settings-s6-approvals 30, workflow-e2-approvers 10, rls-isolation 35; kit policy-editor-live 12; web settings approvals and nav). Migration 842 (approval_policies.rules, approval_notice_texts). The company-wide move: npm run hiring:move-chains (apps/api, after nest build)."
+          },
+          {
+                    "id": "MT-E3-ARREARS",
+                    "area": "Enterprise E3 (answers 2651, 2652, 2786, 2787): back-dated pay that drafts itself",
+                    "screen": "Payroll › Component library (Recalculate when); Payroll › Arrears and recoveries › Rule changes and triggers; Settings › Payroll policies (Back-dated pay)",
+                    "url": "http://localhost:3000/yx/payroll/arrears",
+                    "account": "Payroll admin who raises salary changes (payroll.arrears.approve); a second payroll approver; HR who approves changes; an employee; another company's payroll admin.",
+                    "steps": [
+                              "In Payroll › Component library open HRA and switch off 'Recalculate when a back-dated salary change reaches a paid month'; save. Open Basic: the switch is on.",
+                              "As the payroll admin raise a salary change for someone, back-dated to the start of a month whose payroll is approved; have HR approve it. Open Arrears and recoveries › Rule changes and triggers.",
+                              "Open the drafted worksheet from the Arrears worksheets tab. As the payroll admin press Approve; then as the second approver.",
+                              "Add a person with a joining date in a month already paid and give them a salary from that date; check the tab again.",
+                              "On a worksheet with a month that has no payslip, confirm the base by hand. Then approve another back-dated raise for the same person over the same months; open the new draft.",
+                              "On a statutory rule change, press Accept straight away; then Work out the impact, wait, and Accept. Dismiss another one with a short reason, then with a proper one.",
+                              "Raise someone's pay back-dated to 1 April so it passes the ESI wage ceiling, where April's payroll was approved with ESI; make the April worksheet.",
+                              "Turn Settings › Payroll policies › Back-dated pay off, approve another back-dated raise.",
+                              "Negative access: the employee and another company's payroll admin open the tab and GET /api/v1/payroll/arrears-runs."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; the table shows 'On raise' per component. Step 2: a row 'Back-dated salary change · Done · 1 of 1' with the total and largest. Step 3: the admin who asked for the change is refused ('Someone other than the person who made the worksheet approves it'); the second approver approves; there is no HRA line. Step 4: a 'Joining date' row (or 'Not drafted: no salary from the joining date yet' until the salary exists). Step 5: the old draft says 'Replaced by a newer draft… bases confirmed by hand carried over'; the new draft keeps the confirmed amount and reason. Step 6: 'Work out the impact first…'; then the row shows people, total change and largest for one person, and Accept drafts the worksheets in the background (toast); dismiss needs 10 characters. Step 7: the ESI line is higher than paid (no refund). Step 8: nothing drafted. Step 9: the employee is refused (403); the other company sees nothing. No page scroll at 1278 x 635 on the tab.",
+                    "stories": [
+                              "Screens/Pay/PAY-28 · Arrears base confirmation (E3 · Rule changes and triggers, all three)"
+                    ],
+                    "note": "Positive and negative (api payroll-5g e2e: E3 trigger test (maker, switches, once per change, joining replace, confirmed base kept, other company and no-key refusals), E3 ESI April test, proposal preview and accept; payroll-pf-ceiling; kit offcycle-live E3 tests). Migrations 860 (switches, arrears_runs, proposal impact) and 861 (trigger sources)."
+          },
+          {
+                    "id": "MT-T2A-ROW-AND-TOUCH",
+                    "area": "T2-A (answers 2756, 2758): most days in a row; leave types that can't be taken next to each other (27 Nov 2026)",
+                    "screen": "Time › Set-up › a leave type › Rules (TIM-27); Apply leave",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin; an employee with balances of two types (for example EL and CL).",
+                    "steps": [
+                              "As HR set EL Most days in a row 3 and Most days in one request 4; Save. Clear the request limit and Save.",
+                              "Set EL Can't be taken next to: CL. Save.",
+                              "As the employee apply EL Thursday and Friday; then EL Monday and Tuesday of the next week.",
+                              "Apply CL on the Wednesday after a Monday-Tuesday EL; then CL on a Friday with EL the next Monday.",
+                              "Apply CL two working days away from EL."
+                    ],
+                    "expected": "Step 1: 'More than the limit in a row of 3 days.' and nothing saved; then saved. Step 3: the second request is refused: 'EL is at most 3 days in a row, counting leave next to it. This would make 4 days.' (the weekend joins them). Step 4: both refused: 'CL can't be taken next to EL (<date>).' (across the weekend too). Step 5: accepted. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-27 · Leave type (Rules tab)"
+                    ],
+                    "note": "Positive and negative (joined-run.spec 5 tests; kit leave-rules-live test; leave e2e unchanged and green). Rules in the type's rules JSON (no migration); either type naming the other refuses."
+          },
+          {
+                    "id": "MT-T2A-STARTERS",
+                    "area": "T2-A (answer 2754): starter leave types gallery (27 Nov 2026)",
+                    "screen": "Time › Set-up (TIM-28): Leave types › Add starter leave types; first set-up prompt",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin (leave.settings.manage company-wide); a second company with no leave types for the first set-up prompt.",
+                    "steps": [
+                              "In a company with no leave types open Time › Set-up. Press Choose starter leave types.",
+                              "Press Add on Casual leave, then on Earned leave and Maternity leave.",
+                              "Open Leave types: the three show '· starter'. Open Casual leave, change its name, Save.",
+                              "New policy: Casual 12 and Earned 15 carrying forward 30 are filled in.",
+                              "Negative: in the demo company (EL already exists) open Leave types › Add starter leave types: Earned leave shows Added with no Add button.",
+                              "Negative: as an employee or a manager, POST /time/setup/types/starter/casual: refused (403)."
+                    ],
+                    "expected": "Step 1: the drawer lists casual 12, sick 12, earned 15 carry 30, maternity 26 weeks, paternity 5 days, comp-off, leave without pay. Step 2: each Add gives a 5-second toast '<name> added' and the row turns to Added. Step 3: saved like any type. Step 4: the suggested days are filled. Step 5: no second EL. Step 6: 403. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-28 · Leave policies (No leave types yet · starter gallery)"
+                    ],
+                    "note": "Positive and negative (api leave-starters.spec 4; kit setup-live 3; web yx-time-starters 2). Migration 850 (leave_types.starter). State rules (Factories Act 1 day per 20 worked) stay as the factory leave table, not a starter."
+          },
+          {
+                    "id": "MT-T2A-SERVICE-BANDS",
+                    "area": "T2-A (answer 2755): service bands (experience levels) on a leave policy line (27 Nov 2026)",
+                    "screen": "Time › Set-up › a leave policy (TIM-28 drawer) › Edit a line › Service bands; Leave balances",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin; an employee who joined more than 2 years ago (and one who joined this year).",
+                    "steps": [
+                              "Open a policy, Edit Earned leave (15 a year). Add service band: after 2 years 18 days, most days held 45. Save from today.",
+                              "Add a second band after 1 year: the save is refused. Remove it and save.",
+                              "Run the accrual (or wait for the monthly credit): the long-serving employee's next credit is at 18 a year (1.5 a month); the new joiner's stays at 1.25.",
+                              "For someone whose anniversary is mid-month, check the credit of that month is still the old rate and the next one is the new rate.",
+                              "Open the policy: the earlier version still shows without bands (bands belong to the dated version)."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; the line reads '15 days a year, ... 18 after 2 years'. Step 2: 'Each band starts after more years than the one before.' and nothing saved. Step 3: only the yearly days change; carry forward is the same; credits over 45 lapse in the band. Step 4: the band applies from the first credit after the anniversary. Step 5: the old version is unchanged. No page scroll at 1278 x 635 with the drawer open.",
+                    "stories": [
+                              "Screens/Time/TIM-28 · Leave policies (Policy drawer)"
+                    ],
+                    "note": "Positive and negative (api service-bands.spec 7, time-maths and accrual-limits still green; kit setup-live 1). Bands live on the policy line JSON of the dated version (no migration). A band below a state floor is raised to it. Web: yx-time-service-bands (2)."
+          },
+          {
+                    "id": "MT-T2A-COMPOFF-ROSTER",
+                    "area": "T2-A (answer 2757): comp-off credited from the roster, company setting off by default (27 Nov 2026)",
+                    "screen": "Settings › Time & Leave › Leave types (3.6) › Company choices; Me › Leave › Comp-off",
+                    "url": "http://localhost:3000/yx/settings/time/leave-types",
+                    "account": "HR Admin or a leave admin; a manager who publishes the roster; an employee whose usual weekly off is Sunday.",
+                    "steps": [
+                              "Open Leave types settings: 'Credit comp-off automatically when the roster puts someone to work on a weekly off or holiday and they work it' is off (Starter default).",
+                              "With it off, publish a roster shift for the employee on a Sunday; the employee clocks in and works 8 hours. Next day: no comp-off credit appears.",
+                              "Turn the setting on and save. Run the accrual job (or wait up to 6 hours).",
+                              "Negative: a rostered Sunday worked only 2 hours, an ordinary weekday worked, and a Sunday already claimed (claim pending) get nothing.",
+                              "Claim a holiday worked that was not on the roster: the claim and the manager's approval work as before."
+                    ],
+                    "expected": "Step 1: off. Step 2: nothing credited. Step 3: Me › Leave › Comp-off shows a credit of 1 day 'Comp-off for rostered work on <date>' with its use-by date; the day is no longer offered for a claim. Step 4: no credit. Step 5: as today. 5-second toast on save; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings · Time & Leave (Leave types)"
+                    ],
+                    "note": "Positive and negative (api roster-comp-off.spec 3; kit time-settings-live; web yx-settings-time 1). Job creditRosteredCompOff runs with accruals; period key roster:<date> per person makes reruns safe. 'Take now, work later' stays as the comp-off type's negative balance. API e2e on the real database: time-t2a (10)."
+          },
+          {
+                    "id": "MT-T2A-OVERVIEW-CARDS",
+                    "area": "T2-A (answer 2759): manager leave overview cards (27 Nov 2026)",
+                    "screen": "Team › Leave (TIM-17 Manager)",
+                    "url": "http://localhost:3000/yx/time/team-leave",
+                    "account": "Manager panel@ (Divya) with reports; HR Admin for the setting.",
+                    "steps": [
+                              "As a report, apply casual leave for today (applied on its first day) and sick leave for yesterday.",
+                              "As the manager open Team › Leave: the cards 'Unplanned leave this month' and 'No leave in 90 days'.",
+                              "Check Away this week: the sick leave shows as 'Leave', never 'Sick leave'.",
+                              "As HR set 'Team leave: no leave taken means none approved in the last (days)' to 30 (Settings › Leave types). Reload Team › Leave.",
+                              "Negative: a report who joined 20 days ago with no leave is not counted under no leave in 30 days; leave applied a week ahead is not unplanned; a person with no reports sees no cards."
+                    ],
+                    "expected": "Step 2: unplanned counts the report (names only, no type); no-leave lists reports with no approved leave in 90 days. Step 3: 'Leave · <dates>'. Step 4: the card reads 'No leave in 30 days'. Step 5: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-17 · Leave home (Manager · overview cards)"
+                    ],
+                    "note": "Positive and negative (kit leave-mgr-live 2; web yx-time-team-overview 2). Setting leave.overview.no_leave_days (default 90). Unplanned is counted for leave starting this month (question 2830). Sick or medical types show as 'Leave' everywhere on the manager overview (away, who else is off). API e2e on the real database: time-t2a (10)."
+          },
+          {
+                    "id": "MT-T2A-PEERS-AWAY",
+                    "area": "T2-A (answer 2760): peers away (27 Nov 2026)",
+                    "screen": "Me › Leave (TIM-17 Employee): Peers away card",
+                    "url": "http://localhost:3000/yx/time/leave",
+                    "account": "Two employees with the same manager (for example two of panel@'s reports); one from another team.",
+                    "steps": [
+                              "Approve 2 days of sick leave next week for peer A.",
+                              "As peer B open Me › Leave: the Peers away card lists the two days with 'A · away'.",
+                              "Negative: the card shows no leave type, half day or times; pending leave of A is not shown; someone from another team never appears; an employee with no manager sees 'No one else has your manager.'",
+                              "Negative: GET /time/me/peers-away as a person shows only their own peers (no id can be passed)."
+                    ],
+                    "expected": "Step 2: read-only list for the next 14 days. Step 3 and 4: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-17 · Leave home (Employee · peers away)"
+                    ],
+                    "note": "Positive and negative (kit leave-live 2; web yx-time-peers 2). Peers are the people with the same manager today (current assignment). API e2e on the real database: time-t2a (10)."
+          },
+          {
+                    "id": "MT-T2A-LWF-SUPERVISOR",
+                    "area": "Payroll review M3 (answer 2762): manager or supervisor on the job record; Tamil Nadu and Delhi LWF exclusions (27 Nov 2026)",
+                    "screen": "People › a person › Changes (PPL-04 redesignation or correction); History (job facts); Payroll › December run",
+                    "url": "http://localhost:3000/yx/people",
+                    "account": "HR Admin with employee.change.manage; payroll admin for the December run; one person in Tamil Nadu on 40,000 a month and one in Delhi on 30,000.",
+                    "steps": [
+                              "Raise a correction for the Tamil Nadu person: Manager or supervisor = Manager or supervisor, from 1 Dec 2026. Approve it.",
+                              "Open the person's History: the job shows 'Manager or supervisor: Yes'.",
+                              "Run December payroll: the Tamil Nadu person has no LWF (20 / 40) line; a non-supervisor in Tamil Nadu still pays 20 / 40.",
+                              "Do the same for the Delhi person: no LWF (0.75 / 2.25) in December.",
+                              "Negative: a supervisor in Tamil Nadu on exactly 15,000 still pays; a transfer form never shows the field; a person not marked stays covered; a November run is unchanged."
+                    ],
+                    "expected": "As described; each LWF line cites IN.LWF IN-TN 2026-v3 or IN-DL 2026-v2 (verify). Toast on saving the change; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-04 · Changes"
+                    ],
+                    "note": "Positive and negative (api lwf-supervisors.spec 4, statutory golden cases; kit history.test 1). Migration 851: employee_assignments.supervisory (default false) and the two rule set versions from 1 Dec 2026, verify (CA to confirm the wage compared: the month's statutory gross earnings). Web: yx-people-supervisory (2)."
+          },
+          {
+                    "id": "MT-T2A-INTERNAL-RELEASE",
+                    "area": "T2-A (answers 2761, 2836): the current manager releases someone who applies for an internal job (27 Nov 2026)",
+                    "screen": "Settings › Hiring › Internal jobs; Hiring › Internal jobs (HIR-13, Apply sheet); Approvals (the manager's and HR's inbox); the candidate's offer",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "HR Admin (hr_admin profile); an employee past probation and 12 months in the role; their manager (panel@, Divya); a recruiter who makes offers; another company's admin.",
+                    "steps": [
+                              "Default: open Settings › Hiring › Internal jobs. 'The current manager releases the person before an offer' is off. As the employee apply for an internal job; as the recruiter make an offer on that application.",
+                              "As HR turn the setting on and save. As the employee open Hiring › Internal jobs and press Apply on another job: read the blue note, then send.",
+                              "As the manager open Approvals: the request 'Release <name> for the internal job <title>'. Before deciding, as the recruiter try to make an offer on the application.",
+                              "As the manager press Approve; then as the recruiter make the offer.",
+                              "Negative: the employee applies for a third job; the manager presses Reject with a reason; the recruiter tries an offer. As the applicant or another colleague, try to decide the release (they have no task); as another company's admin call POST /workflow/approvals/tasks/<task id>/decide.",
+                              "No answer: the employee applies for a fourth job and nobody decides. After 5 working days (Monday to Friday, less company-wide holidays; a holiday in between moves it a day) the hourly job runs (or run it in a test). Open Approvals as HR.",
+                              "Turn the setting off again and apply once more: the manager is only told; an application still waiting keeps waiting."
+                    ],
+                    "expected": "Step 1: the manager gets the usual 'applied for the internal job' notice; the offer is made. Step 2: toast 'Saved'; the Apply sheet says 'Your manager, <name>, is asked to release you when you apply. An offer can be made only once they agree; if they have not answered in 5 working days, HR decides.' Step 3: the request is in the manager's inbox (no 'applied' notice); the offer is refused: 'Their current manager has not released them yet…'. Step 4: the offer is made. Step 5: refused offer: 'Their current manager did not release them for this job, so no offer can be made.'; others cannot decide (403/404); another company 404. Step 6: HR Admins get 'Escalated to you: Current manager' (not the manager's manager); either HR or the manager can decide; it happens once. Step 7: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Hiring/HIR-13 · Internal jobs (Apply sheet · manager releases)",
+                              "Screens/Settings/6.1 Hiring (Internal jobs)"
+                    ],
+                    "note": "Positive and negative (api e2e hiring-internal-release 7: off by default, setting values and key, asked not told, offer refused while pending and after a refusal, only the manager decides, HR after 5 working days once, rerun, other company, off again, RLS; unit release.spec 3, offers and hiring-settings specs; kit hir-13-live and hiring-live; web yx-hiring-hir13 and yx-settings-hiring). Migration 852 (internal_applications release_status, release_wf_request_id, release_asked_at, release_hr_at). Engine request type hiring.internal_release; hourly sweep internal-release-handover at :35."
+          },
+          {
+                    "id": "MT-2810-IT-COST-DATE",
+                    "area": "Helpdesk: the date of an IT cost line (answer 2810)",
+                    "screen": "Helpdesk › an IT ticket › Costs card",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "it-agent@demo-org.test (IT desk agent); panel@demo-org.test (employee) for the negative access step.",
+                    "steps": [
+                              "As the IT agent open an IT ticket opened a few days ago. In the Costs card look at Date: it shows today.",
+                              "Add Material, Spare charger, 1800 with the date set to the day the ticket was opened; press Add cost.",
+                              "Negative: set Date to the day before the ticket was opened and leave the field; then set a date in the future; then clear Date and press Add cost.",
+                              "Negative (API): POST /api/v1/desk/tickets/<id>/costs with costOn the day before the ticket was opened, then with tomorrow.",
+                              "Negative access: as the employee open the same ticket in My tickets."
+                    ],
+                    "expected": "Step 1: Date is today; the calendar greys out days before the ticket was opened and after today. Step 2: toast 'Cost added.' (5 s); the line shows the chosen date. Step 3: 'Choose a date on or after <opened day>', then 'Choose a date on or before <today>', then 'Choose the date of the cost.'; nothing is added. Step 4: 400 'A cost cannot be dated before the ticket was opened (<day>).' and 400 'A cost is recorded for today or earlier.' Step 5: no Costs card.",
+                    "stories": [
+                              "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs"
+                    ],
+                    "note": "Answer 2810. Positive and negative: API service-desk-it-costs.e2e-spec.ts (2810 test and the negative test); kit it-costs.test.tsx (2810 tests)."
+          },
+          {
+                    "id": "MT-2811-IT-COST-REMOVED",
+                    "area": "Helpdesk: removed IT cost lines stay visible to the desk's agents (answer 2811)",
+                    "screen": "Helpdesk › an IT ticket › Costs card",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "it-agent@demo-org.test (IT desk agent who adds and takes off a line); a second IT agent of the same desk; an HR desk agent; panel@demo-org.test (the requester).",
+                    "steps": [
+                              "As the IT agent, on an IT ticket add Fixed, Courier, 350. Press Take off on it and give the reason 'Charged twice'.",
+                              "As the second IT agent open the same ticket.",
+                              "Negative: on the struck-through line look for a Take off button.",
+                              "Negative access: as the requester open the ticket in My tickets; as the HR desk agent open the ticket's link."
+                    ],
+                    "expected": "Step 1: toast 'Cost taken off.' (5 s); the line stays in the list struck through, with 'Taken off by <name> on <date>: Charged twice' under it; the total drops by ₹350. Step 2: the same struck-through line with who and why. Step 3: no Take off on a removed line. Step 4: the requester sees no Costs card at all; the HR agent cannot open the IT ticket (not found or no access).",
+                    "stories": [
+                              "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs"
+                    ],
+                    "note": "Answer 2811. Positive and negative: API service-desk-it-costs.e2e-spec.ts (removed line with who and why for another agent; none in the requester's view); kit it-costs.test.tsx (2811 test)."
+          },
+          {
+                    "id": "MT-2818-HIRING-APPROVALS-FOLD",
+                    "area": "Hiring › Approvals: the move card's differences start folded (answer 2818)",
+                    "screen": "Hiring › Approvals (the 'Move from the old hiring routes' card)",
+                    "url": "http://localhost:3000/yx/hiring/approval-routes",
+                    "account": "HR Admin of a company whose old requisition route differs from its new rules (demo-org admin@ after setting a different requisition rule); HR who only read the structure (org.structure.view).",
+                    "steps": [
+                              "Open Hiring › Approvals in a 1278 x 635 window (150 % laptop).",
+                              "Press 'Show differences (N)'; then press 'Hide differences'.",
+                              "Tab to the toggle and press Enter, then Space.",
+                              "Negative: as HR who only read the structure open the page; open it for a company with no old routes (or after moving every type)."
+                    ],
+                    "expected": "Step 1: the card shows the one-line summary per type and a 'Show differences (N)' button; no table; the page has no scroll bar (the rule editor below may scroll inside itself, answer 2818). Step 2: the table 'Where the old route and the new rules differ' opens with Type / Step / For a request from / Old route / New rules / Why; Hide folds it again. Step 3: the toggle has a visible focus ring and opens and closes from the keyboard. Step 4: read only: the toggle still works but there is no Move button; with no old routes the card is not shown.",
+                    "stories": [
+                              "Screens/Platform/E2 · Approval rules editor › PLT-12 · Hiring › Approvals with the move from the old routes"
+                    ],
+                    "note": "Answer 2818. Positive and negative: kit policy-editor-live.test.tsx (folded by default, Show and Hide)."
+          },
+          {
+                    "id": "MT-2850-ARREARS-THIRD-PERSON",
+                    "area": "Payroll: arrears from a salary change need a third person (answer 2850)",
+                    "screen": "Payroll › Arrears and recoveries › Arrears worksheets (a worksheet drawn from a salary change)",
+                    "url": "http://localhost:3000/yx/payroll/arrears",
+                    "account": "Payroll admin who asks for the salary change (A); a payroll approver who also approves employee changes (B, payroll.arrears.approve and employee.change.approve); a second payroll approver (C).",
+                    "steps": [
+                              "As A raise a salary change for someone, back-dated to the start of a month whose payroll is approved. As B approve the change (People › Changes).",
+                              "Open Payroll › Arrears and recoveries › Arrears worksheets and open the drafted worksheet as A, then as B.",
+                              "Negative (API): as B call POST /api/v1/payroll/arrears-worksheets/<id>/approve.",
+                              "As C open the worksheet and press Approve.",
+                              "Also: as A make a worksheet by hand for a change B approved (choose the change); open it as B."
+                    ],
+                    "expected": "Step 2: as A 'You made this worksheet, so someone else approves it.'; as B 'You approved the salary change, so a third person approves its arrears.'; neither sees Approve. Step 3: 403 'You approved the salary change, so a third person approves its arrears.' Step 4: toast 'Arrears for <name> approved; they are paid with the next run.' (5 s). Step 5: the same note for B and no Approve; a worksheet not drawn from a change (by hand with no change, joining date, rule change) has no such bar.",
+                    "stories": [
+                              "Screens/Pay/PAY-28 · Arrears base confirmation"
+                    ],
+                    "note": "Answer 2850. The change's approver is looked up from the change (employee_changes.decided_by); no new column. Positive and negative: api payroll-5g e2e (hand-made worksheet for a change: approver1 refused, approver2 approves; E3 trigger: approver1 refused; item 4 test approves as approver2); kit offcycle-live.test.tsx (2850 test)."
+          },
+          {
+                    "id": "MT-T2B-66-SAVE-AND-ADD",
+                    "area": "T2-B 66 (Expenses A2): \"Save and add another\" on a claim line",
+                    "screen": "Expenses › Claims › a draft claim › Add line drawer (EXP-02)",
+                    "url": "http://localhost:3000/yx/expenses/claims",
+                    "account": "panel@demo-org.test (employee with a draft claim).",
+                    "steps": [
+                              "Open a draft claim and press Add line. Choose Mileage, type 42 km and press 'Save and add another'.",
+                              "In the fresh form type 18 km and press Add line.",
+                              "Choose 'A bill without a receipt', choose a category, type the amount and date, and press 'Save and add another'; then press Cancel.",
+                              "Negative: press Add line, choose Mileage and press 'Save and add another' with the distance empty.",
+                              "Negative: open an existing line with Edit line (or Edit distance).",
+                              "Negative: choose 'A receipt' (upload) in the Add line drawer."
+                    ],
+                    "expected": "Step 1: toast 'Line added' (5 s); the drawer stays open with an empty Mileage form; the claim shows the 42 km line behind it. Step 2: a second line, the drawer closes. Step 3: the bill line is added and a fresh bill form opens; Cancel closes it. Step 4: 'Enter the distance in km.' and nothing is saved. Step 5: the edit drawer has Save line only, no 'Save and add another'. Step 6: no 'Save and add another' (each receipt becomes its own line). Buttons have a border, hover, pointer and focus ring.",
+                    "stories": [
+                              "Screens/Ops/EXP-02 · Claim composer › Add a line · what are you adding, Save and add another (T2-B 66)",
+                              "Screens/Ops/EXP-02 · Claim composer › AddLineProject"
+                    ],
+                    "note": "T2-B item 66. Positive and negative: kit expenses-live.test.tsx (two T2-B 66 tests). No API change."
+          },
+          {
+                    "id": "MT-T2B-67-ADVANCE-RULES",
+                    "area": "T2-B 67 (Expenses A6): advances on or off, and the most one advance can be (per grade)",
+                    "screen": "Settings › Expenses & travel (4.8) › Advances, travel and cards; Expenses › Advances (EXP-05); Expenses › Trips (trip request)",
+                    "url": "http://localhost:3000/yx/expenses/advances",
+                    "account": "admin@demo-org.test (company admin, expense.policy.manage) for the settings; panel@demo-org.test (employee) on one grade; a second employee on another grade.",
+                    "steps": [
+                              "As the admin open Settings › Expenses & travel. Under 'Advances, travel and cards' find 'Expenses: employees can ask for advances' (Allowed) and 'Expenses: the most one advance can be' (No limit). Set the most to 5000 for the company, then with 'Different for' set 25000 for the employee's grade. Save.",
+                              "As the employee open Expenses › Advances and press Request an advance. Choose Standing imprest, type 25000 and a purpose; send.",
+                              "Negative: request again with 25001.",
+                              "Negative: as the second employee (other grade) request 5001; then request a trip with an advance of 6000.",
+                              "As the admin switch 'employees can ask for advances' to Switched off. As the employee open Expenses › Advances.",
+                              "Negative: as the employee send a draft trip that asks for an advance; then request a trip with no advance.",
+                              "Set both settings back (Allowed, No limit)."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; the grade value shows under 'Different for'. Step 2: the Amount field says 'At most ₹25,000.'; toast 'Advance sent for approval'. Step 3: 'An advance can be at most ₹25,000.' and nothing is sent. Step 4: 'An advance can be at most ₹5,000 for you (your company's limit).' on the advance and on the trip. Step 5: the notice 'Your company does not give expense advances' and no Request an advance button; advances already given are still listed and settle as usual. Step 6: 'Your company does not give expense advances.'; the trip with no advance is saved. Step 7: Request an advance shows again with no limit.",
+                    "stories": [
+                              "Screens/Expenses/EXP-05 · Advance card + request › Advances list · switched off by the company (T2-B 67)",
+                              "Screens/Expenses/EXP-05 · Advance card + request › Advances list · with the most one advance can be (T2-B 67)"
+                    ],
+                    "note": "T2-B item 67, answers 2861 (cap per advance, pay currency; a forex trip advance has no cap) and 2862 (off: no new advance, old ones settle). Settings expense.advance.enabled (default on) and expense.advance.cap (default off; company, legal entity or grade). Positive and negative: API expenses-e4 e2e (T2-B 67 test); kit expenses-travel-live.test.tsx (two T2-B 67 tests)."
+          },
+          {
+                    "id": "MT-T2B-65-DOWNLOAD-YEAR",
+                    "area": "T2-B 65 (Pay B4): Download the year on Me › Payslips",
+                    "screen": "Me › Payslips (PAY-21), the months list",
+                    "url": "http://localhost:3000/yx/me/payslips",
+                    "account": "panel@demo-org.test (employee with published payslips in this tax year and the last one); a second employee.",
+                    "steps": [
+                              "Open Me › Payslips. Under the tax year press 'Download the year'. Open the zip.",
+                              "Choose the earlier tax year and press 'Download the year' again.",
+                              "Press 'Download PDF' on one payslip (the same kind of link).",
+                              "Negative (API): GET /api/v1/payroll/me/payslips/year/2026 and /year/2026-28; then /year/2010-11.",
+                              "Negative (API): copy the path the year link returns and open it twice; open it as the second employee."
+                    ],
+                    "expected": "Step 1: toast 'Payslips downloaded' (5 s); one file payslips-<year>.zip with one PDF per published payslip of that tax year (payslip-2026-09.pdf and so on; off-cycle ones marked -offcycle-), each with your name and the time as a watermark. Step 2: the earlier year's zip. Step 3: the PDF opens in the page and downloads (not a small text file). Step 4: 400 'Give the tax year as 2026-27.' twice; 404 'You have no payslips for that tax year.' Step 5: the second open and the other person get 404 'This link has been used or has expired. Ask for a new one.' Each payslip in the zip is in the audit log as downloaded.",
+                    "stories": [
+                              "Screens/Pay/PAY-21 · Payslip viewer › Months list · Download the year (T2-B 65)"
+                    ],
+                    "note": "T2-B item 65, answer 2863. Migration 202617z0000875 (payslip_links purpose 'year'). Also fixed: Me › Payslips now fetches the PDF through the single-use link the API returns (it was saving the link's JSON). Positive and negative: API payroll-5d e2e (T2-B 65 test); kit employee-pay.test.tsx (two T2-B 65 tests)."
+          },
+          {
+                    "id": "MT-T2B-63-MY-SALARY",
+                    "area": "T2-B 63 (Pay B3): the employee's salary timeline (Me › My pay › My salary)",
+                    "screen": "Me › My pay › My salary (new page next to Payslips)",
+                    "url": "http://localhost:3000/yx/me/salary",
+                    "account": "panel@demo-org.test (employee with at least two approved salaries, one raise approved for a later date, and one raise still waiting); someone with no employee record.",
+                    "steps": [
+                              "Open the Pay menu: My salary is next to Payslips. Open it (confirm it is you if asked).",
+                              "Read the list: the later raise, the salary in force, then earlier salaries.",
+                              "Press 'Show the split' on the salary in force; then 'Hide the split'; then show it again.",
+                              "Negative: look for the raise still waiting for approval, or a turned-down one, and for the names of who asked or approved.",
+                              "Negative: as someone with no employee record open /yx/me/salary; as the employee call GET /api/v1/payroll/employees/<another person's id>/compensation-history.",
+                              "Negative (API): as the employee call GET /api/v1/payroll/employees/<own id>/compensation-history while a raise waits for approval."
+                    ],
+                    "expected": "Step 1: the page 'My salary' with no page scroll at 1278 x 635 for up to four salaries. Step 2: newest first; the later raise has 'Starts on <date>', the salary in force has 'Current'; each shows the yearly CTC, the dates, the change in % on the salary before and the reason. Step 3: a table Component / A month / A year (earnings, then company contributions); it opens again without loading. Step 4: neither is shown, nor any names (answer 2860). Step 5: 'No salary yet.'; 404 for another person. Step 6: only approved salaries, with requestedBy and decidedBy empty; the waiting raise is not in the answer.",
+                    "stories": [
+                              "Screens/Pay/My salary (T2-B 63)"
+                    ],
+                    "note": "T2-B item 63, answer 2860 (approved only, no names: the API's own-history answer leaves out requests waiting or turned down and who asked or approved). The PAY-12 history and the salary on a day already allow self. Positive and negative: API payroll-5b e2e (history test: own view, a pending then turned-down request); kit my-salary.test.tsx (3 tests); web yx-nav.test.ts (My salary next to Payslips)."
+          },
+          {
+                    "id": "MT-T2B-64-PAY-SUMMARY",
+                    "area": "T2-B 64 (Pay B1): the pay summary at the top of Me › Payslips (already live)",
+                    "screen": "Me › Payslips (PAY-21)",
+                    "url": "http://localhost:3000/yx/me/payslips",
+                    "account": "panel@demo-org.test (employee with a published payslip that has a day of unpaid leave); a new joiner with no payslip yet.",
+                    "steps": [
+                              "Open Me › Payslips.",
+                              "Read the top of the page and the Days card.",
+                              "Negative: open the page as the new joiner with no payslip."
+                    ],
+                    "expected": "Step 1: the latest payslip opens first (the last pay cycle). Step 2: net pay, gross, deductions and the payment status at the top; 'Days in <month>' with '<n> paid days of <m> · 1 unpaid'; Download PDF and Raise a query beside it. Step 3: 'No payslips yet.' with how payslips are published.",
+                    "stories": [
+                              "Screens/Pay/PAY-21 · Payslip viewer"
+                    ],
+                    "note": "T2-B item 64 was found live (2753, answer 2864): no change. Kit employee-pay.test.tsx covers the payslip page."
+          },
+          {
+                    "id": "MT-T2D-62-WEEK-ACTIVITY",
+                    "area": "T2-D 62 (Timesheet A6): the Activity card on my week",
+                    "screen": "Me › My timesheet (TIM-15), Week tab, under the grid",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "panel@demo-org.test (employee allocated to two projects); the two project managers; a second employee.",
+                    "steps": [
+                              "As the employee fill this week on both projects and press Submit week. Press Recall to edit, then Submit week again.",
+                              "As one project manager reduce that project's line with the reason 'Offsite on Tuesday'; as the other approve theirs.",
+                              "As the employee open the week again and read the Activity card.",
+                              "Negative: open a week with no timesheet yet; save a draft without sending it.",
+                              "Negative: as the second employee open their own week."
+                    ],
+                    "expected": "Step 1: toasts 'Week sent to the project manager' and 'Week withdrawn; you can change it' (5 s). Step 3: an Activity card, newest first: '<project> line approved' with the manager's name and time, '<project> reduced' with 'Reason: Offsite on Tuesday', 'Sent to the project manager', 'Recalled to edit', 'Sent to the project manager', each with who and when. Step 4: no Activity card (saving a draft is not listed). Step 5: only their own week's events, nothing of the first employee's.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Activity card · sent, a line reduced, recalled (T2-D 62)"
+                    ],
+                    "note": "T2-D item 62 (no answer needed). Recalling a week is now audited (time.timesheet.withdrawn). Positive and negative: API projects-p2 e2e (T2-D 62 and 55 test); kit timesheet-t2d.test.tsx (62 tests)."
+          },
+          {
+                    "id": "MT-T2D-55-MY-PROJECTS",
+                    "area": "T2-D 55 (Timesheet A10 / A11): My projects with my hours",
+                    "screen": "Me › My timesheet (TIM-15), My projects tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "panel@demo-org.test (allocated now to one project and earlier to another, with approved and waiting hours on both); an employee on no project.",
+                    "steps": [
+                              "Open Me › My timesheet and press the My projects tab.",
+                              "Read the row of the project you are on now and the row of the earlier project.",
+                              "Negative: as the employee on no project open the tab.",
+                              "Negative (API): as the first employee call GET /api/v1/time/me/timesheet/projects and look for anyone else's hours."
+                    ],
+                    "expected": "Step 1: a table Project / My allocation / Status / Project manager / My hours booked / Approved, the current project first. Step 2: the current one says 'On it now' with role, % and from date; the earlier one 'Not on it now' or 'Project closed' with its dates; hours booked count every week sent or saved, Approved only lines approved or reduced (waiting lines are not counted). Step 3: 'No projects yet.' with no table. Step 4: only the caller's own projects and hours. The page has no scroll bar at 1278 x 635 for up to 6 projects.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › My projects tab · my allocations and hours (T2-D 55)",
+                              "Screens/Time/TIM-15 · Timesheets › My projects tab · none yet (T2-D 55)"
+                    ],
+                    "note": "T2-D item 55 (no answer needed). New route GET /time/me/timesheet/projects (the caller's own, no key; access endpoint-permissions.spec.ts). Positive and negative: API projects-p2 e2e (T2-D 62 and 55 test); kit timesheet-t2d.test.tsx (55 tests)."
+          },
+          {
+                    "id": "MT-T2D-61-VIEW-SWITCH",
+                    "area": "T2-D 61 (Timesheet A2): Grid or Day cards on my week",
+                    "screen": "Me › My timesheet (TIM-15), Week tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "panel@demo-org.test (employee on a timesheet).",
+                    "steps": [
+                              "Open Me › My timesheet. Above the week choose 'Day cards'; type hours on a day card and press Save draft.",
+                              "Reload the page.",
+                              "Choose 'Grid'. Use Tab and the arrow keys to move between Grid and Day cards.",
+                              "Negative: open the page in a private window (or with site data blocked) and switch."
+                    ],
+                    "expected": "Step 1: the week shows one card per day with the same hours, and the draft saves with a toast (5 s). Step 2: the page opens on Day cards again (kept on this device). Step 3: back to the grid; the switch is one joined control with a visible focus ring. Step 4: the switch works for that visit; nothing breaks. On a phone width the week starts as day cards until the person picks.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Desk · weekly grid",
+                              "Screens/Time/TIM-15 · Timesheets › Phone · day list, submit week"
+                    ],
+                    "note": "T2-D item 61 (no answer needed). The choice is a per-device convenience (local storage), not a setting. Positive and negative: kit timesheet-t2d.test.tsx (61 tests)."
+          },
+          {
+                    "id": "MT-T2C-72",
+                    "area": "Batch T2-C item 72 (C2): the calibration bell-curve guide, the part that is already live",
+                    "screen": "Performance › Review cycles › a cycle (control room) › Calibration › Open a session; Performance › Calibration › a session (PRF-09 board)",
+                    "url": "http://localhost:3000/yx/performance/cycles",
+                    "account": "HR admin who runs review cycles (admin@demo-org.test, perf.cycle.manage); the facilitator chosen for the session; an employee with no performance keys.",
+                    "steps": [
+                              "As HR open a review cycle that has reached calibration, press Open a session. Give a name and a facilitator, choose 'Use a guide' and type shares that add up to 90 (for example 10, 20, 50, 10 across the bands). Press Open.",
+                              "Make the shares add up to 100 (for example 10, 20, 55, 10, 5), set the tolerance to 60, press Open; then set the tolerance to 10 and press Open.",
+                              "Open a second session with 'No guide'.",
+                              "Open the first session's board as the facilitator. Look at the distribution chart and the notes under it. Move one person to a band that is already above its guide share, with a reason.",
+                              "With some bands still outside the guide by more than the tolerance, close (sign off) the session.",
+                              "Open the second session (no guide): look at the chart.",
+                              "Negative access: as the employee open /yx/performance/calibrations and a session's address directly; call GET /api/v1/performance/calibrations."
+                    ],
+                    "expected": "Step 1: the dialog says 'Make the shares add up to 100 (now 90).' and nothing is opened. Step 2: a tolerance of 60 is refused (it must be from 0 to 50); with 10 the session opens with a 5-second toast and shows in the list. Step 3: opens with no guide. Step 4: the chart shows 'This group, %' beside 'Guide, %'; each band more than 10 points away from its guide gets a note like 'Meets: 70% against a guide of 55%.'; the 'Guide only' box says nobody is forced into a curve; the move needs a reason and is saved. Step 5: the session closes; the guide never blocks sign-off. Step 6: only 'This group, %' is drawn and there are no guide notes. Step 7: the employee gets the no-access page and the API answers 403. A group smaller than the company's minimum shows no chart, so no one is singled out.",
+                    "stories": [
+                              "Screens/Performance/PRF-09 · Calibration board and 9-box",
+                              "Screens/Performance/Live · Calibration (Sessions)"
+                    ],
+                    "note": "Only the live part of 72 (2753). The company default guide (2845: Settings › Performance, off by default, fills a new session's guide, still changeable per session) is built next in T2-C and gets its own manual test."
+          },
+          {
+                    "id": "MT-T2C-72-DEFAULT",
+                    "area": "Batch T2-C item 72 (answer 2845): the company bell-curve guide",
+                    "screen": "Settings › Performance (6.3) › 360° and calibration; Performance › Review cycles › a cycle › Calibration › Open a session",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up); a person who can only facilitate calibration; an employee with no performance keys.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under '360° and calibration' look at 'fill a new calibration session with the company guide', the Rating / Guide share table and the tolerance.",
+                              "Open a running review cycle › Calibration › Open a session (the company guide is still off).",
+                              "Back in Settings › Performance, change the table so the shares add up to 95 (for example Outstanding 15, Exceeds 20, Meets 45, Partly meets 10, Needs improvement 5) and save.",
+                              "Make the shares add up to 100 using the rating names of the cycle's scale (for example 10, 20, 55, 10, 5), set the tolerance to 5, turn the company guide on, and save.",
+                              "Open the cycle's Calibration tab › Open a session again. Change one share for this session only, so the shares add up to 100 again, and open the session.",
+                              "In Settings change one rating name in the table to a name the scale does not have (for example 'Star'), save, and open a new session again.",
+                              "Negative access: as the facilitator-only person and as the employee open Settings › Performance; call PUT /api/v1/org/settings with key perf.calibration.default_guide."
+                    ],
+                    "expected": "Step 1: the company guide is off by default; the table shows the starter shares (10, 20, 55, 10, 5 %) with 'Total 100 %' under it; the helper says it is a guide only and never blocks sign-off. Step 2: the dialog starts with 'None' chosen and no shares. Step 3: the table shows 'Total 95 %, must be 100 %' and saving is refused with 'The shares add up to 95, not 100.' Step 4: saved with a 5-second toast. Step 5: 'Use a guide' is already chosen, each band's share and the tolerance 5 are filled, and the note says 'Filled from the company guide; change it for this session if needed.'; the changed shares are kept for this session only and the session opens with a toast; the Settings table is unchanged. Step 6: the dialog starts with 'None' again (a guide that names other ratings never fills anything). Step 7: the facilitator and the employee cannot open the page or change the setting (no-access page; the API answers 403). The guide never blocks sign-off.",
+                    "stories": [
+                              "Screens/Performance/Live · Calibration (With company guide)",
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance)"
+                    ],
+                    "note": "Stored as three company settings (on/off, the Rating:share pairs, the tolerance), not a new table: the settings code already keeps company choices with history, audit and the 6.3 page."
+          },
+          {
+                    "id": "MT-T2C-2661",
+                    "area": "Batch T2-C 2661 (answer 2846): kudos in reviews",
+                    "screen": "Performance › Reviews › a review (PRF-05 workspace), Kudos this period",
+                    "url": "http://localhost:3000/yx/performance/reviews",
+                    "account": "An employee with an open review in a running cycle; their manager; the manager's manager (skip-level); a colleague to give kudos (Engage › Recognition).",
+                    "steps": [
+                              "As the colleague, give the employee two kudos in Engage › Recognition with two different company values (the cycle's period must include today; if not, use a cycle whose period does).",
+                              "As the employee open your review. Look at the 'Kudos this period' card.",
+                              "Turn on 'Hide from review' for one kudos.",
+                              "As the manager open the same review; then as the skip-level.",
+                              "As the employee turn the switch off again, then on again.",
+                              "As the manager submit the manager review. As the employee open the review again and try to change a switch (or call POST /api/v1/performance/reviews/<id>/kudos/<kudosId> with {\"hidden\": false}).",
+                              "Negative: as the manager call POST /api/v1/performance/reviews/<id>/kudos/<kudosId> with {\"hidden\": true}; as the employee call it for a kudos given outside the review period."
+                    ],
+                    "expected": "Step 2: the card lists the kudos grouped by value (for example 'Customer first · 1'), each with the message, who gave it, the date and badge, and says 'Context only, never scored.' with a 'Hide from review' switch on each. Step 3: a 5-second toast 'Hidden from this review.'; the kudos shows 'Hidden from reviewers'. Step 4: the manager and the skip-level see only the other kudos, with no switches and the note 'Kudos the person hid are not shown.'; the hidden one is not on the page at all. Step 5: 'Shown on this review again.' then hidden again. Step 6: the switches are gone and the card says the review was submitted so they can no longer be hidden; the API answers 409. The score is the same as without kudos. Step 7: 404 for both (only the person hides; only the period's kudos are on the review).",
+                    "stories": [
+                              "Screens/Performance/PRF-05 · Review workspace (Employee · kudos this period, Manager · kudos this period)"
+                    ],
+                    "note": "Kudos held for a moderator, or given outside the review period, never show. A former manager added as an other reviewer sees no kudos."
+          },
+          {
+                    "id": "MT-T2C-68",
+                    "area": "Batch T2-C item 68 (answer 2842): What is expected of me",
+                    "screen": "Performance › What is expected of me (PRF-18)",
+                    "url": "http://localhost:3000/yx/performance/expected",
+                    "account": "An employee whose designation has competencies set in Performance › Competencies (PRF-14); their manager (panel@demo-org.test); a colleague in another team; HR to set competencies.",
+                    "steps": [
+                              "As HR open Performance › Competencies and make sure two competencies are set for the employee's designation with an expected level, and each level has behaviours. Check Settings › Engage values (the company's core values).",
+                              "As the employee open Performance › What is expected of me.",
+                              "Look for anything that can be rated or typed.",
+                              "As the manager open the page, then pick the employee in 'Show the page for'. Pick 'Me' again.",
+                              "As HR end one competency's link to the designation (or retire the competency) and reload the employee's page.",
+                              "Negative: as the colleague in another team open /yx/performance/expected?employee=<the employee's id>; as the employee open the page with their manager's id; call GET /api/v1/performance/expectations?employeeId=not-a-uuid.",
+                              "Negative: a person whose designation has no competencies opens the page."
+                    ],
+                    "expected": "Step 2: the title is 'What is expected of me' with the designation; 'Competencies for <designation>' lists each competency with its group (Core, Functional, Leadership), the description, 'Expected: level N of M · <level name>' and the behaviours at that level; then 'Our core values' lists the company values. Step 3: nothing to rate or type; no scores. Step 4: the title changes to 'What is expected of <name>' with the same parts; 'Me' goes back to the manager's own page. Step 5: the ended or retired competency is gone. Step 6: 'This page didn’t load' (the API answers 404, nothing is shown); the bad id gets 400. Step 7: 'No competencies are set for this job yet.' with the values still shown. The page fits the screen without a scroll bar for a few competencies.",
+                    "stories": [
+                              "Screens/Performance/PRF-18 · What is expected of me"
+                    ],
+                    "note": "Competencies come from the designation (the PRF-14 framework links competencies to designations, not grades). A competency weight is not kept anywhere yet, so the page shows the expected level and behaviours, not a weight (question 2880)."
+          },
+          {
+                    "id": "MT-T2C-70",
+                    "area": "Batch T2-C item 70 (answer 2843): 1:1 agenda templates",
+                    "screen": "Settings › Performance (6.3) › Competencies and 1:1s › 1:1 agenda templates; Performance › 1:1s › a planned 1:1",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up); a manager (panel@demo-org.test, Divya) with a report; that report (employee); an employee with no reports.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under 'Competencies and 1:1s' find '1:1 agenda templates'. Press 'Add a 1:1 template' and press Save with nothing filled in.",
+                              "Name it 'Weekly check-in' and write the lines 'Wins this week', 'Blockers', 'Blockers' and an empty line (one a line). Save.",
+                              "Add another company template with the same name in capitals.",
+                              "As the manager open a planned 1:1 with the report. In the agenda part pick 'Weekly check-in (company)' and press 'Use template'. Press it again.",
+                              "Add an agenda item by hand. Then press 'Save agenda as my template', press 'Save template' without a name, then name it 'My weekly' and save.",
+                              "Open another planned 1:1 and pick 'My weekly (mine)'.",
+                              "As the report open the same 1:1: pick a template; look for 'Save agenda as my template'.",
+                              "As HR edit 'Weekly check-in' (change a line), then delete it. Open the manager's 1:1 again.",
+                              "Negative: as the employee with no reports call POST /api/v1/performance/one-on-one-templates with a name and lines; as the manager call it with \"company\": true; as the report use the manager's own template id on the 1:1 (POST /api/v1/performance/one-on-ones/<id>/agenda/from-template); open a held 1:1."
+                    ],
+                    "expected": "Step 1: 'Name the template.' and 'Write at least one agenda line.'; nothing is saved. Step 2: a 5-second toast '1:1 template saved'; the list shows 'Weekly check-in' with '2 · Wins this week · Blockers' (the repeat and the blank line are dropped). Step 3: refused: a template with that name already exists. Step 4: 'Template lines added to the agenda' toast; the two lines are on the agenda once, even after the second press. Step 5: the hand-added item stays; the name is required; then 'Saved as your 1:1 template'. Step 6: its lines fill that agenda; the managers' own templates are not listed in Settings. Step 7: the report can pick a company template but has no 'Save agenda as my template' and does not see the manager's own one. Step 8: the change and the delete each show a toast; agendas already filled keep their lines. Step 9: 403, 403, 404; a held 1:1 shows no template picker.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance · 1:1 agenda templates, add a 1:1 template, edit a 1:1 template)",
+                              "Screens/Performance/PRF-11 · 1:1s (Manager · start the agenda from a template)"
+                    ],
+                    "note": "New table one_on_one_templates (forced RLS, in rls-isolation). Calendar sync of 1:1s stays with tier 3 item 90 (2748)."
+          },
+          {
+                    "id": "MT-T2C-71",
+                    "area": "Batch T2-C item 71 (answer 2844): goal templates and goal import",
+                    "screen": "Settings › Performance (6.3) › Goals and reviews › Goal templates; Performance › Goals › Add goal and Import goals",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up and goal-setting); an employee in Sales; an employee in another department; a person with no goal-setting key.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under 'Goals and reviews' find 'Goal templates'. Add one: 'Learn one new skill', KPI, no department or designation. Add another: 'Grow my accounts', 'Objective with key results', press Save with no key results; then add 'New accounts' and 'Renewals', department Sales.",
+                              "As the Sales employee open Performance › Goals › Add goal. Open 'Start from a template'.",
+                              "Pick 'Grow my accounts'. Change the title and fill in the key result numbers, then save.",
+                              "As the employee in another department open Add goal › Start from a template.",
+                              "As HR (goal-setting key) open Performance › Goals › Import goals. Choose a CSV with the header employee_code,title,weight,description and three rows: two good rows for people in your scope, and one row with an unknown employee code.",
+                              "Fix the file (remove the bad row) and choose it again. Press 'Import 2 goals'.",
+                              "Choose the same file again.",
+                              "Negative: as the person with no goal-setting key open Performance › Goals; call POST /api/v1/performance/goals/import; as HR call POST /api/v1/performance/goal-templates as someone without performance set-up (403)."
+                    ],
+                    "expected": "Step 1: each save shows a 5-second toast; the list shows the two templates with 'KPI' or 'Objective · 2 key results' and 'Everyone' or 'Sales'; the objective without key results is refused with 'An objective needs at least one key result.' Step 2: both templates are offered. Step 3: the title, description, kind and key result names fill in; everything stays editable; the goal saves as a draft. Step 4: only 'Learn one new skill' is offered. Step 5: the preview lists the two good goals (person, code, goal, weight) and 'Rows with problems' with 'No employee with the code … in this company.'; the Import button stays off. Step 6: '2 goals imported as drafts' toast; the people see them as drafts to send to their manager. Step 7: every row says 'This person already has a goal with this title in the period.' Step 8: no 'Import goals' button; 403 for both calls. People outside the importer's goal-setting scope are refused per row ('This person is not in your goal-setting scope.').",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance · goal templates, edit a goal template)",
+                              "Screens/Performance/Kit · Growth building blocks (Goal import)"
+                    ],
+                    "note": "New table goal_templates (forced RLS, in rls-isolation). The CSV takes KPI goals; objectives with key results are added on the Goals page (question 2881). Imported goals are drafts (question 2882)."
+          },
+          {
+                    "id": "MT-T2C-2841",
+                    "area": "Answer 2841: 'Waiting for your manager' on HIR-13 My applications",
+                    "screen": "Hiring › Internal jobs (HIR-13) › My applications",
+                    "url": "http://localhost:3000/yx/hiring/internal-jobs",
+                    "account": "HR admin (to turn on the internal-move release); an employee with a manager; that manager (panel@demo-org.test).",
+                    "steps": [
+                              "As HR turn on 'the current manager releases an internal applicant' (Settings › Hiring). Open an internal job.",
+                              "As the employee open Hiring › Internal jobs and apply for the job. Look at My applications.",
+                              "As the manager approve the release in the approvals inbox. As the employee reload My applications.",
+                              "Apply for a second internal job; as the manager refuse the release. Reload My applications as the employee.",
+                              "Negative: turn the setting off and apply for a third job; look at My applications."
+                    ],
+                    "expected": "Step 2: the new application shows 'Applied … · Waiting for your manager'. Step 3: the line no longer says it; the status follows the pipeline as before. Step 4: the refused one does not say 'Waiting for your manager' either (the usual approval notice tells the person). Step 5: no waiting line, because the manager is only told. Phone view shows the same line.",
+                    "stories": [
+                              "Screens/Hiring/HIR-13 · Internal jobs (My applications · waiting for your manager)"
+                    ],
+                    "note": "GET /api/v1/internal-applications/mine now sends waitingForManager per application."
+          },
+          {
+                    "id": "MT-T2F-86",
+                    "area": "Batch T2-F item 86: org chart Go to top",
+                    "screen": "People › Org chart (PPL-02)",
+                    "url": "http://localhost:3000/yx/people/org-chart",
+                    "account": "An employee deep in the chart (for example a team member two levels below the head); HR.",
+                    "steps": [
+                              "As the employee open People › Org chart. It opens on you. Press 'Go to top'.",
+                              "Press 'Show me' to come back, then use Find to open someone else and press 'Go to top' again.",
+                              "Switch to the Department and Position views and press 'Go to top'.",
+                              "Negative: in a company with no people yet, open the org chart."
+                    ],
+                    "expected": "Step 1: the chart moves to the top person (or box) with nobody above, highlights them and announces 'Showing <name>'; the path to them is opened. Step 2: Show me returns to you; Go to top works from anywhere. Step 3: it goes to the first top box of that view. Step 4: no Go to top button. The button looks clickable (border, hover, pointer, focus ring).",
+                    "stories": [
+                              "Screens/People/PPL-02 · Org chart"
+                    ],
+                    "note": ""
+          },
+          {
+                    "id": "MT-T2F-78",
+                    "area": "Batch T2-F item 78: bonafide certificate",
+                    "screen": "Settings › Letters (starters); Me › Documents › Request a certificate (PPL-31)",
+                    "url": "http://localhost:3000/yx/me/documents/certificate",
+                    "account": "HR admin (letters); an employee.",
+                    "steps": [
+                              "As the employee open Request a certificate before HR adds the starter.",
+                              "As HR open the letter templates, add the 'Bonafide certificate' starter, preview it and switch it on.",
+                              "As the employee open Request a certificate again, choose 'Bonafide certificate', pick a purpose and press Generate certificate.",
+                              "Open the certificate and check the verification code on the public check page.",
+                              "As HR switch on approval for that template; as the employee ask for it again."
+                    ],
+                    "expected": "Step 1: no Bonafide certificate in the list. Step 2: the starter says the person is a bonafide employee of the company, with the designation, department, location and joining date. Step 3: it is issued at once with a reference number and a check code; a 5-second toast says so. Step 4: the public check shows 'Bonafide certificate', the name and 'current'. Step 5: it now waits for HR, like the NOC.",
+                    "stories": [
+                              "Screens/People/PPL-31 · Certificate request"
+                    ],
+                    "note": ""
+          },
+          {
+                    "id": "MT-T2F-LINKSFRAME",
+                    "area": "Batch T2-F: LinksFrame is story-only (design-live guard)",
+                    "screen": "Storybook only (no app page)",
+                    "url": "",
+                    "account": "Developer",
+                    "steps": [
+                              "Run the kit guards (design-live-guard).",
+                              "Open any story that uses LinksFrame (for example Screens/Service desk stories)."
+                    ],
+                    "expected": "Step 1: the guard passes and no longer lists '_kit: LinksFrame' as a designed screen that is not live. Step 2: the story shows the app frame around the design as before. No app page renders LinksFrame.",
+                    "stories": [],
+                    "note": "A developer check, not a founder test."
+          },
+          {
+                    "id": "MT-T2F-43",
+                    "area": "Batch T2-F item 43: joining and leaving checklists by employment type",
+                    "screen": "Settings › Checklists (edit a checklist › Applies to); People › Joiners",
+                    "url": "http://localhost:3000/yx/settings/checklists",
+                    "account": "HR admin (checklists and joiners).",
+                    "steps": [
+                              "Open Settings › Checklists › Joining › Edit checklist on your company checklist. Look at 'Applies to' (legal entity, location, department, employment type). Leave all empty and save.",
+                              "Make a second joining checklist (copy or new) with a different first task, set Employment type to 'Apprentice' (or another type you use), save.",
+                              "Add a joiner with employment type Apprentice; open their checklist.",
+                              "Add a joiner with employment type Permanent; open their checklist.",
+                              "Set a department as well on the apprentice checklist and add an apprentice joiner in another department."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; empty boxes mean any. Step 2: saved; the checklist applies only to that type. Step 3: the apprentice gets the apprentice checklist. Step 4: the permanent joiner gets the company checklist (negative). Step 5: that apprentice gets the company checklist, because the apprentice one does not fit their department. When several fit, the most specific is used (an employment type counts like a department). Leaving checklists work the same way.",
+                    "stories": [
+                              "Screens/People/Me and set-up · My assets, first 30 days, checklists and signatories (Checklists · joining, applies to an employment type)"
+                    ],
+                    "note": "Grade is not offered yet: a joiner has no grade until they join (question 2891)."
           }
 ]

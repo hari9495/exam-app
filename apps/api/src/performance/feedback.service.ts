@@ -3,10 +3,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, implicitPeriods, implicitSql, inScopeSql, started } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, implicitPeriods, implicitSql, inScopeSql, started, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { settingFor } from '../people/probation';
-import type { ActionDto, AgendaDto, FeedbackDto, FeedbackRequestDto, OneOnOneDto, OneOnOneUpdateDto } from './dto';
+import type { ActionDto, AgendaDto, AgendaTemplateDto, FeedbackDto, FeedbackRequestDto, OneOnOneDto, OneOnOneUpdateDto } from './dto';
 
 // Performance batch PM3 (M06-BUILD-DESIGN §8, §15.3; PM-3.01 … 3.03): anytime feedback and requests for it, 1:1s, and
 // HR sealing of a feedback item that reports a concern.
@@ -36,7 +36,7 @@ export class PerformanceFeedbackService {
   ) {}
 
   private viewer(user: ScopeUser) {
-    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.concern.seal', 'perf.goal.view', 'perf.review.view']);
+    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.concern.seal', 'perf.goal.view', 'perf.review.view', 'perf.setup.manage']);
   }
 
   /** A person's goals: their manager chain and perf.goal.view in scope (the goals rule, PM2). */
@@ -468,6 +468,95 @@ export class PerformanceFeedbackService {
       const n = await tx.oneOnOneAgendaItem.updateMany({ where: { organizationId: c.organizationId, id: itemId, oneOnOneId: id }, data: { done } });
       if (!n.count) throw new NotFoundException('No such agenda item.');
       return this.meetingView(tx, c.organizationId, m, me, v.userId!);
+    });
+  }
+
+  // ------------------------------------------------------------------ T2-C item 70 (answer 2843): 1:1 agenda templates
+
+  /** HR's company templates: perf.setup.manage company-wide, never while acting for someone else. */
+  private hrSetup(v: Viewer) {
+    return tenantWide(v, 'perf.setup.manage') && !v.actingForOther;
+  }
+
+  /** May this viewer change the template: HR a company one, the owner their own. */
+  private async ownTemplate(tx: Tx, org: string, v: Viewer, id: string) {
+    const t = await tx.oneOnOneTemplate.findFirst({ where: { organizationId: org, id } });
+    if (!t || (t.ownerUserId ? t.ownerUserId !== v.userId || v.actingForOther : !this.hrSetup(v))) throw new NotFoundException('No such template.');
+    return t;
+  }
+
+  private templateView(t: Prisma.OneOnOneTemplateGetPayload<object>, v: Viewer) {
+    return { id: t.id, name: t.name, items: t.items, company: !t.ownerUserId, mine: Boolean(t.ownerUserId) && t.ownerUserId === v.userId, updatedAt: t.updatedAt.toISOString() };
+  }
+
+  private cleanItems(items: string[]) {
+    const out = [...new Set(items.map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean))];
+    if (!out.length) throw new BadRequestException('Add at least one agenda line.');
+    return out;
+  }
+
+  /** The company's templates, then my own. */
+  async agendaTemplates(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return this.run(ctx, async (tx, c) => {
+      const rows = await tx.oneOnOneTemplate.findMany({ where: { organizationId: c.organizationId, OR: [{ ownerUserId: null }, ...(v.userId && !v.actingForOther ? [{ ownerUserId: v.userId }] : [])] }, orderBy: [{ name: 'asc' }] });
+      return [...rows.filter((t) => !t.ownerUserId), ...rows.filter((t) => t.ownerUserId)].map((t) => this.templateView(t, v));
+    });
+  }
+
+  /** HR saves a company template; a manager (someone with direct reports today) saves their own. */
+  async saveAgendaTemplate(ctx: TenantContext, user: ScopeUser, id: string | null, dto: AgendaTemplateDto) {
+    const v = await this.viewer(user);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const items = this.cleanItems(dto.items);
+      let ownerUserId: string | null;
+      if (id) ownerUserId = (await this.ownTemplate(tx, org, v, id)).ownerUserId;
+      else if (dto.company) {
+        if (!this.hrSetup(v)) throw new ForbiddenException('Company templates are kept by HR in Settings › Performance.');
+        ownerUserId = null;
+      } else {
+        const me = await this.mustBeEmployee(tx, org, v);
+        const reports = await tx.$queryRaw<{ n: bigint }[]>`
+          SELECT count(*) AS n FROM employee_assignments a WHERE a.organization_id = ${org}::uuid AND a.manager_employee_id = ${me}::uuid
+            AND a.superseded_at IS NULL AND a.valid_from <= ${todayIst()}::date AND (a.valid_to IS NULL OR a.valid_to >= ${todayIst()}::date)`;
+        if (!Number(reports[0]?.n ?? 0)) throw new ForbiddenException('Managers save their own 1:1 templates.');
+        ownerUserId = v.userId!;
+      }
+      const clash = await tx.oneOnOneTemplate.findFirst({ where: { organizationId: org, ownerUserId, name: { equals: dto.name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) }, select: { id: true } });
+      if (clash) throw new ConflictException('A template with that name already exists.');
+      const t = id
+        ? await tx.oneOnOneTemplate.update({ where: { id }, data: { name: dto.name, items } })
+        : await tx.oneOnOneTemplate.create({ data: { organizationId: org, ownerUserId, name: dto.name, items, createdBy: v.userId } });
+      await audit(tx, c, id ? 'perf.one_on_one_template.updated' : 'perf.one_on_one_template.created', 'one_on_one_template', t.id, { company: !ownerUserId, lines: items.length });
+      return this.templateView(t, v);
+    });
+  }
+
+  async deleteAgendaTemplate(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return this.run(ctx, async (tx, c) => {
+      const t = await this.ownTemplate(tx, c.organizationId, v, id);
+      await tx.oneOnOneTemplate.delete({ where: { id: t.id } });
+      await audit(tx, c, 'perf.one_on_one_template.deleted', 'one_on_one_template', id, { name: t.name, company: !t.ownerUserId });
+      return { id };
+    });
+  }
+
+  /** Picking a template adds its lines to the 1:1's agenda (lines already there are not added twice); the agenda stays editable. */
+  async agendaFromTemplate(ctx: TenantContext, user: ScopeUser, id: string, templateId: string) {
+    const v = await this.viewer(user);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { m, me } = await this.meetingOr404(tx, org, v, id);
+      if (m.status !== 'planned') throw new ConflictException('Only a planned 1:1 takes a template.');
+      const t = await tx.oneOnOneTemplate.findFirst({ where: { organizationId: org, id: templateId, OR: [{ ownerUserId: null }, { ownerUserId: v.userId ?? '' }] } });
+      if (!t) throw new NotFoundException('No such template.');
+      const have = new Set((await tx.oneOnOneAgendaItem.findMany({ where: { organizationId: org, oneOnOneId: id }, select: { text: true } })).map((a) => a.text.toLowerCase()));
+      const add = t.items.filter((x) => !have.has(x.toLowerCase()));
+      if (add.length) await tx.oneOnOneAgendaItem.createMany({ data: add.map((text) => ({ organizationId: org, oneOnOneId: id, addedByEmployeeId: me, text })) });
+      await audit(tx, c, 'perf.one_on_one.template_used', 'one_on_one', id, { templateId, added: add.length });
+      return this.meetingView(tx, org, m, me, v.userId!);
     });
   }
 

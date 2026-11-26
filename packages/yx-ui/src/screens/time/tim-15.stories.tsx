@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { TimesheetNudgeCard, TimesheetScreen, TS_LINES } from './ops';
+import { MyProjectsTable, TimesheetActivityCard, TimesheetNudgeCard, TimesheetScreen, TS_LINES } from './ops';
+import { T2D_ACTIVITY, T2D_MY_PROJECTS, T2D_PROJECTS } from './timesheet-t2d-samples';
 
 const meta: Meta<typeof TimesheetScreen> = { title: 'Screens/Time/TIM-15 · Timesheets', component: TimesheetScreen, render: (args) => <TimesheetScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -34,3 +35,8 @@ export const RequestLeave: S = { name: 'Request leave from the week', args: { le
 // Batch D A14 (answer 2536): the Home card when today has no hours.
 export const HomeNudge: S = { name: 'Home nudge · no hours today', render: () => <div style={{ maxWidth: 420, padding: 24 }}><TimesheetNudgeCard href="#" onDismiss={() => {}} /></div> };
 export const TimeSummary: S = { name: 'Time summary · hours per week this year', args: { view: 'summary' } };
+
+// T2-D 55 and 62 (Keka A10 / A11, A6): the My projects tab and the week's Activity card, as the live page shows them.
+export const MyProjects: S = { name: 'My projects tab · my allocations and hours (T2-D 55)', render: () => <MyProjectsTable projects={T2D_MY_PROJECTS} /> };
+export const MyProjectsEmpty: S = { name: 'My projects tab · none yet (T2-D 55)', render: () => <MyProjectsTable projects={[]} /> };
+export const Activity: S = { name: 'Activity card · sent, a line reduced, recalled (T2-D 62)', render: () => <TimesheetActivityCard activity={T2D_ACTIVITY} projects={T2D_PROJECTS} /> };

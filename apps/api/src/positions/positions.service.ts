@@ -333,7 +333,7 @@ export class PositionsService implements OnModuleInit {
         requesterUserId: c.userId ?? null,
         raisedByUserId: c.userId ?? null,
         steps: [{ name: 'Positions', approvers: [{ kind: 'users', userIds: approvers.slice(0, 25) }], mode: 'any', selfApproval: 'never' }],
-        payload: {},
+        payload: { changes: rows.length },
         payloadFields: [],
         fallbackUserIds: await this.admins(tx, org, [c.userId ?? null]),
         fallbackWording: { who: 'the company admins', check: 'Check who approves position changes' },

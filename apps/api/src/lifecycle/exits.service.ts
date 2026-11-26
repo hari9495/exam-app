@@ -531,7 +531,7 @@ export class ExitsService implements OnModuleInit {
           subjectType: 'exit_case',
           subjectId: k.id,
           anchorOn: lwd,
-          place: { legalEntityId: e.legalEntityId, locationId: a.locationId, departmentId: a.departmentId },
+          place: { legalEntityId: e.legalEntityId, locationId: a.locationId, departmentId: a.departmentId, employmentTypeId: a.employmentTypeId },
           ownerUserId: owner,
           managerEmployeeId: a.managerEmployeeId,
           personUserId: k.exitType === 'death' ? null : emp.userId,

@@ -23,11 +23,12 @@ test('nominate → approve → anonymous answer, held back below three', async (
   const name = `Plant 360 ${tag}`;
 
   const admin = await signedIn(browser, 'admin@demo-org.test', 'DevAdmin123!');
-  await admin.goto('/yx/settings/performance');
+  await admin.goto('/yx/settings/talent/performance');
   const starters = admin.getByRole('button', { name: 'Use the starters' });
-  await expect(starters.or(admin.getByRole('tab', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
+  const list = admin.getByRole('table', { name: 'Review templates' });
+  await expect(starters.or(list).first()).toBeVisible({ timeout: 30_000 });
   if (await starters.isVisible()) await starters.click();
-  await expect(admin.getByRole('tab', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
+  await expect(list).toBeVisible({ timeout: 30_000 });
   // PRF-04 set-up wizard (5df0b91b3), with 360° feedback from 1 to 3 colleagues.
   await admin.goto('/yx/performance/cycles/new');
   const setup = admin.locator('main').last();

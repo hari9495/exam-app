@@ -197,6 +197,23 @@ describe('Projects P-2 line approvals', () => {
     await decide('pmA', [{ lineId: nrp.id, status: 'approved', version: nrp.version + 1 }]).expect(409); // already decided
   });
 
+  it('T2-D 62 and 55: the week shows its activity with who and why; My projects shows my allocations and hours', async () => {
+    const mine = (await api('emp', 'get', `/time/me/timesheet?week=${week}`).expect(want(200))).body;
+    type Act = { action: string; by: string | null; projectId: string | null; reason: string | null };
+    const acts = mine.activity as Act[];
+    expect(acts[0]).toMatchObject({ action: 'timesheet_line.reduced', by: `pmA ${run}`, projectId: ids.nrp, reason: 'Offsite on Tuesday' });
+    expect(acts.at(-1)).toMatchObject({ action: 'timesheet.submitted', by: `emp ${run}` });
+    // Only this person's own week: another person's view of their own week has none of it.
+    const peer = (await api('peer', 'get', `/time/me/timesheet?week=${week}`)).body;
+    expect(peer.activity ?? []).toEqual([]);
+    type Proj = { id: string; code: string; current: boolean; manager: string | null; bookedMinutes: number; approvedMinutes: number; allocations: { percent: number; fromOn: string }[] };
+    const projects = (await api('emp', 'get', '/time/me/timesheet/projects').expect(want(200))).body as Proj[];
+    expect(projects.find((p) => p.id === ids.nrp)).toMatchObject({ code: 'NRP', current: true, manager: `pmA ${run}`, bookedMinutes: 960, approvedMinutes: 720, allocations: [{ percent: 50, fromOn: week }] });
+    expect(projects.find((p) => p.id === ids.kav)).toMatchObject({ bookedMinutes: 480, approvedMinutes: 0 });
+    // Negative: someone on no project sees none; nobody sees anyone else's.
+    expect((await api('peer', 'get', '/time/me/timesheet/projects')).body).toEqual(expect.not.arrayContaining([expect.objectContaining({ id: ids.nrp })]));
+  });
+
   it('bulk approves only within the allocation (1407); over it, the line is decided on its own', async () => {
     const int = await lineOf(ids.int!); // 5 h booked, 10% = 4 h allocated
     const list = (await api('mgr', 'get', '/time/line-approvals').expect(want(200))).body;

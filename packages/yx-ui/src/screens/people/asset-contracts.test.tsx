@@ -83,6 +83,36 @@ describe('Asset contracts (live)', () => {
     expect(onSave).toHaveBeenCalledWith('k1', expect.objectContaining({ assetIds: ['a1', 'a2'], value: '185000.00', version: 2 }));
   });
 
+  it('renew (answer 2824): an express contract renews for one more length after a confirm showing the new end; a toast says so', async () => {
+    const onRenew = vi.fn().mockResolvedValue({ id: 'k4' });
+    show(<AssetContractsScreen live={liveContracts({ onRenew })} />);
+    await ue.click(screen.getByRole('link', { name: 'INS-HP-2026' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Renew' }));
+    const c = await screen.findByRole('dialog', { name: 'Renew INS-HP-2026?' });
+    expect(within(c).getByText('It runs 12 months more: the end moves from 28 Feb 2027 to 29 Feb 2028. The start stays 1 Mar 2026.')).toBeInTheDocument();
+    await ue.click(within(c).getByRole('button', { name: 'Renew' }));
+    expect(onRenew).toHaveBeenCalledWith('k4', 1);
+    expect((await screen.findAllByText('INS-HP-2026 renewed to 29 Feb 2028.')).length).toBeGreaterThan(0);
+  });
+
+  it('negative (answer 2824): no Renew on a tacit contract, nor for a viewer who cannot change it; a refusal stays in the confirm', async () => {
+    const onRenew = vi.fn().mockRejectedValue(new Error('Someone else changed this contract. Reload it.'));
+    const { unmount } = show(<AssetContractsScreen live={liveContracts({ onRenew })} />);
+    await ue.click(screen.getByRole('link', { name: 'AMC-2026-014' }));
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Renew' })).toBeNull();
+    unmount();
+    const r2 = show(<AssetContractsScreen live={liveContracts({ onRenew })} />);
+    await ue.click(screen.getByRole('link', { name: 'INS-HP-2026' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Renew' }));
+    const c = await screen.findByRole('dialog', { name: 'Renew INS-HP-2026?' });
+    await ue.click(within(c).getByRole('button', { name: 'Renew' }));
+    expect(await within(c).findByText('Someone else changed this contract. Reload it.')).toBeInTheDocument();
+    r2.unmount();
+    show(<AssetContractsScreen live={liveContracts({ onRenew, rows: CONTRACTS.map((k) => ({ ...k, canManage: false })) })} />);
+    await ue.click(screen.getByRole('link', { name: 'INS-HP-2026' }));
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Renew' })).toBeNull();
+  });
+
   it('negative: view only has no Add or Edit; without money there is no Value column', async () => {
     show(<AssetContractsScreen live={liveContracts({ canAdd: false, money: false, rows: CONTRACTS.map((k) => ({ ...k, value: undefined, canManage: false })) })} />);
     expect(screen.queryByRole('button', { name: 'Add contract' })).toBeNull();

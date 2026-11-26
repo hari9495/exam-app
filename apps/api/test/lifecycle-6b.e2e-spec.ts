@@ -638,7 +638,9 @@ describe('Lifecycle batch 6b', () => {
   });
 
   it('PPL-31 my certificate: instant with number and code, or HR approves first (approve and reject reach the bell); only my own, only switched-on kinds', async () => {
-    for (const letterType of ['employment_certificate', 'address_proof', 'noc']) {
+    // T2-F item 78: not switched on yet, the bonafide certificate cannot be asked for.
+    await api('mgr', 'post', '/letters/me/certificates').send({ letterType: 'bonafide_certificate', purpose: 'Bank account' }).expect((x) => expect([400, 404]).toContain(x.status));
+    for (const letterType of ['employment_certificate', 'address_proof', 'noc', 'bonafide_certificate']) {
       const t = (await api('adminA', 'post', '/letters/templates/starter').send({ letterType }).expect(201)).body;
       await api('adminA', 'get', `/letters/templates/${t.id}/preview`).expect(200);
       await api('adminA', 'post', `/letters/templates/${t.id}/activate`).expect(200);
@@ -649,6 +651,7 @@ describe('Lifecycle batch 6b', () => {
     expect((await api('mgr', 'get', '/letters/me/certificates').expect(200)).body).toEqual([
       { letterType: 'address_proof', name: 'Address proof', requiresApproval: false, pending: null },
       { letterType: 'employment_certificate', name: 'Employment certificate', requiresApproval: false, pending: null },
+      { letterType: 'bonafide_certificate', name: 'Bonafide certificate', requiresApproval: false, pending: null },
       { letterType: 'noc', name: 'No objection certificate (NOC)', requiresApproval: true, pending: null },
     ]);
     // Instant: issued at once with a gap-free number and a public check code; the person's words are on it (sealed).
@@ -660,6 +663,10 @@ describe('Lifecycle batch 6b', () => {
     expect((await api('mgr', 'get', '/letters/me').expect(200)).body.letters.some((x: { id: string }) => x.id === l.id)).toBe(true);
     // A certificate can be asked for again (not "one per person"): the next number.
     expect((await cert({ letterType: 'employment_certificate', purpose: 'Visa application' }).expect(201)).body).toMatchObject({ status: 'issued', referenceNo: expect.stringMatching(/\/0{5}2$/) });
+    // T2-F item 78: the bonafide certificate is instant too, with its own words.
+    const b = (await cert({ letterType: 'bonafide_certificate', purpose: 'Bank account' }).expect(201)).body;
+    expect(b).toMatchObject({ status: 'issued', personId: divya });
+    expect((await request(server()).get(`/api/v1/public/pay/verify/${b.verifyCode}`).expect(200)).body).toMatchObject({ kind: 'Bonafide certificate' });
     // Blank fields block it (no home address recorded); limits and plain text on the person's words; nothing else accepted.
     expect((await cert({ letterType: 'address_proof', purpose: 'Rental agreement' }).expect(400)).body.code).toBe('LETTER_FIELDS_MISSING');
     await cert({ letterType: 'employment_certificate', purpose: 'Home loan', addressedTo: 'x'.repeat(161) }).expect(400);

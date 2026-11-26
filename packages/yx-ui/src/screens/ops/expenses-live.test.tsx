@@ -192,6 +192,40 @@ describe('EXP-02 composer', () => {
     await ue.click(screen.getByRole('button', { name: 'Add line' }));
     await waitFor(() => expect(p.onSaveLine).toHaveBeenCalledWith(null, expect.objectContaining({ categoryCode: 'MILEAGE', mileage: { vehicle: 'car', km: 42 } })));
   });
+  it('T2-B 66: Save and add another saves the line and opens a fresh form of the same kind', async () => {
+    const p = claim();
+    show(<ClaimComposerScreen live={{ ...p, startAdd: 'mileage' }} />);
+    await ue.type(screen.getByRole('textbox', { name: /Distance/ }), '42');
+    await ue.click(screen.getByRole('button', { name: 'Save and add another' }));
+    await waitFor(() => expect(p.onSaveLine).toHaveBeenCalledWith(null, expect.objectContaining({ mileage: { vehicle: 'car', km: 42 } })));
+    // The drawer stays open with an empty distance, still on mileage.
+    expect(await screen.findByRole('dialog', { name: 'Add a line' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Distance/ })).toHaveValue('');
+    await ue.type(screen.getByRole('textbox', { name: /Distance/ }), '18');
+    await ue.click(screen.getByRole('button', { name: 'Add line' }));
+    await waitFor(() => expect(p.onSaveLine).toHaveBeenLastCalledWith(null, expect.objectContaining({ mileage: { vehicle: 'car', km: 18 } })));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a line' })).toBeNull());
+  });
+  it('negative T2-B 66: Save and add another with a field missing sends nothing; editing a line has no Save and add another', async () => {
+    const p = claim();
+    const { unmount } = show(<ClaimComposerScreen live={{ ...p, startAdd: 'mileage' }} />);
+    await ue.click(screen.getByRole('button', { name: 'Save and add another' }));
+    expect((await screen.findAllByText('Enter the distance in km.')).length).toBeGreaterThan(0);
+    expect(p.onSaveLine).not.toHaveBeenCalled();
+    unmount();
+    const q = claim({ onSaveLine: vi.fn(async () => Promise.reject(new Error('The claim was changed by someone else.'))) });
+    show(<ClaimComposerScreen live={{ ...q, startAdd: 'mileage' }} />);
+    await ue.type(screen.getByRole('textbox', { name: /Distance/ }), '42');
+    await ue.click(screen.getByRole('button', { name: 'Save and add another' }));
+    // A refused save keeps what was typed and shows why.
+    expect(await screen.findByText('The claim was changed by someone else.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Distance/ })).toHaveValue('42');
+    await ue.keyboard('{Escape}');
+    // Editing a saved line has no Save and add another.
+    await ue.click(screen.getAllByRole('button', { name: /Edit line|Edit distance|Check and confirm/ })[0]!);
+    expect(await screen.findByRole('dialog', { name: /^Line \d+$/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save and add another' })).toBeNull();
+  });
   it('a line read from a receipt asks to be checked; the over-limit reason is required before saving', async () => {
     const p = claim({ claim: { ...DRAFT, lines: [LINES[1]!, READ_LINE].map((l) => (l.id === 'l2' ? { ...l, justification: null } : l)) } });
     show(<ClaimComposerScreen live={p} />);

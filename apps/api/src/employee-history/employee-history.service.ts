@@ -136,6 +136,7 @@ function assignmentValues(r: AssignmentRow): AssignmentValues {
     designationId: r.designationId,
     gradeId: r.gradeId,
     skillClass: (r.skillClass ?? null) as AssignmentValues['skillClass'],
+    supervisory: r.supervisory,
     hoursPerWeek: r.hoursPerWeek === null ? null : r.hoursPerWeek.toFixed(1),
     employmentTypeId: r.employmentTypeId,
     managerEmployeeId: r.managerEmployeeId,
@@ -398,6 +399,7 @@ export class EmployeeHistoryService implements OnModuleInit {
       designation: ref(n.designations, a.designationId),
       grade: ref(n.grades, a.gradeId),
       skillClass: a.skillClass ?? null,
+      supervisory: a.supervisory ?? false,
       hoursPerWeek: a.hoursPerWeek ?? null,
       employmentType: ref(n.types, a.employmentTypeId),
       manager: a.managerEmployeeId ? { id: a.managerEmployeeId, name: mgr ? displayName(mgr) : null } : null,
@@ -1172,6 +1174,11 @@ export class EmployeeHistoryService implements OnModuleInit {
     if (ch.changeType === 'confirmation') await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.probation.confirmed', payload: { employeeId: ch.employeeId, employmentId: ch.employmentId, effectiveDate: isoDate(ch.effectiveDate) } } });
     // P06 §4.5: the downstream signal for payroll arrears / recoveries.
     if (impact.retro) await audit(tx, c, 'employee.change.retro_applied', 'employee', ch.employeeId, { changeId: ch.id, ...(impact.retro as object) });
+    // Enterprise E3 (answer 2651): a pay change reaching a month whose payroll is approved drafts arrears (payroll's job,
+    // after this transaction commits; keyed on the change, so it never drafts twice).
+    const retro = impact.retro as { from: string; processed: string[] } | null;
+    if (retro?.processed.length && (ch.payload as { compensation?: unknown } | null)?.compensation && ch.employmentId)
+      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.salary.retro', payload: { changeId: ch.id, employmentId: ch.employmentId, from: retro.from, by: ch.requestedBy ?? c.userId } } });
   }
 
   /** P06 §4.3 impact preview of a change not yet saved (YX-HIS-11). Nothing is kept. */
@@ -1691,7 +1698,7 @@ export class EmployeeHistoryService implements OnModuleInit {
       await audit(tx, c, opts.transfer ? 'employee.transferred_in' : 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false, ...(rehireOf ? { from: rehireOf } : {}) });
       // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08). A move
       // between legal entities (PPL-09) is not a new joiner, so it starts no joiner journey.
-      if (!opts.transfer) await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
+      if (!opts.transfer) await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn, by: c.userId } } });
       if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', person.id, { changeId: join.id, changeType: 'join', effectiveDate: dto.joinedOn });
       const payChange = pay
         ? await tx.employeeChange.create({

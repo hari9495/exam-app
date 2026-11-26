@@ -87,7 +87,68 @@ export class TimesheetService implements OnModuleInit {
         }),
         recent: recent.map((s) => ({ id: s.id, week: dateOf(s.weekStart), status: s.status, totalMinutes: s.totalMinutes })),
         noteRule: await TimesheetService.noteRule(tx, c),
+        activity: sheet ? await this.activity(tx, org, sheet.id, lines) : [],
       };
+    });
+  }
+
+  /**
+   * T2-D 62 (Keka A6): what happened to my week, newest first: sent, recalled, each line decided and the week's outcome,
+   * with who and when (from the audit log; saving a draft is not listed).
+   */
+  private async activity(tx: Tx, org: string, sheetId: string, lines: { id: string; projectId: string; activity: string | null }[]) {
+    const rows = await tx.auditLog.findMany({
+      where: { organizationId: org, OR: [{ entityType: 'timesheet', entityId: sheetId }, ...(lines.length ? [{ entityType: 'timesheet_line', entityId: { in: lines.map((l) => l.id) } }] : [])] },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { action: true, entityId: true, actorName: true, createdAt: true, metadataJson: true },
+    });
+    return rows
+      .filter((r) => /^time\.timesheet(_line)?\.[a-z_]+$/.test(r.action))
+      .map((r) => {
+        const line = lines.find((l) => l.id === r.entityId);
+        const meta = (() => {
+          try {
+            return JSON.parse(r.metadataJson ?? '{}') as { reason?: string | null };
+          } catch {
+            return {};
+          }
+        })();
+        return { action: r.action.replace(/^time\./, ''), at: r.createdAt, by: r.actorName ?? null, projectId: line?.projectId ?? null, task: line?.activity ?? null, reason: meta.reason ?? null };
+      });
+  }
+
+  /**
+   * T2-D 55 (Keka A10 / A11): the projects I am or was allocated to, with my allocations and my hours booked and approved
+   * on each (all my weeks). My own record only.
+   */
+  myProjects(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await myEmployeeId(tx, org, c.userId);
+      const allocations = await tx.projectAllocation.findMany({ where: { organizationId: org, employeeId: me }, orderBy: { fromOn: 'desc' } });
+      const sheets = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: me }, select: { id: true } });
+      const lines = sheets.length ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: { in: sheets.map((x) => x.id) } } }) : [];
+      const ids = [...new Set([...allocations.map((a) => a.projectId), ...lines.map((l) => l.projectId)])];
+      const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, id: { in: ids } }, orderBy: { code: 'asc' } });
+      const managers = await tx.user.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+      const sum = (ms: number[]) => ms.reduce((a, b) => a + b, 0);
+      const today = todayIst();
+      return projects.map((p) => {
+        const mine = lines.filter((l) => l.projectId === p.id);
+        const allocs = allocations.filter((a) => a.projectId === p.id);
+        return {
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          status: p.status,
+          manager: managers.find((m) => m.id === p.managerUserId)?.name ?? null,
+          current: allocs.some((a) => dateOf(a.fromOn) <= today && (!a.toOn || dateOf(a.toOn) >= today)),
+          allocations: allocs.map((a) => ({ role: a.role, fromOn: dateOf(a.fromOn), toOn: a.toOn ? dateOf(a.toOn) : null, percent: a.percent, tentative: a.tentative })),
+          bookedMinutes: sum(mine.map((l) => sum(l.minutes))),
+          approvedMinutes: sum(mine.filter((l) => l.status === 'approved' || l.status === 'reduced').map((l) => sum(lineApproved(l)))),
+        };
+      });
     });
   }
 
@@ -412,6 +473,8 @@ export class TimesheetService implements OnModuleInit {
       if (s.wfRequestId) await this.engine.withdraw(tx, c, s.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
       else await this.lineApprovals.withdrawLines(tx, c.organizationId, s.id);
       await tx.timesheet.update({ where: { id }, data: { status: 'draft', submittedAt: null, version: { increment: 1 }, updatedAt: new Date() } });
+      // T2-D 62: shown on the week's activity.
+      await audit(tx, c, 'time.timesheet.withdrawn', 'timesheet', id, { week: dateOf(s.weekStart) });
       return { id, status: 'draft' };
     });
   }

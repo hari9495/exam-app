@@ -88,6 +88,9 @@ const ITEMS = [{ value: 'i-laptop', label: 'New laptop', desk: 'IT help' }, { va
 const checklists = (over: Partial<JourneyTemplatesScreenProps> = {}) => <JourneyTemplatesScreen state="ready" data={TEMPLATES} teams={TEAMS} catalogItems={ITEMS} onUseStarter={ok} onSave={ok} {...over} />;
 export const Checklists: S = { name: 'Checklists · joining', render: () => checklists() };
 export const ChecklistsLeaving: S = { name: 'Checklists · leaving, the starter to copy', render: () => checklists(), play: play(choose('Leaving')) };
+// T2-F item 43: Edit checklist › Applies to (legal entity, location, department, employment type; empty = any).
+const APPLIES = { legalEntities: [{ value: 'le-kfpl', label: 'Kaveri Foods Pvt Ltd' }], locations: [{ value: 'l1', label: 'Hosur plant' }], departments: [{ value: 'd1', label: 'Production' }], employmentTypes: [{ value: 'et1', label: 'Permanent' }, { value: 'et2', label: 'Apprentice' }] };
+export const ChecklistsAppliesTo: S = { name: 'Checklists · joining, applies to an employment type', render: () => checklists({ applies: APPLIES }) };
 export const ChecklistsLife: S = { name: 'Checklists · life events', render: () => checklists(), play: play(choose('Life events')) };
 export const ChecklistsStarterFailed: S = { name: 'Checklists · copying the starter refused', render: () => checklists({ onUseStarter: fails('You already have a copy of this starter. Reload the page to see it.') }), play: play(choose('Leaving'), press('Use this starter')) };
 export const ChecklistsEmpty: S = { name: 'Checklists · none yet', render: () => checklists({ data: { templates: [], starters: [] } }) };

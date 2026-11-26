@@ -9,7 +9,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { RuleError, evaluate, parseGroup, type Group } from '../rules-engine/conditions';
 import { APPLIES_FIELDS } from '../expenses/setup.service';
 import { bandFor, bandsProblem, templateProblem, type SectionIn } from './perf-rules';
-import { DEFAULT_RULES, STAGE_ORDER, eligibilityFor, scoreReview, stagesProblem, type EligibilityRules, type StageIn, type StageKey } from './review-rules';
+import { DEFAULT_RULES, STAGE_ORDER, eligibilityFor, kudosForReview, scoreReview, stagesProblem, type EligibilityRules, type KudosRow, type StageIn, type StageKey } from './review-rules';
 import { holdersOf } from '../time/time-core';
 import type { CycleDto, DecideDisagreementDto, EntryDto, OverrideDto } from './review-dto';
 import { reviewPdf } from './review-pdf';
@@ -36,6 +36,7 @@ import { reviewPdf } from './review-pdf';
 
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+const lines = (t: string) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 const num = (x: Prisma.Decimal | null) => (x === null ? null : Number(x.toString()));
 const addDays = (d: string, n: number) => iso(new Date(asDate(d).getTime() + n * 86_400_000));
 const asJson = (x: unknown) => x as Prisma.InputJsonValue;
@@ -594,6 +595,9 @@ export class PerformanceReviewsService {
       const entry = (e: typeof self) => (e ? { status: e.status, answers: e.sealedAt ? withoutTexts(e.answers) : e.answers, overallRating: num(e.overallRating), comment: e.sealedAt ? null : e.comment, sealed: Boolean(e.sealedAt), submittedAt: e.submittedAt?.toISOString() ?? null, version: e.version } : null);
       const people = await this.names(tx, org, [r.employeeId, r.managerEmployeeId]);
       const log = await tx.reviewStageLog.findMany({ where: { organizationId: org, reviewId: id }, orderBy: { at: 'asc' } });
+      // T2-C 2661 (answer 2846): the period's kudos, context only; the person may hide one until the manager submits.
+      const kudos = kudosForReview(await this.periodKudos(tx, c, r, cycle), r.hiddenKudos, lines(await settingFor(tx, c, 'engage.values', { legalEntityId: '' })), a.own);
+      const canHideKudos = a.own && !v.actingForOther && r.status === 'open' && mgr?.status !== 'submitted';
       const open = r.status === 'open';
       return {
         id: r.id,
@@ -632,6 +636,8 @@ export class PerformanceReviewsService {
         formerManagers: tenantWide(v, 'perf.cycle.manage') && !v.actingForOther ? await this.formerManagers(tx, org, id) : [],
         released: released ? { at: r.releasedAt!.toISOString(), acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null, acknowledgeComment: r.acknowledgeComment, disagreeBy } : null,
         disagreements: disagreements.map((d) => ({ id: d.id, text: d.text, status: d.status, hrNote: d.hrNote })),
+        // A named other reviewer sees only the template and their own input.
+        kudos: onlyOther ? [] : kudos,
         can: {
           self: a.own && open && r.stage === 'self' && self?.status !== 'submitted',
           manager: a.manager && open && (r.stage === 'self' || r.stage === 'manager') && mgr?.status !== 'submitted',
@@ -641,10 +647,41 @@ export class PerformanceReviewsService {
           acknowledge: a.own && r.status === 'released',
           disagree: a.own && released && !r.disagreement && (r.status === 'released' || r.status === 'acknowledged') && todayIst() <= disagreeBy!,
           reopen: tenantWide(v, 'perf.cycle.manage') && !v.actingForOther && ['ready', 'released', 'acknowledged'].includes(r.status),
+          hideKudos: canHideKudos,
         },
         version: r.version,
       };
     });
+  }
+
+  /** T2-C 2661: published kudos the person received in the cycle's period (India dates), with who gave them. */
+  private async periodKudos(tx: Tx, c: CompanyContext, r: Review, cycle: Cycle): Promise<KudosRow[]> {
+    const org = c.organizationId;
+    const person = await tx.employee.findFirst({ where: { organizationId: org, id: r.employeeId }, select: { userId: true } });
+    if (!person?.userId) return [];
+    const from = new Date(`${iso(cycle.periodFrom)}T00:00:00+05:30`);
+    const to = new Date(new Date(`${iso(cycle.periodTo)}T00:00:00+05:30`).getTime() + 86_400_000);
+    const rows = await tx.engKudos.findMany({ where: { organizationId: org, receiverIds: { has: person.userId }, createdAt: { gte: from, lt: to }, post: { state: 'published' } }, include: { post: { select: { body: true } } }, orderBy: { createdAt: 'desc' }, take: 200 });
+    const givers = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((k) => k.giverUserId) } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name ?? u.email]));
+    return rows.map((k) => ({ id: k.id, value: k.value, badge: k.badge, message: k.post.body, from: givers.get(k.giverUserId) ?? 'Former user', on: k.createdAt.toISOString() }));
+  }
+
+  /** T2-C 2661 (answer 2846): the person hides one kudos from their review (or shows it again) until the manager submits. */
+  async hideKudos(ctx: TenantContext, user: ScopeUser, id: string, kudosId: string, hidden: boolean) {
+    const v = await this.viewer(user);
+    await this.run(ctx, async (tx, c) => {
+      const r = await tx.review.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!r || (await this.me(tx, c.organizationId, v)) !== r.employeeId) throw new NotFoundException('No such review.');
+      if (v.actingForOther) throw new ForbiddenException('Only the person themselves hides kudos from their review.');
+      const cycle = await tx.reviewCycle.findFirstOrThrow({ where: { id: r.cycleId } });
+      const mgr = await tx.reviewEntry.findFirst({ where: { organizationId: c.organizationId, reviewId: id, stage: 'manager', authorEmployeeId: r.managerEmployeeId, status: 'submitted' }, select: { id: true } });
+      if (r.status !== 'open' || mgr) throw new ConflictException('Your manager has submitted the review, so the kudos on it can no longer change.');
+      if (!(await this.periodKudos(tx, c, r, cycle)).some((k) => k.id === kudosId)) throw new NotFoundException('That kudos is not on this review.');
+      const next = hidden ? [...new Set([...r.hiddenKudos, kudosId])] : r.hiddenKudos.filter((k) => k !== kudosId);
+      await tx.review.update({ where: { id }, data: { hiddenKudos: next, version: { increment: 1 } } });
+      await audit(tx, c, hidden ? 'perf.review.kudos_hidden' : 'perf.review.kudos_shown', 'review', id, { kudosId });
+    });
+    return this.get(ctx, user, id);
   }
 
   /** PRF-05 / PRF-06: the review as a PDF, exactly what this viewer may read on the page (get decides); audited. */

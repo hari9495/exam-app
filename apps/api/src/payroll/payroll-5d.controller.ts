@@ -145,6 +145,13 @@ export class Payroll5dController {
     return this.payslips.homePay(ctx, this.user(req));
   }
 
+  /** T2-B 65: a single-use 60-second link to one zip of the person's own published payslips of a tax year (2026-27). */
+  @Get('me/payslips/year/:taxYear')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  yearLink(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('taxYear') taxYear: string) {
+    return this.payslips.yearLink(ctx, this.user(req), taxYear.slice(0, 10));
+  }
+
   /** A single-use 60-second link to the PDF (the person's own published payslip). */
   @Get('me/payslips/:id/pdf')
   @Throttle(MODERATE_UPLOAD_THROTTLE)

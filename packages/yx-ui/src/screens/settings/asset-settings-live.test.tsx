@@ -36,7 +36,7 @@ describe('2.8 Assets live', () => {
     expect(f('asset.categories').rows).toEqual([['Laptop', 'Serial number', '₹45,000', 'Straight line, 3 years', 'LAP-2026-0042', '2'], ['Tools', '—', 'Asset cost', 'None', 'Typed by hand', '0']]);
     expect(f('asset.ack_method')).toMatchObject({ kind: 'radio', value: 'click', options: ['click', 'none'], starter: true, helper: expect.stringMatching(/E-sign comes when/) });
     expect(f('asset.recovery_to_fnf')).toMatchObject({ kind: 'toggle', value: true });
-    expect(f('asset.recovery_basis')).toMatchObject({ kind: 'radio', value: 'category_default', helper: expect.stringMatching(/net book value on the day/) });
+    expect(f('asset.recovery_basis')).toMatchObject({ kind: 'radio', value: 'category_default', helper: expect.stringMatching(/net book value on the leaver’s last working day/) });
   });
 
   it('negative: the drawn sample rows never show live; without the settings key the list is view only', () => {

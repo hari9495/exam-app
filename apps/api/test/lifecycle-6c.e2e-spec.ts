@@ -12,7 +12,8 @@ import { AutomationService } from '../src/rules-engine/automation.service';
 import { addDays } from '../src/lifecycle/journey-rules';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { AssetAlertsService } from '../src/lifecycle/asset-alerts.service';
-import { addMonthsIso, contractEndsOn } from '../src/lifecycle/asset-categories';
+import { addMonthsIso, contractEndsOn, netBookValue } from '../src/lifecycle/asset-categories';
+import { Prisma } from '@prisma/client';
 
 // Lifecycle batch 6c end to end against the real database (forced RLS, the app role): the notice from the policy in
 // force on the day, a resignation accepted by the manager then HR (on notice, the offboarding checklist on the last day,
@@ -612,6 +613,44 @@ describe('Lifecycle batch 6c', () => {
     expect((await page('hr', s1)).asset.depreciation).toBe('Straight line over 6 years');
   });
 
+  it('IT assets follow-up (2820): a written-down recovery is the net book value on the last working day, kept when the settlement changes', async () => {
+    const o = { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id };
+    const basis = await inA((tx) => tx.setting.create({ data: { ...o, key: 'asset.recovery_basis', value: 'written_down' } }));
+    try {
+      const nisha = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Nisha', familyName: run, employeeCode: 'EX-W01', joinedOn: '2026-04-06', workEmail: `ex-w01@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+      const bought = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`.replace(/-02-29$/, '-02-28');
+      // Not WD-${run}: the earlier written-down test already uses that tag.
+      const tag = `WDL-${run}`;
+      const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Written-down laptop', tag, legalEntityId: ids.entity, locationId: ids.blr, purchasedOn: bought, cost: '90000.00' }).expect(201)).body.id as string;
+      await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: nisha, issuedOn: today, condition: 'Good' }).expect(200);
+      const lwd = addDays(today, 60);
+      const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: nisha, exitType: 'end_of_contract', lwd, reasonText: 'Contract ends' }).expect(201)).body;
+      expect(k.status).toBe('accepted');
+      const rule = { depreciationMethod: 'straight_line', usefulLifeYears: 3, depreciationRate: null };
+      const atLwd = netBookValue(new Prisma.Decimal('90000.00'), bought, lwd, rule)!;
+      const atToday = netBookValue(new Prisma.Decimal('90000.00'), bought, today, rule)!;
+      expect(atLwd).not.toBe(atToday); // 60 days of depreciation apart
+      const current = () =>
+        inA(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+          return tx.exitSettlementInput.findFirstOrThrow({ where: { exitCaseId: k.id, supersededAt: null } });
+        });
+      const line = (r: { recoveries: unknown }) => (r.recoveries as { title: string; amount: string | null; status: string }[]).find((x) => x.title.includes(tag));
+      const first = await current();
+      expect(line(first)).toMatchObject({ amount: atLwd, status: 'open' });
+      // The return form starts from the same amount.
+      expect((await api('hr', 'get', '/lifecycle/assets').expect(200)).body.rows.find((r: { id: string }) => r.id === id).holder).toMatchObject({ leavingOn: lwd, recoveryDefault: atLwd });
+      // A later revision (letters put on hold) keeps it, not today's value.
+      await api('hr', 'put', `/lifecycle/exits/${k.id}/hr`).send({ hold: true, holdReason: 'Laptop not back', version: k.version }).expect(200);
+      const second = await current();
+      expect(second.revision).toBeGreaterThan(first.revision);
+      expect(line(second)).toMatchObject({ amount: atLwd, status: 'open' });
+      expect(line(second)!.amount).not.toBe(atToday);
+    } finally {
+      await inA((tx) => tx.setting.update({ where: { id: basis.id }, data: { value: 'category_default' } }));
+    }
+  });
+
   it('IT assets part 2 (2714): asset managers of the place are told once before a warranty ends; the register shows the end', async () => {
     const alerts = app.get(AssetAlertsService);
     const o = { organizationId: org.A.id };
@@ -798,6 +837,38 @@ describe('Lifecycle batch 6c', () => {
     await api('adminB', 'put', `/lifecycle/asset-contracts/${k}`).send({ ...body, version: 2 }).expect(404);
   });
 
+  it('IT assets follow-up (2823): only company-wide asset managers retire or restore a supplier; site managers add and edit', async () => {
+    const o = { organizationId: org.A.id };
+    // A Bengaluru site asset manager (a location grant), signed in fresh.
+    await inA(async (tx) => {
+      const u = await tx.user.create({ data: { ...o, email: `site-it@life6c-${run}.test`, name: `Site IT ${run}`, passwordHash: await argon2.hash(PASSWORD), role: 'panel', permissionProfileId: (await tx.permissionProfile.create({ data: { ...o, name: `site-none-${run}`, permissionsJson: '[]' } })).id } });
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `asset-site-${run}`, permissionsJson: JSON.stringify(['asset.view', 'asset.manage']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: u.id, permissionProfileId: role.id, scopeType: 'location', locationId: ids.blr, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Bengaluru IT', grantedBy: users.adminA } });
+    });
+    const siteToken = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `site-it@life6c-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken as string;
+    const asSite = (method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${siteToken}`);
+    const sup = { name: `Site Supplier ${run}`, contacts: [] };
+    // The site manager adds and edits (the status untouched or sent unchanged) but may not retire.
+    const id = (await asSite('post', '/lifecycle/asset-suppliers').send(sup).expect(201)).body.id as string;
+    const list = (await asSite('get', '/lifecycle/asset-suppliers').expect(200)).body;
+    expect(list).toMatchObject({ canManage: true, canRetire: false });
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, notes: 'Toner', version: 1 }).expect(200);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, notes: 'Toner and paper', retired: false, version: 2 }).expect(200);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: true, version: 3 }).expect(403);
+    const row = async () => (await api('it', 'get', '/lifecycle/asset-suppliers').expect(200)).body.rows.find((r: { id: string }) => r.id === id);
+    expect(await row()).toMatchObject({ retired: false, notes: 'Toner and paper', version: 3 });
+    // The company-wide manager retires it; the site manager cannot restore it but still edits it.
+    expect((await api('it', 'get', '/lifecycle/asset-suppliers').expect(200)).body.canRetire).toBe(true);
+    await api('it', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: true, version: 3 }).expect(200);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: false, version: 4 }).expect(403);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, notes: 'Toner only', version: 4 }).expect(200);
+    expect(await row()).toMatchObject({ retired: true, notes: 'Toner only' });
+    await api('it', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: false, version: 5 }).expect(200);
+    expect((await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'it_supplier', entityId: id, action: { in: ['asset.supplier.retired', 'asset.supplier.restored'] } }, orderBy: { createdAt: 'asc' } }))).map((x) => [x.action, x.actorUserId])).toEqual([['asset.supplier.retired', users.it], ['asset.supplier.restored', users.it]]);
+    // Another company: not found.
+    await api('adminB', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: true, version: 6 }).expect(404);
+  });
+
   it('IT assets part 3 (2714 contracts): tacit renews, express ends, owners told once at the notice date (a company setting)', async () => {
     const alerts = app.get(AssetAlertsService);
     const o = { organizationId: org.A.id };
@@ -856,6 +927,34 @@ describe('Lifecycle batch 6c', () => {
     }
     // Another company's people are never told.
     expect(await told(soon)).not.toContain(users.adminB);
+  });
+
+  it('IT assets follow-up (2824): Renew adds one more length to an express contract, audited; tacit refused; wrong key 403; another company 404', async () => {
+    const sup = (await api('it', 'post', '/lifecycle/asset-suppliers').send({ name: `Renew Co ${run}`, contacts: [] }).expect(201)).body.id as string;
+    const add = async (n: string, over: Record<string, unknown>) => (await api('it', 'post', '/lifecycle/asset-contracts').send({ kind: 'insurance', number: `${n}-${run}`, supplierId: sup, legalEntityId: ids.entity, locationId: ids.blr, startsOn: '2026-03-01', months: 12, renewal: 'express', noticeDays: 30, assetIds: [], ...over }).expect(201)).body.id as string;
+    const exp = await add('RNX', {});
+    const tacit = await add('RNT', { renewal: 'tacit' });
+    const row = async (k: string) => (await api('it', 'get', '/lifecycle/asset-contracts').expect(200)).body.rows.find((r: { id: string }) => r.id === k);
+    const renew = (who: Who, k: string, version: number) => api(who, 'post', `/lifecycle/asset-contracts/${k}/renew`).send({ version });
+    expect(await row(exp)).toMatchObject({ startsOn: '2026-03-01', endsOn: '2027-02-28', renewals: 0 });
+    // Renewed: the start stays, the end moves by the length, recorded and audited.
+    expect((await renew('it', exp, 1).expect(200)).body).toMatchObject({ endsOn: '2028-02-29', renewals: 1 });
+    expect(await row(exp)).toMatchObject({ startsOn: '2026-03-01', months: 12, endsOn: '2028-02-29', noticeOn: '2028-01-30', renewals: 1, status: 'active', version: 2 });
+    const audits = await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'asset_contract', entityId: exp }, orderBy: { createdAt: 'asc' } }));
+    expect(audits.map((x) => x.action)).toEqual(['asset.contract.added', 'asset.contract.renewed']);
+    expect(JSON.parse(audits[1].metadataJson ?? '{}')).toMatchObject({ from: '2027-02-28', to: '2028-02-29', renewals: 1, by: 'hand' });
+    // Negative: a stale version, a tacit contract (it renews by itself), no manage key, another company.
+    await renew('it', exp, 1).expect(409);
+    await renew('it', tacit, 1).expect(400);
+    await renew('agent', exp, 2).expect(403);
+    await renew('fin', exp, 2).expect(403);
+    await renew('ravi', exp, 2).expect(403);
+    await renew('adminB', exp, 2).expect(404);
+    expect(await row(tacit)).toMatchObject({ endsOn: '2027-02-28', renewals: 0 });
+    expect(await row(exp)).toMatchObject({ endsOn: '2028-02-29', renewals: 1 });
+    // Editing the contract later keeps its renewals (the end stays two lengths on).
+    await api('it', 'put', `/lifecycle/asset-contracts/${exp}`).send({ kind: 'insurance', number: `RNX-${run}`, supplierId: sup, legalEntityId: ids.entity, locationId: ids.blr, startsOn: '2026-03-01', months: 12, renewal: 'express', noticeDays: 15, assetIds: [], version: 2 }).expect(200);
+    expect(await row(exp)).toMatchObject({ endsOn: '2028-02-29', renewals: 1, noticeDays: 15 });
   });
 
   it('IT assets part 4 (2718): licences with seats to people and devices; over quota refused unless allowed; cost for money holders only', async () => {
@@ -937,6 +1036,59 @@ describe('Lifecycle batch 6c', () => {
     expect((await itemsOf()).filter((i) => i.status === 'open')).toHaveLength(0);
     // Another company cannot free it.
     await api('adminB', 'post', `/lifecycle/asset-licences/${l}/seats/${seat}/free`).send({}).expect(404);
+  });
+
+  it("IT assets follow-up (2825): waiving a leaver's licence-seat item frees the seat too, audited; the seat count drops", async () => {
+    const omar = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Omar', familyName: run, employeeCode: 'EX-L03', joinedOn: '2026-04-06', workEmail: `ex-l03@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+    const l = (await api('it', 'post', '/lifecycle/asset-licences').send({ software: 'Figma', softwareVersion: 'Pro', legalEntityId: ids.entity, locationId: ids.blr, seats: 3, allowOverQuota: false }).expect(201)).body.id as string;
+    await api('it', 'post', `/lifecycle/asset-licences/${l}/seats`).send({ employeeId: omar }).expect(201);
+    await api('it', 'post', `/lifecycle/asset-licences/${l}/seats`).send({ employeeId: emp.sita }).expect(201);
+    const lic = async () => (await api('it', 'get', '/lifecycle/asset-licences').expect(200)).body.rows.find((r: { id: string }) => r.id === l);
+    expect((await lic()).used).toBe(2);
+    await api('hr', 'post', '/lifecycle/exits').send({ employeeId: omar, exitType: 'end_of_contract', lwd: addDays(today, 20), reasonText: 'Contract ends' }).expect(201);
+    const item = ((await api('it', 'get', '/lifecycle/clearance/mine').expect(200)).body.rows as { id: string; title: string; status: string; version: number }[]).find((i) => i.title.includes('Figma Pro') && i.status === 'open')!;
+    // Negative: a waiver needs its reason; another company cannot touch it; nothing is freed by a refused call.
+    await api('it', 'post', `/lifecycle/clearance/${item.id}/sign-off`).send({ action: 'waive', version: item.version }).expect(400);
+    await api('adminB', 'post', `/lifecycle/clearance/${item.id}/sign-off`).send({ action: 'waive', note: 'Left', version: item.version }).expect((r) => expect([403, 404]).toContain(r.status));
+    expect((await lic()).used).toBe(2);
+    // Waived: the seat is freed (Sita keeps hers), audited on the licence as a waiver.
+    await api('it', 'post', `/lifecycle/clearance/${item.id}/sign-off`).send({ action: 'waive', note: 'Account already closed by the vendor', version: item.version }).expect(200);
+    const after = await lic();
+    expect(after.used).toBe(1);
+    expect(after.holders).toEqual([expect.objectContaining({ kind: 'person', name: `Sita ${run}` })]);
+    const freed = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { entityType: 'asset_licence', entityId: l, action: 'asset.licence.seat.freed' } }));
+    expect(JSON.parse(freed.metadataJson ?? '{}')).toMatchObject({ clearance: 'waive' });
+    expect(await inA((tx) => tx.assetLicenceSeat.findFirstOrThrow({ where: { licenceId: l, freedOn: { not: null } } }))).toMatchObject({ freeReason: 'Account already closed by the vendor' });
+  });
+
+  it("IT assets follow-up (2826): a person's licence seats on the PPL-03 Assets tab for asset.view over the licence and their managers", async () => {
+    const o = { organizationId: org.A.id };
+    const seatsOf = async (who: Who) => (await api(who, 'get', `/lifecycle/people/${emp.sita}/assets`).expect(200)).body.seats as { software: string; softwareVersion: string | null; givenOn: string }[];
+    const m365 = expect.objectContaining({ software: 'Microsoft 365', softwareVersion: 'E3', expiresOn: '2027-03-31', givenOn: today });
+    // asset.view holders (company-wide), the manager and the person see Sita's seat.
+    expect(await seatsOf('agent')).toEqual(expect.arrayContaining([m365]));
+    expect(await seatsOf('mgr')).toEqual(expect.arrayContaining([m365]));
+    expect(await seatsOf('sita')).toEqual(expect.arrayContaining([m365]));
+    // Negative: a peer and another company: not found; asset.view at another place only: the person, but not the seat.
+    // A peer with no asset key (Arun, same manager). Meena is no longer a plain peer here: an earlier test made her a site asset manager at Bengaluru.
+    await api('arun', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
+    await api('adminB', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(404);
+    const far = await inA(async (tx) => {
+      const loc = await tx.location.create({ data: { ...o, legalEntityId: ids.entity, name: `Mysuru ${run}`, code: `M${run.slice(0, 4)}`, address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } });
+      const u = await tx.user.create({ data: { ...o, email: `far-it@life6c-${run}.test`, name: `Far IT ${run}`, passwordHash: await argon2.hash(PASSWORD), role: 'panel', permissionProfileId: (await tx.permissionProfile.create({ data: { ...o, name: `far-none-${run}`, permissionsJson: '[]' } })).id } });
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `asset-far-${run}`, permissionsJson: JSON.stringify(['asset.view']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: u.id, permissionProfileId: role.id, scopeType: 'location', locationId: loc.id, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Mysuru IT', grantedBy: users.adminA } });
+      return u.id;
+    });
+    expect(far).toBeTruthy();
+    const farToken = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `far-it@life6c-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken as string;
+    const farView = (await request(server()).get(`/api/v1/lifecycle/people/${emp.sita}/assets`).set('Authorization', `Bearer ${farToken}`).expect(200)).body;
+    expect(farView.seats).toEqual([]);
+    // A freed seat leaves the tab.
+    const l = (await api('it', 'get', '/lifecycle/asset-licences').expect(200)).body.rows.find((r: { id: string }) => r.id === ids.licence);
+    const sitaSeat = l.holders.find((h: { name: string }) => h.name === `Sita ${run}`).seatId as string;
+    await api('it', 'post', `/lifecycle/asset-licences/${ids.licence}/seats/${sitaSeat}/free`).send({ reason: 'Moved team' }).expect(200);
+    expect(await seatsOf('mgr')).not.toEqual(expect.arrayContaining([m365]));
   });
 
   it('IT assets part 4 (2718): asset managers of the place are told once before a licence expires (a company setting)', async () => {

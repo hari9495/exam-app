@@ -460,6 +460,25 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "30"
   },
+  "leave.comp_off.auto_from_roster": {
+    "label": "Credit comp-off automatically when the roster puts someone to work on a weekly off or holiday and they work it",
+    "values": [
+      "off",
+      "on"
+    ],
+    "default": "off"
+  },
+  "leave.overview.no_leave_days": {
+    "label": "Team leave: \"no leave taken\" means none approved in the last (days)",
+    "values": [
+      "30",
+      "60",
+      "90",
+      "120",
+      "180"
+    ],
+    "default": "90"
+  },
   "leave.comp_off.expiry_days": {
     "label": "Comp-off must be used within (days of the work)",
     "values": [
@@ -525,6 +544,12 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
       "warn"
     ],
     "default": "block"
+  },
+  "payroll.arrears.auto_draft": {
+    "label": "Draft arrears by themselves after a back-dated salary change or joining date",
+    "values": ["on", "off"],
+    "default": "on",
+    "labels": { "on": "On: draft them; payroll still checks and approves each one", "off": "Off: payroll drafts them by hand" }
   },
   "payroll.journal.suspense": {
     "label": "Pay lines with no ledger account go to the suspense account",

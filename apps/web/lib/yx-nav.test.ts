@@ -272,12 +272,18 @@ describe('buildNav: Time, Pay, Compliance', () => {
     ['/yx/expenses/advances', 'Advances'],
     ['/yx/expenses/advances/a1', 'Advances'],
     ['/yx/expenses/card-lines', 'Expenses'],
+    // T2-B 63: the employee's salary timeline.
+    ['/yx/me/salary', 'My salary'],
   ])('the breadcrumb of %s names "%s" under Pay', (path, label) => {
     expect(pageLink(pays, path)).toMatchObject({ area: { id: 'pay' }, link: { label }, inMenu: true });
   });
 
   it('an employee has My pay; nobody in a support session sees pay, hiring, the desk or self-service', () => {
     expect(sections(nav([], { employee: true }), 'pay')).toEqual(['Expenses & advances', 'My pay']);
+    // T2-B 63: My salary sits next to Payslips; someone with no employee record has neither.
+    const mine = labels(nav([], { employee: true }), 'pay');
+    expect(mine[mine.indexOf('Payslips') + 1]).toBe('My salary');
+    expect(labels(nav([], { employee: false }), 'pay')).not.toContain('My salary');
     const s = nav(['payroll.run.view', 'pipeline:manage', 'org.support_access.approve', 'org.yukthix_support.raise'], { support: true, role: 'super_admin', employee: true });
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
     expect(labels(s, 'home')).toEqual(['Home', 'Search']);
@@ -295,7 +301,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Assets', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Assets', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Approval limits', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     // AS-2 (Settings 6.5): a test owner with only the assessments settings key gets that page and nothing else.
@@ -314,7 +320,7 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['visitors.desk.manage']), 'visitors')).not.toContain('Watch-list');
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
-    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance', 'Performance settings']);
+    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance settings']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['All settings', 'Roles & access']);
   });
 
@@ -352,6 +358,9 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/performance/cycles/c-1')?.link.label).toBe('Review cycles');
     expect(activeLink(n, '/yx/performance')?.link.label).toBe('Performance home');
     expect(activeLink(n, '/yx/performance/goals')?.link.label).toBe('Goals');
+    // T2-C item 68: everyone with an employee record has What is expected of me; a login with no record does not.
+    expect(activeLink(n, '/yx/performance/expected')?.link.label).toBe('What is expected of me');
+    expect(activeLink(nav(['perf.cycle.manage']), '/yx/performance/expected')?.link.label).not.toBe('What is expected of me');
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
   it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {
@@ -630,5 +639,22 @@ describe('buildNav: Engage (batch G2)', () => {
     expect(pageLink(all, '/yx/engage/post')?.link.label).toBe('Feed');
     expect(pageLink(all, '/yx/engage/recognition')?.link.label).toBe('Recognition');
     expect(pageLink(nav(['engage.survey.manage'], { employee: true }), '/yx/engage/surveys/x/results')?.link.label).toBe('Surveys');
+  });
+});
+
+describe('buildNav: E2 approval rules editor', () => {
+  const items = (n: ReturnType<typeof buildNav>) => n.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => [l.label, l.href])));
+  it('the settings key shows Approval policies, Approval limits and Hiring approvals; HR who read the structure see them too', () => {
+    for (const keys of [['org.settings.manage'], ['employee.profile.view', 'org.structure.view']]) {
+      const all = items(nav(keys));
+      expect(all).toEqual(expect.arrayContaining([['Approval policies', '/yx/settings/approval-policies'], ['Approval limits', '/yx/settings/approval-limits'], ['Hiring approvals', '/yx/hiring/approval-routes']]));
+    }
+  });
+  it('negative: the structure key alone, or the old approvals key, shows none of them', () => {
+    for (const keys of [['org.structure.view'], ['approvals:configure']]) {
+      const labelsOf = items(nav(keys)).map(([l]) => l);
+      expect(labelsOf).not.toContain('Approval limits');
+      expect(labelsOf).not.toContain('Hiring approvals');
+    }
   });
 });

@@ -9,6 +9,7 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import type { ScopeUser } from '../access/scope';
 import { AnswerDto, ConfirmBaseDto, DiscardDto, DismissDto, FnfPatchDto, FnfPayeesDto, OffcycleItemDto, OverpaymentDto, OverpaymentListDto, WorksheetApproveDto, WorksheetCreateDto, WriteOffDto } from './dto-5g';
 import { ArrearsService } from './arrears.service';
+import { ArrearsJobs } from './arrears-jobs';
 import { OneTimeEffectDto } from './dto-5c';
 import { Throttle } from '@nestjs/throttler';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
@@ -27,6 +28,7 @@ import { FnfService } from './fnf.service';
 export class Payroll5gController {
   constructor(
     private readonly arrears: ArrearsService,
+    private readonly jobs: ArrearsJobs,
     private readonly fnf: FnfService,
   ) {}
 
@@ -116,7 +118,22 @@ export class Payroll5gController {
   @HttpCode(200)
   @RequirePermissions('payroll.arrears.approve')
   accept(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.arrears.accept(ctx, this.user(req), id);
+    return this.jobs.acceptProposal(ctx, this.user(req), id);
+  }
+
+  /** E3 (answer 2787): the proposal's people, total and largest change, worked out by the arrears job (nothing drafted). */
+  @Post('statutory/arrears-proposals/:id/preview')
+  @HttpCode(200)
+  @RequirePermissions('payroll.arrears.approve')
+  preview(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.jobs.previewProposal(ctx, this.user(req), id);
+  }
+
+  /** E3: the arrears jobs (salary changes, joining dates, proposals) with what each drafted or would come to. */
+  @Get('payroll/arrears-runs')
+  @RequirePermissions('payroll.arrears.approve')
+  arrearsRuns(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.jobs.runs(ctx, this.user(req));
   }
 
   @Post('statutory/arrears-proposals/:id/dismiss')

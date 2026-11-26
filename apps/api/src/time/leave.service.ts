@@ -15,6 +15,7 @@ import {
   Facts,
   LeaveRules,
   PolicyLine,
+  companySetting,
   TIME_KEYS,
   asDate,
   dateOf,
@@ -39,10 +40,10 @@ import {
   visibleSql,
   inReportingLine,
 } from './time-core';
-import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween, localDate } from './time-maths';
+import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, bandOn, ceilingLapses, countLeaveDays, daysBetween, localDate } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
-import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
+import { joinedRun, BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
 
 // M02 Part A leave on the shared engines: requests route through P03 (manager, then HR by the type's rule), the
 // ledger is the only balance (YX-LV-01), days are counted with the location's holidays and weekly offs (YX-LV-03),
@@ -53,6 +54,8 @@ export const LEAVE_REQUEST = 'leave.request';
 export const LEAVE_CANCEL = 'leave.cancel';
 export const LEAVE_CANCEL_DAYS = 'leave.cancel_days';
 const ACTIVE = ['pending', 'approved', 'cancel_pending'];
+/** Answer 2759: a manager's overview never names sick or medical leave; it shows as "Leave". */
+const OVERVIEW_TYPE = Prisma.sql`CASE WHEN t.kind = 'sick' OR coalesce((t.rules->>'medical')::boolean, false) THEN 'Leave' ELSE t.name END`;
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 /** "Monday, Tuesday and Friday". */
 export const weekdayList = (days: readonly number[]) => {
@@ -121,6 +124,12 @@ const addMonths = (on: string, n: number) => {
   const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
   return new Date(Date.UTC(y, m, Math.min(d, last))).toISOString().slice(0, 10);
 };
+
+/**
+ * Answer 2755: a policy line with its floored days; a service band never goes below the statutory floor either (a
+ * band only ever changes the yearly days and the ceiling).
+ */
+export const withBands = (l: PolicyLine, floored: number) => ({ ...l, annualDays: floored, ...(l.bands?.length ? { bands: l.bands.map((b) => ({ ...b, annualDays: floored > l.annualDays ? Math.max(b.annualDays, floored) : b.annualDays })) } : {}) });
 
 @Injectable()
 export class LeaveService implements OnModuleInit {
@@ -218,6 +227,13 @@ export class LeaveService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ planning a request
 
+  /** Answer 2758: does this type, or any active type of the company, name the other in "cannot be taken next to"? */
+  private async touchRulesExist(tx: Tx, org: string, typeId: string, rules: LeaveRules) {
+    if (rules.notWithTypes?.length) return true;
+    const [row] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM leave_types WHERE organization_id = ${org}::uuid AND active AND rules -> 'notWithTypes' ? ${typeId}`;
+    return row.n > 0;
+  }
+
   private async plan(tx: Tx, c: CompanyContext, f: Facts, dto: LeavePlanDto, today: string): Promise<Plan> {
     const org = c.organizationId;
     const found = await tx.leaveType.findFirst({ where: { organizationId: org, id: dto.leaveTypeId, active: true } });
@@ -303,6 +319,27 @@ export class LeaveService implements OnModuleInit {
           AND r.to_on >= (${dto.from}::date - ${gap}::int) AND r.from_on <= (${dto.to}::date + ${gap}::int)
         ORDER BY r.from_on LIMIT 1`;
       if (near.length) blocks.push(`${t.name} needs ${daysText(gap)} between two requests. ${onBehalf ? `${f.name} has` : 'You have'} ${t.name.toLowerCase()} from ${fmt(near[0].from_on)} to ${fmt(near[0].to_on)}.`);
+    }
+    // Answers 2756 (most days in a row) and 2758 (types it cannot touch): look at the leave around the request, across
+    // weekly offs and holidays (they join leave on either side), up to 60 days each way.
+    if (total > 0 && ((rules.maxConsecutiveDays !== null && rules.maxConsecutiveDays !== undefined) || (await this.touchRulesExist(tx, org, t.id, rules)))) {
+      const lo = addDays(dto.from, -60);
+      const hi = addDays(dto.to, 60);
+      const around = await tx.$queryRaw<{ on: string; portion: number; type: string; name: string; rules: unknown }[]>`
+        SELECT d.leave_on::text AS on, d.portion::float AS portion, r.leave_type_id::text AS type, lt.name, lt.rules FROM leave_request_days d
+        JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+        JOIN leave_types lt ON lt.organization_id = r.organization_id AND lt.id = r.leave_type_id
+        WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.portion > 0 AND r.status = ANY(${ACTIVE}::text[])
+          AND d.leave_on BETWEEN ${lo}::date AND ${hi}::date`;
+      const { map: hol } = await holidaysFor(tx, org, f.locationId, lo, hi, f.employeeId);
+      await book.prime([f.employeeId], lo, hi);
+      const off = new Set<string>();
+      for (let d = lo; d <= hi; d = addDays(d, 1)) if (hol.has(d) || (await book.day(f, d)).weeklyOff) off.add(d);
+      const j = joinedRun({ from: dto.from, to: dto.to, total, typeId: t.id, around, off, lo, hi });
+      if (rules.maxConsecutiveDays !== null && rules.maxConsecutiveDays !== undefined && j.run > rules.maxConsecutiveDays) blocks.push(`${t.name} is at most ${daysText(rules.maxConsecutiveDays)} in a row, counting leave next to it. This would make ${daysText(j.run)}.`);
+      // Another type on the working days just outside the joined run: refused when either type names the other.
+      const clash = j.edges.find((x) => (rules.notWithTypes ?? []).includes(x.type) || (parseRules(around.find((a) => a.type === x.type)!.rules).notWithTypes ?? []).includes(t.id));
+      if (clash) blocks.push(`${t.name} can't be taken next to ${around.find((a) => a.type === clash.type)!.name} (${fmt(clash.on)}).`);
     }
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
     // they will give it to HR, HR marks it verified (Special data), and approvers see only its status (YX-LV-09).
@@ -453,6 +490,30 @@ export class LeaveService implements OnModuleInit {
       const o = await tx.leaveEligibilityOverride.create({ data: { organizationId: c.organizationId, employeeId, leaveTypeId: t.id, validUntil: asDate(dto.validUntil), reason: dto.reason, createdBy: c.userId! } });
       await audit(tx, c, 'leave.eligibility.overridden', 'leave_type', t.id, { employeeId, type: t.code, validUntil: dto.validUntil, reason: dto.reason, overrideId: o.id });
       return { id: o.id };
+    });
+  }
+
+  /**
+   * Answer 2760 (GET me/peers-away): people with the same manager as me today, and the days in the next 14 they are away
+   * on approved leave. Only "away": never the leave type, the part of the day or times. Read-only; only my own peers.
+   */
+  peersAway(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { f, today } = await this.meFacts(tx, c, c.userId);
+      const to = addDays(today, 13);
+      if (!f.managerEmployeeId) return { from: today, to, peers: 0, days: [] };
+      const peers = Prisma.sql`SELECT a.employee_id FROM employee_assignments a WHERE a.organization_id = ${c.organizationId}::uuid AND a.superseded_at IS NULL
+        AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]') AND a.manager_employee_id = ${f.managerEmployeeId}::uuid AND a.employee_id <> ${f.employeeId}::uuid`;
+      const [{ n }] = await tx.$queryRaw<{ n: number }[]>`SELECT count(DISTINCT employee_id)::int AS n FROM (${peers}) p`;
+      const rows = await tx.$queryRaw<{ on: string; name: string }[]>`
+        SELECT DISTINCT d.leave_on::text AS on, ${NAME} AS name
+        FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+        JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
+        WHERE d.organization_id = ${c.organizationId}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${today}::date AND ${to}::date AND d.employee_id IN (${peers})
+        ORDER BY 1, 2 LIMIT 500`;
+      const days = new Map<string, string[]>();
+      for (const r of rows) days.set(r.on, [...(days.get(r.on) ?? []), r.name]);
+      return { from: today, to, peers: n, days: [...days].map(([on, names]) => ({ on, names })) };
     });
   }
 
@@ -1134,7 +1195,7 @@ export class LeaveService implements OnModuleInit {
   /** Active leave days (pending or approved) from `from` to `to` of the people `where` (on `d.employee_id`) allows. */
   private offIn(tx: Tx, c: CompanyContext, from: string, to: string, where: Prisma.Sql): Promise<Off[]> {
     return tx.$queryRaw<Off[]>`
-      SELECT d.employee_id::text AS "employeeId", ${NAME} AS name, d.leave_on::text AS on, t.name AS type
+      SELECT d.employee_id::text AS "employeeId", ${NAME} AS name, d.leave_on::text AS on, ${OVERVIEW_TYPE} AS type
       FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status = ANY(${ACTIVE}::text[])
       JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
       JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
@@ -1154,7 +1215,7 @@ export class LeaveService implements OnModuleInit {
       const own = await this.ownId(tx, c, v);
       const today = todayIn('Asia/Kolkata');
       const monday = addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
-      if (!own || !v.userId) return { today, waiting: [], otherWaiting: 0, away: [] };
+      if (!own || !v.userId) return { today, waiting: [], otherWaiting: 0, away: [], cards: null };
       const inTeam = (col: string) => implicitSql(tx, c, own, Prisma.raw(col), Prisma.sql`${today}::date`);
       const rows = await tx.$queryRaw<{ id: string; taskId: string; employeeId: string; name: string; type: string; from: string; to: string; fromHalf: string; toHalf: string; days: number; certificate: string; sent: Date }[]>`
         SELECT r.id::text, k.id::text AS "taskId", r.employee_id::text AS "employeeId", ${NAME} AS name, t.name AS type, r.from_on::text AS "from", r.to_on::text AS "to",
@@ -1182,8 +1243,36 @@ export class LeaveService implements OnModuleInit {
         waiting: rows.map((x) => ({ ...x, sent: x.sent.toISOString(), others: offBetween(span, x.from, x.to, x.employeeId), canSendBack: back.get(x.employeeId) ?? false })),
         otherWaiting: other,
         away,
+        cards: await this.overviewCards(tx, c, today, await inTeam('e.id')),
       };
     });
+  }
+
+  /**
+   * Answer 2759: the manager's overview cards, counts and names only (never a leave type). "Unplanned": leave applied on
+   * or after its first day (any type), with its first day this month. "No leave taken": people in the team for the whole
+   * window with no approved leave day in the last N days (leave.overview.no_leave_days, default 90).
+   */
+  private async overviewCards(tx: Tx, c: CompanyContext, today: string, team: Prisma.Sql) {
+    const org = c.organizationId;
+    const window = Number(await companySetting(tx, c, 'leave.overview.no_leave_days'));
+    const since = addDays(today, -window);
+    const month = `${today.slice(0, 8)}01`;
+    const unplanned = await tx.$queryRaw<{ employeeId: string; name: string; requests: number }[]>`
+      SELECT e.id::text AS "employeeId", ${NAME} AS name, count(*)::int AS requests
+      FROM leave_requests r JOIN employees e ON e.organization_id = r.organization_id AND e.id = r.employee_id
+      WHERE r.organization_id = ${org}::uuid AND r.status = ANY(${ACTIVE}::text[]) AND r.from_on BETWEEN ${month}::date AND ${today}::date
+        AND (r.created_at AT TIME ZONE 'Asia/Kolkata')::date >= r.from_on AND ${team}
+      GROUP BY 1, 2 ORDER BY 3 DESC, 2 LIMIT 50`;
+    const none = await tx.$queryRaw<{ employeeId: string; name: string }[]>`
+      SELECT e.id::text AS "employeeId", ${NAME} AS name
+      FROM employees e
+      WHERE e.organization_id = ${org}::uuid AND ${team}
+        AND EXISTS (SELECT 1 FROM employments m WHERE m.organization_id = e.organization_id AND m.employee_id = e.id AND m.exited_on IS NULL AND m.joined_on <= ${since}::date)
+        AND NOT EXISTS (SELECT 1 FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+                        WHERE d.organization_id = e.organization_id AND d.employee_id = e.id AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${since}::date AND ${today}::date)
+      ORDER BY 2 LIMIT 50`;
+    return { unplanned: { count: unplanned.length, people: unplanned }, noLeave: { days: window, count: none.length, people: none } };
   }
 
   /** HR verifies a certificate (Special data, leave.medical.view in scope); approvers then see "verified". */
@@ -1467,12 +1556,15 @@ export class LeaveService implements OnModuleInit {
           if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') return [];
           const rules = t.rules as unknown as LeaveRules;
           const notEarning = absences.filter((a) => !creditsDuringAbsence(rules.longAbsence, a.accrues)).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
-          const due = afterWait(accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }), f.joinedOn, rules.accrualWaitMonths ?? 0);
+          const line = withBands(l, ent.get(l.leaveTypeId) ?? l.annualDays);
+          const due = afterWait(accrualsDue(line, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }), f.joinedOn, rules.accrualWaitMonths ?? 0);
+          // Answer 2755: the ceiling of the band each credit falls in (2337).
+          const ceiling = (on: string) => bandOn(line.bands, f.joinedOn, on)?.maxBalance ?? l.maxBalance;
           const fresh = due.filter((d) => !posted.has(`${t.id}|${d.periodKey}`));
           const row = (d: { on: string; days: number; periodKey: string }, kind: string, reason: string) => ({ organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, entryOn: asDate(d.on), kind, days: d.days, periodKey: d.periodKey, reason });
           return [
             ...fresh.map((d) => row(d, 'accrual', l.frequency === 'monthly' ? `${t.name} credit for ${d.periodKey.slice(8)}` : `${t.name} for the year from ${year.start}`)),
-            ...ceilingLapses(fresh, held.get(t.id) ?? 0, l.maxBalance).map((d) => row(d, 'lapse', `Over the ${l.maxBalance}-day ceiling for ${t.name}`)),
+            ...ceilingLapses(fresh, held.get(t.id) ?? 0, ceiling).map((d) => row(d, 'lapse', `Over the ${ceiling(d.on)}-day ceiling for ${t.name}`)),
           ];
         });
         if (data.length) n += (await tx.leaveLedgerEntry.createMany({ data, skipDuplicates: true })).count;
@@ -1551,7 +1643,7 @@ export class LeaveService implements OnModuleInit {
         const t = byId.get(l.leaveTypeId);
         if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') continue;
         const rules = t.rules as unknown as LeaveRules;
-        const line = { ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays };
+        const line = withBands(l, ent.get(l.leaveTypeId) ?? l.annualDays);
         const now = num((await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id }, _sum: { days: true } }))._sum.days);
         // Credits of the old year still to come (the accrual job writes them when due).
         const dueOld = accrualsDue(line, { yearStart: oldYear.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: lastOld }).filter((d) => d.on > today).reduce((x, d) => x + d.days, 0);

@@ -33,6 +33,16 @@ describe('OrgChart', () => {
     expect(dept[1].children.map((c) => c.title)).toEqual(['Suresh Pillai', 'Rahul Menon']);
   });
 
+  it('T2-F item 86: Go to top jumps from me back to the top of the chart; an empty chart has no button', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<OrgChart people={PEOPLE} layout="tree" meId="acc" defaultSelected="acc" />);
+    await user.click(screen.getByRole('button', { name: 'Go to top' }));
+    expect(screen.getByText('Showing Anita Rao')).toBeInTheDocument();
+    unmount();
+    render(<OrgChart people={[]} layout="tree" />);
+    expect(screen.queryByRole('button', { name: 'Go to top' })).toBeNull();
+  });
+
   it('moves with arrow keys: down to first child, right to sibling, up to parent; Enter opens', async () => {
     const onOpen = vi.fn();
     const user = userEvent.setup();

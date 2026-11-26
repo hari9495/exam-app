@@ -1,28 +1,42 @@
 'use client';
 
-import { ApprovalRoutesScreen, type ApprovalRoute } from '@yukthix/ui/hiring';
-import { loadState } from '../../../../../lib/yx-org';
-import { useApprovalChains, useUpsertApprovalChain } from '../../../../../lib/hooks/useApprovals';
+import { PolicyEditorScreen } from '@yukthix/ui/hiring';
+import { useYxPermissions } from '../../../../../lib/yx-org';
+import { APPROVAL_LIMITS, useApprovalLimits, useApprovalPolicies, useApprovalPolicyWrite, useHiringMove } from '../../../../../lib/yx-approval-policies';
 import { useTeammates } from '../../../../../lib/hooks/useUserDirectory';
 import { useUserGroups } from '../../../../../lib/hooks/useUserGroups';
 
-// Hiring › Approvals (M10 batch AT2, founder D1 / D3): who approves requisitions and offers. Replaces the older
-// /v2/settings/approvals page on the same API; requisitions now run on YukthiX Approvals.
+// Hiring › Approvals (answer 2650): the same approval rules editor as Settings, filtered to requisitions and offers, with
+// the move from the old hiring routes (2789: old approvers next to the new ones; only matching types move).
+const HIRING = ['ats.requisition', 'ats.offer'];
 export default function YxHiringApprovalRoutesPage() {
-  const chains = useApprovalChains();
-  const upsert = useUpsertApprovalChain();
-  const people = useTeammates();
-  const groups = useUserGroups();
-  const route = (c: { enabled: boolean; steps: ApprovalRoute['steps'] } | undefined): ApprovalRoute | null => (c ? { enabled: c.enabled, steps: c.steps.map((s) => ({ name: s.name, approverType: s.approverType, approverUserIds: s.approverUserIds, managerLevel: s.managerLevel, groupId: s.groupId })) } : null);
+  const perms = useYxPermissions();
+  const canEdit = perms.has('org.settings.manage');
+  const data = useApprovalPolicies();
+  const move = useHiringMove(canEdit);
+  const limits = useApprovalLimits(canEdit);
+  const people = useTeammates(canEdit);
+  const groups = useUserGroups(canEdit);
+  const write = useApprovalPolicyWrite();
+  const err = data.error as { status?: number } | null;
   return (
-    <ApprovalRoutesScreen
-      state={loadState(chains)}
-      onRetry={() => void chains.refetch()}
-      requisition={route(chains.data?.requisition)}
-      offer={route(chains.data?.offer)}
-      people={(people.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email }))}
-      groups={(groups.data ?? []).map((g: { id: string; name: string }) => ({ value: g.id, label: g.name }))}
-      onSave={(gate, r) => upsert.mutateAsync({ gate, enabled: r.enabled, steps: r.steps.map((s) => ({ name: s.name.trim(), approverType: s.approverType, ...(s.approverType === 'users' ? { approverUserIds: s.approverUserIds } : {}), ...(s.approverType === 'reporting_manager' ? { managerLevel: s.managerLevel ?? 1 } : {}), ...(s.approverType === 'group' && s.groupId ? { groupId: s.groupId } : {}) })) })}
+    <PolicyEditorScreen
+      live={{
+        state: data.isError ? (err?.status === 403 ? 'no-access' : 'error') : data.data ? 'ready' : 'loading',
+        onRetry: () => void data.refetch(),
+        types: data.data?.types ?? [],
+        only: HIRING,
+        remindHours: data.data?.remindHours ?? 24,
+        escalateHours: data.data?.escalateHours ?? 48,
+        canEdit,
+        onSave: write.save,
+        onReset: write.reset,
+        people: (people.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email })),
+        groups: (groups.data ?? []).map((g: { id: string; name: string }) => ({ value: g.id, label: g.name })),
+        grades: (limits.data?.grades ?? []).map((g) => ({ value: g.id, label: `${g.name} (${g.code})` })),
+        ...(canEdit ? { onTry: write.tryIt, pastRequests: write.pastRequests, notices: write.notices, move: { rows: move.data ?? null, onMove: write.move } } : {}),
+        limitsHref: APPROVAL_LIMITS,
+      }}
     />
   );
 }

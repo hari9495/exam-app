@@ -415,6 +415,8 @@ export interface Worksheet {
   reason: string;
   missing: number;
   createdBy: string;
+  /** 2850: who approved the salary change it was drafted from; they do not approve its arrears. */
+  changeApprovedBy?: string | null;
   /** E3 review item 9: why a draft was discarded (status 'discarded'). */
   discardReason?: string | null;
   lines: WorksheetLine[];

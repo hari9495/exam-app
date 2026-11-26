@@ -112,4 +112,16 @@ describe('PPL-31 request a certificate, live', () => {
     page({ state: 'no-access', kinds: [] });
     expect(screen.getByText('Certificates are for current employees')).toBeInTheDocument();
   });
+
+  it('T2-F item 78: a switched-on bonafide certificate is offered and asked for like the others; off, it is not offered', async () => {
+    const bonafide: MyCertificateKind = { letterType: 'bonafide_certificate', name: 'Bonafide certificate', requiresApproval: false, pending: null };
+    const { live, view } = page({ kinds: [...KINDS, bonafide] });
+    await ue.click(screen.getByRole('radio', { name: 'Bonafide certificate' }));
+    await pickPurpose('Home loan');
+    await ue.click(screen.getByRole('button', { name: 'Generate certificate' }));
+    expect(live.onRequest).toHaveBeenCalledWith(expect.objectContaining({ letterType: 'bonafide_certificate' }));
+    view.unmount();
+    page();
+    expect(screen.queryByRole('radio', { name: 'Bonafide certificate' })).toBeNull();
+  });
 });

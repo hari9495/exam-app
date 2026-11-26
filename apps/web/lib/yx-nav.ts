@@ -150,7 +150,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.1': ['/yx/settings/access', ...peoplePage('2.1')],
   '2.2': peoplePage('2.2'),
   '2.3': ['/yx/settings/security', ...peoplePage('2.3'), '/yx/settings/identity-providers', '/yx/settings/support-access'],
-  '2.4': [...peoplePage('2.4'), '/yx/settings/approval-policies'],
+  '2.4': [...peoplePage('2.4'), '/yx/settings/approval-policies', '/yx/settings/approval-limits'],
   '2.5': [...peoplePage('2.5'), '/yx/settings/checklists'],
   '2.6': peoplePage('2.6'),
   '2.7': peoplePage('2.7'),
@@ -192,7 +192,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '5.8': ['/yx/desk/setup'],
   '6.1': ['/yx/settings/hiring'],
   '6.2': ['/yx/settings/staffing'],
-  '6.3': ['/yx/settings/talent/performance', '/yx/settings/performance'],
+  '6.3': ['/yx/settings/talent/performance'],
   // AS-2: the company's assessment defaults (Settings 6.5).
   '6.5': ['/yx/settings/talent/assessments'],
   // S-10 (answer 1327): group 7 on the checked older routes (System Admins; 7.5 is each person's own calendar).
@@ -407,7 +407,7 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(any('payroll.special.manage', 'payroll.journal.export'), L('pay-actuarial', 'Actuarial valuation', '/yx/payroll/actuarial')),
             ...when(has('audit.view'), L('pay-audit', 'Audit log', '/yx/payroll/audit')),
           ]),
-          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-fbp', 'Flexible benefits', '/yx/me/flexible-benefits'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
+          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-salary', 'My salary', '/yx/me/salary'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-fbp', 'Flexible benefits', '/yx/me/flexible-benefits'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
         ],
   };
 
@@ -459,7 +459,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
           // HIR-21: recruitment agencies and staffing vendors (one model); recruiters review their submissions here.
           ...when(any('ats.agency.manage', 'ats.staffing.manage', 'org:manage_settings', 'pipeline:manage', 'ats.staffing.billing'), L('hiring-vendors', 'Vendors', '/yx/hiring/vendors')),
-          ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
+          // Answer 2650: the approval rules editor for requisitions and offers, so it follows the editor's keys (E2).
+          ...when(settingsView, L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           // HIR-10: HR with the background-check key (Special data; the API checks the joiner's scope).
           ...when(has('lifecycle.bgv.manage'), L('hiring-bgv', 'Background checks', '/yx/hiring/bgv')),
@@ -517,6 +518,8 @@ export function buildNav(n: NavInput): NavArea[] {
     sections: sec(undefined, [
       ...when(employee || has('perf.goal.manage') || has('perf.cycle.manage'), L('perf-home', 'Performance home', '/yx/performance')),
       ...when(employee, L('goals', 'Goals', '/yx/performance/goals')),
+      // T2-C item 68 (answer 2842): read-only; a manager opens the same page for a report.
+      ...when(employee, L('expected', 'What is expected of me', '/yx/performance/expected')),
       ...when(has('perf.goal.view'), L('goal-map', 'Goal map', '/yx/performance/goal-map')),
       ...when(has('perf.cycle.manage'), L('review-cycles', 'Review cycles', '/yx/performance/cycles')),
       ...when(employee, L('feedback', 'Feedback', '/yx/performance/feedback'), L('feedback-tasks', 'Feedback I owe', '/yx/performance/feedback-tasks'), L('one-on-ones', '1:1s', '/yx/performance/one-on-ones')),
@@ -646,7 +649,6 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(settingsAdmin, L('countries', 'Countries', '/yx/settings/countries'), L('translations', 'Translations', '/yx/settings/translations')),
         // S-7 (answer 1321): the Organisation, Documents and Account settings pages (Company rules retired).
         ...when(settingsView, ...MORE_SETTINGS_PAGES.map(([id, label, folder, slug]) => L(`more-settings-${id}`, label, `${SETTINGS_HOME}/${folder}/${slug}`))),
-        ...when(has('perf.setup.manage'), L('performance-setup', 'Performance', '/yx/settings/performance')),
         // S-8 (answer 1323): the company's expense and performance choices (4.8, 6.3); their set-up keys change them too.
         ...when(settingsView || has('expense.policy.manage') || has('expense.policy.view'), L('expense-settings', 'Expense settings', `${SETTINGS_HOME}/finance/expenses-and-travel`)),
         ...when(settingsView || has('perf.setup.manage'), L('performance-settings', 'Performance settings', `${SETTINGS_HOME}/talent/performance`)),
@@ -666,6 +668,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(settingsView, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),
         // S-6 (answer 1330): the approval policy editor, beside 2.4 Approvals.
         ...when(settingsView, L('approval-policies', 'Approval policies', '/yx/settings/approval-policies')),
+        // E2 (answer 2645): the approval limits by grade that "up the chain to the limit" steps read.
+        ...when(settingsView, L('approval-limits', 'Approval limits', '/yx/settings/approval-limits')),
         // Answer 1563: the company audit log.
         ...when(has('audit.view') && !support, L('audit-log', 'Audit log', AUDIT_LOG)),
         // Batch B item 3 (admin B2): deleted records across YukthiX, restorable until the company's keep days pass.

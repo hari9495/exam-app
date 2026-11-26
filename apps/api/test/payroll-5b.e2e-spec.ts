@@ -338,14 +338,29 @@ describe('Payroll batch 5b', () => {
   it('compensation history (PAY-12): the approved salary with who asked and approved; self and payroll read it, others cannot; audited', async () => {
     const h = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body;
     expect(h[0]).toMatchObject({ kind: 'salary', status: 'approved', annualCtc: '726000.00', reason: 'Annual review', requestedBy: { userId: users.payAdmin }, decidedBy: { userId: users.payApprover } });
-    expect((await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body).toHaveLength(h.length);
+    // Answer 2860: the person sees their approved salaries only, with no names; a request waiting or turned down is not shown.
+    const own = (await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body;
+    expect(own).toHaveLength(h.length);
+    expect(own[0]).toMatchObject({ kind: 'salary', annualCtc: '726000.00', requestedBy: null, decidedBy: null });
+    const later = new Date(Date.parse(`${today}T00:00:00Z`) + 40 * 86_400_000).toISOString().slice(0, 10);
+    const req = (await api('payAdmin', 'post', `/payroll/employees/${ids.empEmp}/compensation-changes`).send({ employeeId: ids.empEmp, effectiveDate: later, templateVersionId: ids.version, entryMode: 'ctc', annualCtc: '800000', reason: 'Counter-offer' }).expect(201)).body;
+    const withReq = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body as { kind: string; status: string; changeId: string }[];
+    expect(withReq).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'request', status: 'pending', changeId: req.changeId })]));
+    const ownNow = (await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body as { kind: string; changeId: string; requestedBy: unknown; decidedBy: unknown }[];
+    expect(ownNow).toHaveLength(h.length);
+    expect(ownNow.every((x) => x.kind === 'salary' && x.changeId !== req.changeId && x.requestedBy === null && x.decidedBy === null)).toBe(true);
+    // Turned down: still only for payroll.
+    await stepUp('payApprover');
+    await api('payApprover', 'post', `/people/changes/${req.changeId}/reject`).send({ reason: 'Not this cycle' }).expect(201);
+    expect(((await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body as unknown[]).length).toBe(h.length);
     await api('hrAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(404);
     await api('payAdminB', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(404);
     await api('emp', 'get', `/payroll/employees/${ids.payAdminEmp}/compensation-history`).expect(404);
     await api('payAdmin', 'get', '/payroll/employees/not-a-uuid/compensation-history').expect(400);
     // Viewed by someone else: audited, with no amounts.
     const logged = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.compensation.history_viewed', entityId: ids.empEmp } }));
-    expect(logged.length).toBe(1);
+    // Payroll looked twice (before and after the request); the person's own looks are not logged.
+    expect(logged.length).toBe(2);
     expect(JSON.stringify(logged[0], (_k, v) => (typeof v === 'bigint' ? String(v) : v))).not.toMatch(/726000/);
   });
 

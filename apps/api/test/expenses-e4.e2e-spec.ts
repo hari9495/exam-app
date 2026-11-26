@@ -99,13 +99,15 @@ describe('Expenses batch E4', () => {
       ids.dept = (await tx.department.create({ data: { ...x, id: deptId, name: 'Sales', code: 'SAL', path: `/${deptId}/` } })).id;
       ids.desig = (await tx.designation.create({ data: { ...x, name: 'Executive', code: 'EX' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...x, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
+      // T2-B 67: Sita's grade has its own advance cap.
+      ids.g5 = (await tx.grade.create({ data: { ...x, name: 'G5', code: 'G5', rank: 5 } })).id;
     });
-    const hire = async (who: Who, given: string, code: string, manager: string | null) =>
-      (await request(server()).post('/api/v1/people/employees').set('Authorization', `Bearer ${token.adminA}`).send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: run, employeeCode: code, joinedOn: '2026-04-06', userId: users[who], workEmail: `${who}@exp4-${run}.test`, assignment: { locationId: ids.mum, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: manager } }).expect(201)).body.id as string;
+    const hire = async (who: Who, given: string, code: string, manager: string | null, gradeId?: string) =>
+      (await request(server()).post('/api/v1/people/employees').set('Authorization', `Bearer ${token.adminA}`).send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: run, employeeCode: code, joinedOn: '2026-04-06', userId: users[who], workEmail: `${who}@exp4-${run}.test`, assignment: { locationId: ids.mum, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: manager, ...(gradeId ? { gradeId } : {}) } }).expect(201)).body.id as string;
     emp.head = await hire('head', 'Arun', 'SF-001', null);
     emp.mgr = await hire('mgr', 'Divya', 'SF-002', emp.head);
     emp.ravi = await hire('ravi', 'Ravi', 'SF-003', emp.mgr);
-    emp.sita = await hire('sita', 'Sita', 'SF-004', emp.mgr);
+    emp.sita = await hire('sita', 'Sita', 'SF-004', emp.mgr, ids.g5);
     emp.desk = await hire('desk', 'Tara', 'SF-005', emp.head);
     emp.fin = await hire('fin', 'Meena', 'SF-006', emp.head);
     await api('adminA', 'post', '/setup/from-starter').expect(201);
@@ -233,6 +235,37 @@ describe('Expenses batch E4', () => {
     await api('adminB', 'get', `/trips/${ids.trip}`).expect(404);
     await api('adminB', 'get', `/advances/${ids.imprest}`).expect(404);
     expect((await api('adminB', 'get', '/advances?view=payout').expect(200)).body.advances).toEqual([]);
+  });
+
+  it('T2-B 67: a cap per grade refuses a bigger advance; switched off, no new advance (on its own or on a trip); my list says so', async () => {
+    type Mine = { advances: { id: string }[]; policy: { enabled: boolean; cap: string | null } | null };
+    const mine = async (who: Who) => (await api(who, 'get', '/advances').expect(200)).body as Mine;
+    const setting = (body: object) => request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token.adminA}`).send(body);
+    expect((await mine('sita')).policy).toEqual({ enabled: true, cap: null });
+    // ₹5,000 for the company, ₹10,000 for Sita's grade.
+    const g = { id: ids.g5 };
+    await setting({ key: 'expense.advance.cap', scopeType: 'tenant', value: '5000' }).expect(200);
+    await setting({ key: 'expense.advance.cap', scopeType: 'grade', scopeId: g.id, value: '10000' }).expect(200);
+    await setting({ key: 'expense.advance.cap', scopeType: 'tenant', value: '1234' }).expect(400);
+    expect((await mine('ravi')).policy).toEqual({ enabled: true, cap: '5000.00' });
+    expect((await mine('sita')).policy).toEqual({ enabled: true, cap: '10000.00' });
+    expect((await api('ravi', 'post', '/advances').send({ purpose: 'Site petty cash, Thane', amount: '5000.01' }).expect(400)).body.message).toMatch(/at most ₹5,000 for you/);
+    const ok = (await api('sita', 'post', '/advances').send({ purpose: 'Site petty cash, Thane', amount: '10000' }).expect(201)).body as { id: string };
+    const tripBody = { purpose: 'Nashik dealer visit', fromOn: shift(today, 10), toOn: shift(today, 11), estimate: '20000', advanceRequested: '6000', legs: [{ fromCity: 'Mumbai', toCity: 'Nashik', departOn: shift(today, 10), mode: 'road' }] };
+    expect((await api('ravi', 'post', '/trips').send(tripBody).expect(400)).body.message).toMatch(/at most ₹5,000/);
+    // A trip drafted under the old rules is checked again when it is sent.
+    const draft = (await api('ravi', 'post', '/trips').send({ ...tripBody, advanceRequested: '4000' }).expect(201)).body as { id: string; version: number };
+    // Switched off for the company: no new advance, on its own or on a trip; advances already asked for carry on.
+    await setting({ key: 'expense.advance.enabled', scopeType: 'tenant', value: 'off' }).expect(200);
+    expect((await mine('sita')).policy).toEqual({ enabled: false, cap: '10000.00' });
+    expect((await api('sita', 'post', '/advances').send({ purpose: 'Site petty cash, Thane', amount: '100' }).expect(400)).body.message).toBe('Your company does not give expense advances.');
+    expect((await api('ravi', 'post', `/trips/${draft.id}/submit`).send({ version: draft.version }).expect(400)).body.message).toBe('Your company does not give expense advances.');
+    // A trip with no advance still goes.
+    await api('ravi', 'post', '/trips').send({ ...tripBody, advanceRequested: '0' }).expect(201);
+    expect((await mine('sita')).advances.map((a) => a.id)).toContain(ok.id);
+    await advance('sita', ok.id);
+    // Back to the starter values so nothing else changes.
+    await inA((tx) => tx.setting.deleteMany({ where: { organizationId: org.A.id, key: { in: ['expense.advance.enabled', 'expense.advance.cap'] } } }));
   });
 
   it('EXP-05: an advance carries the company settings behind its dates (settle-by days, recovery instalments)', async () => {

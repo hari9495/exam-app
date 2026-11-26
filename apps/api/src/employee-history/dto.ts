@@ -59,6 +59,11 @@ export class AssignmentPayloadDto {
   @IsIn(SKILL_CLASSES)
   skillClass?: SkillClass | null;
 
+  /** Answer 2762: the job is a manager or supervisor role (LWF exclusions). */
+  @IsOptional()
+  @IsBoolean()
+  supervisory?: boolean;
+
   /** G1 (gap pass C1): contracted hours a week as a decimal string; null = full-time. */
   @Nullable()
   @Matches(/^\d{1,2}(\.\d{1,2})?$/, { message: 'hoursPerWeek is a number of hours, e.g. 24 or 37.5' })

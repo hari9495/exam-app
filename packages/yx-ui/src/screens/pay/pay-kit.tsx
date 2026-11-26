@@ -64,7 +64,7 @@ export function payPanel(active: PayPage, persona: PayPersona = 'pa', counts: { 
   ];
 }
 
-export type MyPayPage = 'payslips' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band' | 'documents' | 'equity' | 'fbp';
+export type MyPayPage = 'payslips' | 'salary' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band' | 'documents' | 'equity' | 'fbp';
 
 /** Employee view of Pay (Me › My pay; mobile Pay tab, APX-D §5). */
 export function myPayPanel(active: MyPayPage, show: { /** false for people on no incentive plan */ incentives?: boolean; /** false when band visibility is off */ band?: boolean } = {}): PanelSection[] {
@@ -74,6 +74,8 @@ export function myPayPanel(active: MyPayPage, show: { /** false for people on no
       label: 'My pay',
       items: [
         { label: 'Payslips', active: a('payslips') },
+        // T2-B 63 (Keka B3): the person's salary now and before.
+        { label: 'My salary', active: a('salary') },
         { label: 'Tax workspace', active: a('tax') },
         { label: 'Form 130', active: a('form130') },
         { label: 'Loans & advances', active: a('loans') },

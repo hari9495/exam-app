@@ -40,7 +40,7 @@ const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 
  */
 export const LEAVE_PAGE_KEYS: ReadonlySet<string> = new Set([
   'leave.notice_days.default', 'leave.on_behalf.approval', 'leave.send_back', 'leave.encashment.window', 'leave.year_end.encash_excess',
-  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.block_leave.days', 'leave.block_leave.next_year_days',
+  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.comp_off.auto_from_roster', 'leave.overview.no_leave_days', 'leave.block_leave.days', 'leave.block_leave.next_year_days',
   'leave.optional_holiday.prorate_on_move', 'leave.year_start_month', 'leave.block_dates.mode',
 ]);
 
@@ -233,8 +233,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'exit.notice.probation': { label: 'Notice period during probation', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '15d' },
   'exit.notice.confirmed': { label: 'Notice period once confirmed', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '30d' },
   // IT assets part 1 (answer 2712, Settings 2.8): how a person confirms an asset they receive ("E-sign" waits for the
-  // e-sign partner), and the F&F recovery of an asset not returned. "Written-down value" is the net book value on the day
-  // (answer 2713, from the category's depreciation; without one HR decides).
+  // e-sign partner), and the F&F recovery of an asset not returned. "Written-down value" is the net book value on the
+  // leaver's last working day (answers 2713, 2820, from the category's depreciation; without one HR decides).
   'asset.ack_method': { label: 'Acknowledgement', scopes: ['tenant'], dated: false, values: ['click', 'none'], default: 'click', labels: { click: 'Click to accept', none: 'None' } },
   'asset.recovery_to_fnf': { label: 'Add unreturned-asset recovery to F&F', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // IT assets answer 2714: how many days before a warranty ends its asset managers are told (once); off tells nobody.
@@ -260,6 +260,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.route.payout_above': { label: 'Expenses: pay by bank transfer instead of payroll when a claim is above', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '5000', '10000', '25000', '50000', '100000'], default: 'off' },
   'expense.payroll_cutoff_day': { label: 'Expenses: claims approved after this day of the month go to the next payroll', scopes: ['tenant', 'legal_entity'], dated: false, values: ['15', '20', '23', '25', '28'], default: '23' },
   'expense.advance.recovery_instalments': { label: 'Expenses: an overdue advance is recovered from salary in this many instalments', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
+  // T2-B 67 (Expenses A6): advances on or off, and the most one advance can be (per grade if HR wants), in the pay currency.
+  'expense.advance.enabled': { label: 'Expenses: employees can ask for advances', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Allowed', off: 'Switched off' } },
+  'expense.advance.cap': { label: 'Expenses: the most one advance can be', scopes: ['tenant', 'legal_entity', 'grade'], dated: false, values: ['off', '5000', '10000', '25000', '50000', '100000', '200000'], default: 'off', labels: { off: 'No limit' } },
   'expense.advance.settle_days': { label: 'Expenses: a trip advance is settled within this many days of the trip ending', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30', '45'], default: '15' },
   // Expenses round 2 (founder 3 Nov 2026): a rate the employee typed is flagged for the approver when it is further than
   // this from the company rate (was FX_TOLERANCE_PCT = 3 in code).
@@ -279,6 +282,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'perf.disagreement.days': { label: 'Performance: days after release to disagree with a review', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },
   'perf.anonymity.min_responses': { label: 'Performance: fewest answers before anonymous feedback is shown (never below 3)', scopes: ['tenant'], dated: false, values: ['3', '4', '5'], default: '3' },
   'perf.report.min_cell': { label: 'Performance: smallest group shown in distributions and reports', scopes: ['tenant'], dated: false, values: ['5', '10'], default: '5' },
+  // Batch T2-C item 72 (answer 2845): a company bell-curve guide that fills a new calibration session's guide (still changeable
+  // per session; a guide only, it never blocks sign-off). Off by default. Shares are 'Rating:share' pairs adding up to 100.
+  'perf.calibration.default_guide': { label: 'Performance: fill a new calibration session with the company guide', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'perf.calibration.guide_shares': { label: 'Performance: the company calibration guide (rating and share)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 400 }, default: 'Outstanding:10,Exceeds:20,Meets:55,Partly meets:10,Needs improvement:5' },
+  'perf.calibration.guide_tolerance': { label: 'Performance: the company guide allows a band to differ by (points)', scopes: ['tenant'], dated: false, values: ['5', '10', '15', '20'], default: '10' },
   'perf.comp.budget_overrun': { label: 'Performance: a comp proposal over budget', scopes: ['tenant', 'legal_entity'], dated: false, values: ['extra_approval', 'block'], default: 'extra_approval' },
   'perf.pay_band.visible': { label: 'Performance: employees see their own pay band', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   'perf.pay_equity.flag_pct': { label: 'Performance: flag pay below the grade-and-role median by more than (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
@@ -327,6 +335,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.internal.after_probation': { label: 'Hiring: only people past probation can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'hiring.internal.months_in_role': { label: 'Hiring: months in their current role before someone can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['0', '3', '6', '9', '12', '18', '24'], default: '12' },
   'hiring.internal.tell_manager': { label: 'Hiring: the current manager is told about an internal application', scopes: ['tenant'], dated: false, values: ['on_apply', 'at_offer'], default: 'on_apply' },
+  // Answer 2761: off = the manager is told (above); on = the manager is asked to release the person before any offer, through
+  // the approvals engine; no answer in 5 working days goes to HR.
+  'hiring.internal.manager_release': { label: 'Hiring: the current manager approves releasing someone who applies for an internal job', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
   // Settings S-8, 5.4 Notifications (answer 1323): the company switches for the channels that exist (in-app and email).
   // Notification emails can be turned off company-wide (the in-app bell always works); the daily digest goes out at
@@ -573,6 +584,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.block_dates.mode': { label: 'Planned leave on company block dates', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['block', 'warn'], default: 'block' },
   // TIM-22: comp-off for work on a weekly off or holiday is claimed within N days and used within N days of the work.
   'leave.comp_off.claim_within_days': { label: 'Claim comp-off within (days of the work)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['7', '15', '30', '45', '60'], default: '30' },
+  // Answer 2757: off by default; the claim and the manager's approval stay either way.
+  'leave.comp_off.auto_from_roster': { label: 'Credit comp-off automatically when the roster puts someone to work on a weekly off or holiday and they work it', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // Answer 2759: the manager's "No leave taken" card counts people with no approved leave in this many days.
+  'leave.overview.no_leave_days': { label: 'Team leave: "no leave taken" means none approved in the last (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '120', '180'], default: '90' },
   'leave.comp_off.expiry_days': { label: 'Comp-off must be used within (days of the work)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['30', '45', '60', '90', '180', '365', 'never'], default: '60' },
   // TIM-24: encashment while in service: the month the window is open (off: only at exit), the most days a year and
   // the days that must stay after encashing. The daily rate follows payroll.leave_encashment_basis.
@@ -698,6 +713,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // items always follow the legal basis whatever is chosen here.
   // M03 batch 5c (PAY-3.08, 3.12, §9.4): variance threshold, protected net, net rounding, standard hours, one-time review.
   // Enterprise E4 (O20-O22, answers 2653-2655): accounting and costing, on Settings 4.12.
+  // Enterprise E3 (answer 2651): a back-dated salary change or joining date drafts arrears worksheets by itself.
+  'payroll.arrears.auto_draft': { label: 'Draft arrears by themselves after a back-dated salary change or joining date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'On: draft them; payroll still checks and approves each one', off: 'Off: payroll drafts them by hand' } },
   'payroll.journal.suspense': { label: 'Pay lines with no ledger account go to the suspense account', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'On: park them there and let the journal go to the books', off: 'Off: refuse the export until every line is mapped' } },
   'payroll.costing.split': { label: 'Split each person\'s payroll cost by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['cost_centre', 'project_hours'], default: 'cost_centre', labels: { cost_centre: 'Cost centre (from the job)', project_hours: 'Project hours (approved timesheets, else allocations)' } },
   'payroll.journal.format': { label: 'Journal export format', scopes: ['tenant', 'legal_entity'], dated: false, values: ['csv', 'tally', 'zoho', 'sap', 'oracle'], default: 'csv', labels: { csv: 'CSV', tally: 'Tally (XML)', zoho: 'Zoho Books (CSV)', sap: 'SAP (flat file)', oracle: 'Oracle GL (interface CSV)' } },

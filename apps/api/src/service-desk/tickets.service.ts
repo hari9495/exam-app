@@ -1370,19 +1370,31 @@ export class TicketsService {
   private async costsView(tx: Tx, a: DeskActor, t: Ticket) {
     const org = a.ctx.organizationId;
     const time = await tx.sdTimeEntry.findMany({ where: { organizationId: org, ticketId: t.id }, select: { minutes: true, hourlyRate: true, departmentId: true } });
-    const lines = await tx.sdCostLine.findMany({ where: { organizationId: org, ticketId: t.id, removedAt: null }, orderBy: { createdAt: 'asc' } });
+    // 2811: removed lines stay listed (struck through, with who and why); only the kept ones count.
+    const all = await tx.sdCostLine.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { createdAt: 'asc' } });
+    const lines = all.filter((l) => !l.removedAt);
     const group = t.groupId ? await tx.sdGroup.findFirst({ where: { organizationId: org, id: t.groupId }, select: { hourlyRate: true } }) : null;
     const timeCost = time.reduce((s, e) => (e.hourlyRate ? s.add(e.hourlyRate.mul(e.minutes).div(60)) : s), new Prisma.Decimal(0)).toDecimalPlaces(2);
     const linesTotal = lines.reduce((s, l) => s.add(l.amount), new Prisma.Decimal(0));
     const deptIds = [...new Set([...time.map((e) => e.departmentId), ...lines.map((l) => l.departmentId)].filter((x): x is string => Boolean(x)))];
     const depts = deptIds.length ? await tx.department.findMany({ where: { organizationId: org, id: { in: deptIds } }, select: { id: true, name: true } }) : [];
     const lead = a.roles.get(t.deskId) === 'lead';
-    const users = await this.userNames(tx, org, lines.map((l) => l.createdBy));
+    const users = await this.userNames(tx, org, all.flatMap((l) => (l.removedBy ? [l.createdBy, l.removedBy] : [l.createdBy])));
     return {
       hourlyRate: group?.hourlyRate?.toFixed(2) ?? null,
       timeCost: timeCost.toFixed(2),
       uncostedMinutes: time.filter((e) => !e.hourlyRate).reduce((s, e) => s + e.minutes, 0),
-      lines: lines.map((l) => ({ id: l.id, kind: l.kind as 'fixed' | 'material', description: l.description, amount: l.amount.toFixed(2), costOn: l.costOn.toISOString().slice(0, 10), who: users.get(l.createdBy) ?? 'Someone', canRemove: l.createdBy === a.userId || lead })),
+      openedOn: todayIst(t.createdAt),
+      lines: all.map((l) => ({
+        id: l.id,
+        kind: l.kind as 'fixed' | 'material',
+        description: l.description,
+        amount: l.amount.toFixed(2),
+        costOn: l.costOn.toISOString().slice(0, 10),
+        who: users.get(l.createdBy) ?? 'Someone',
+        canRemove: !l.removedAt && (l.createdBy === a.userId || lead),
+        removed: l.removedAt ? { by: (l.removedBy && users.get(l.removedBy)) || 'Someone', on: todayIst(l.removedAt), reason: l.removeReason ?? '' } : null,
+      })),
       total: timeCost.add(linesTotal).toFixed(2),
       departments: depts.map((d) => d.name),
     };
@@ -1397,6 +1409,8 @@ export class TicketsService {
       if (desk?.kind !== 'it') throw new BadRequestException('Costs are recorded on IT desks.');
       const costOn = dto.costOn ?? todayIst();
       if (costOn > todayIst()) throw new BadRequestException('A cost is recorded for today or earlier.');
+      // 2810: not before the ticket was opened (IST day).
+      if (costOn < todayIst(t.createdAt)) throw new BadRequestException(`A cost cannot be dated before the ticket was opened (${todayIst(t.createdAt)}).`);
       const charge = await this.chargeOf(tx, a.ctx.organizationId, t, costOn);
       const line = await tx.sdCostLine.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, kind: dto.kind, description: dto.description.trim(), amount: dto.amount, costOn: day(costOn), departmentId: charge.departmentId, createdBy: a.userId } });
       await audit(tx, a, 'desk.ticket.cost_added', 'sd_ticket', t.id, { lineId: line.id, kind: dto.kind, amount: dto.amount, costOn });

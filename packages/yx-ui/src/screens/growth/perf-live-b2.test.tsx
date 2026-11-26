@@ -416,3 +416,38 @@ describe('PRF-10 market data upload (answer 12)', () => {
   });
 });
 
+
+// T2-C item 70 (answer 2843): 1:1 agenda templates.
+describe('1:1 agenda templates (70)', () => {
+  const ue = userEvent.setup({ pointerEventsCheck: 0 });
+  const templates = [{ value: 't1', label: 'Weekly check-in (company)' }];
+  it('picking a template fills the agenda; the manager saves the agenda as their own template with a name', async () => {
+    const live = oneOnOnes({ templates, onUseTemplate: ok(), onSaveTemplate: ok() });
+    render(<OneOnOneScreen persona="mgr" items={ONE_ON_ONES} openId="o1" live={live} />);
+    const use = screen.getByRole('button', { name: 'Use template' });
+    expect(use).toBeDisabled();
+    await ue.click(screen.getByRole('combobox', { name: 'Agenda template' }));
+    await ue.click(screen.getByRole('option', { name: 'Weekly check-in (company)' }));
+    await ue.click(screen.getByRole('button', { name: 'Use template' }));
+    await waitFor(() => expect(live.onUseTemplate).toHaveBeenCalledWith('t1'));
+    await ue.click(screen.getByRole('button', { name: 'Save agenda as my template' }));
+    const d = screen.getByRole('dialog', { name: 'Save as my 1:1 template' });
+    await ue.click(within(d).getByRole('button', { name: 'Save template' }));
+    expect(within(d).getByText('Name the template.')).toBeInTheDocument();
+    expect(live.onSaveTemplate).not.toHaveBeenCalled();
+    await ue.type(within(d).getByRole('textbox', { name: /Template name/ }), 'Fortnightly');
+    await ue.click(within(d).getByRole('button', { name: 'Save template' }));
+    await waitFor(() => expect(live.onSaveTemplate).toHaveBeenCalledWith('Fortnightly', ONE_ON_ONES[0]!.agenda.map((a) => a.text)));
+  });
+
+  it('negative: the employee cannot save a template; a held 1:1 offers no templates', () => {
+    const live = oneOnOnes({ templates, onUseTemplate: ok(), onSaveTemplate: ok() });
+    const { unmount } = render(<OneOnOneScreen persona="emp" items={ONE_ON_ONES} openId="o1" live={live} />);
+    expect(screen.getByRole('combobox', { name: 'Agenda template' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save agenda as my template' })).toBeNull();
+    unmount();
+    const held = { ...ONE_ON_ONES[0]!, status: 'held' as const };
+    render(<OneOnOneScreen persona="mgr" items={[held]} openId="o1" live={{ ...live, record: held }} />);
+    expect(screen.queryByRole('combobox', { name: 'Agenda template' })).toBeNull();
+  });
+});

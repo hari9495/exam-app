@@ -414,6 +414,9 @@ export interface LeaveRules {
   maxRequestsPerMonth?: number | null;
   minGapDays?: number | null;
   allowedWeekdays?: number[] | null;
+  /** Answers 2756 / 2758: most days in a row (touching requests joined across weekly offs and holidays); types it can't touch. */
+  maxConsecutiveDays?: number | null;
+  notWithTypes?: string[] | null;
   /** TIM-27 Year end: cash-in limits and payout (null: the company's). */
   encashMaxDays?: number | null;
   encashMinLeft?: number | null;
@@ -448,6 +451,19 @@ export interface LeaveTypeRow {
   statutory?: StatutoryMinimum | null;
   /** Answer 2477: the dated versions of the rules and pay, newest first. */
   versions?: { validFrom: string; paid: boolean; rules: LeaveRules }[];
+  /** Answer 2754: the starter it was added from (null: made by HR), and the policy line it suggests. */
+  starter?: string | null;
+  suggestedLine?: Omit<PolicyLine, 'leaveTypeId'> | null;
+}
+
+/** Answer 2754: one starter leave type HR can add in one click. */
+export interface LeaveStarter {
+  key: string;
+  code: string;
+  name: string;
+  kind: string;
+  summary: string;
+  added: boolean;
 }
 
 export interface PolicyLine {
@@ -459,6 +475,8 @@ export interface PolicyLine {
   carryForwardMax: number | null;
   /** Answer 2342: the most days held at any time (null: no ceiling). */
   maxBalance?: number | null;
+  /** Answer 2755: service bands (whole years from joining); each changes the yearly days and the ceiling only. */
+  bands?: { fromYears: number; annualDays: number; maxBalance?: number | null }[];
 }
 
 export interface LocationRule {
@@ -478,6 +496,8 @@ export interface TimeSetup {
   today: string;
   /** HLP-12 answer 62: the injury leave type code (company setting) and whether the company has that type yet. */
   injuryLeave?: { code: string; missing: boolean };
+  /** Answer 2754: the starter gallery. */
+  starters?: LeaveStarter[];
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
   calendars: {
@@ -776,6 +796,8 @@ export interface MyTimesheet {
   /** `leaveRequested` (batch D A8): leave asked for that day, not decided yet. */
   days: { on: string; holiday: string | null; leave: string | null; leaveRequested?: boolean; locked: boolean }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
+  /** T2-D 62: what happened to the week, newest first (from the audit log). */
+  activity?: TimesheetActivity[];
   /** Answer 1787: the company's comment rule, per day with hours (absent from an older API: none asked). */
   noteRule?: { required: boolean; minWords: number };
 }
@@ -925,6 +947,17 @@ export interface TeamLeaveHome {
   /** Other approvals waiting for me (attendance, overtime, comp-off …). */
   otherWaiting: number;
   away: { employeeId: string; name: string; type: string; from: string; to: string }[];
+  /** Answer 2759: overview cards, counts and names only (never a leave type). */
+  cards?: { unplanned: { count: number; people: { employeeId: string; name: string; requests: number }[] }; noLeave: { days: number; count: number; people: { employeeId: string; name: string }[] } } | null;
+}
+
+/** Answer 2760: GET /time/me/peers-away. */
+export interface PeersAway {
+  from: string;
+  to: string;
+  /** How many peers I have (0: no one else has my manager). */
+  peers: number;
+  days: { on: string; names: string[] }[];
 }
 
 /** TIM-19 Manager: GET /time/requests/:id as someone else's request (team availability, balance after, my task). */
@@ -1221,4 +1254,27 @@ export interface LateMarks {
     /** Answer 2527: a manager's request to waive it (HR's list: open ones; the manager's own list: the latest). */
     request?: { id: string; reason: string; by: string; at: string; status: 'pending' | 'waived' | 'declined'; declineReason: string | null } | null;
   }[];
+}
+
+/** T2-D 62: one event on my week: 'timesheet.submitted' | 'timesheet.withdrawn' | 'timesheet.approved' | 'timesheet.rejected' | 'timesheet_line.approved' | 'timesheet_line.reduced' | 'timesheet_line.rejected'. */
+export interface TimesheetActivity {
+  action: string;
+  at: string;
+  by: string | null;
+  projectId: string | null;
+  task: string | null;
+  reason: string | null;
+}
+
+/** T2-D 55: a project I am or was on, with my allocations and my hours (GET /time/me/timesheet/projects). */
+export interface MyProject {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  manager: string | null;
+  current: boolean;
+  allocations: { role: string | null; fromOn: string; toOn: string | null; percent: number; tentative: boolean }[];
+  bookedMinutes: number;
+  approvedMinutes: number;
 }

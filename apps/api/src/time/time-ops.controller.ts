@@ -275,6 +275,12 @@ export class TimeOpsController {
     return this.timesheets.nudge(ctx);
   }
 
+  // T2-D 55: the projects I am or was on, with my allocations and my hours booked and approved.
+  @Get('me/timesheet/projects')
+  myProjects(@CurrentTenant() ctx: TenantContext) {
+    return this.timesheets.myProjects(ctx);
+  }
+
   // Batch D A5 (answer 2534): my past weeks never sent (none saved, a draft, or sent back); `weeks` up to 52 ("Show older").
   @Get('me/timesheet/not-sent')
   myNotSent(@CurrentTenant() ctx: TenantContext, @Query() q: NotSentQueryDto) {
