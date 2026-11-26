@@ -1265,3 +1265,16 @@ export interface TimesheetActivity {
   task: string | null;
   reason: string | null;
 }
+
+/** T2-D 55: a project I am or was on, with my allocations and my hours (GET /time/me/timesheet/projects). */
+export interface MyProject {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  manager: string | null;
+  current: boolean;
+  allocations: { role: string | null; fromOn: string; toOn: string | null; percent: number; tentative: boolean }[];
+  bookedMinutes: number;
+  approvedMinutes: number;
+}

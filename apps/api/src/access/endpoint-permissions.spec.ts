@@ -39,6 +39,7 @@ import { LearningController } from '../learning/learning.controller';
 import { LibraryController } from '../library/library.controller';
 import { ApprovalPoliciesController } from '../workflow/approval-policies.controller';
 import { TimeController } from '../time/time.controller';
+import { TimeOpsController } from '../time/time-ops.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -183,5 +184,13 @@ describe('time and leave keys (T2-A)', () => {
   it("peers away is the caller's own (no key; the service reads only the caller's peers)", () => {
     expect(keys('myPeersAway')).toBeUndefined();
     expect(Reflect.getMetadata(PATH_METADATA, (TimeController.prototype as unknown as Record<string, object>).myPeersAway)).toBe('me/peers-away');
+  });
+});
+
+describe('timesheet routes (T2-D)', () => {
+  it("my projects are the caller's own (no key; the service reads only the caller's allocations and weeks)", () => {
+    const m = (TimeOpsController.prototype as unknown as Record<string, object>).myProjects;
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, m)).toBeUndefined();
+    expect(Reflect.getMetadata(PATH_METADATA, m)).toBe('me/timesheet/projects');
   });
 });

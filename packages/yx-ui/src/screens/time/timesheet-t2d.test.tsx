@@ -1,9 +1,28 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { TimesheetActivityCard } from './ops';
-import { T2D_ACTIVITY, T2D_PROJECTS } from './timesheet-t2d-samples';
+import { MyProjectsTable, TimesheetActivityCard } from './ops';
+import { T2D_ACTIVITY, T2D_MY_PROJECTS, T2D_PROJECTS } from './timesheet-t2d-samples';
 
-// T2-D 62: the week's Activity card.
+// T2-D 55 (My projects tab) and 62 (the week's Activity card).
+describe('T2-D 55 My projects', () => {
+  it('lists the project I am on first, with my allocation, the manager and my hours booked and approved', () => {
+    render(<MyProjectsTable projects={T2D_MY_PROJECTS} />);
+    const rows = within(screen.getByRole('table', { name: 'My projects' })).getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('NRP · Nilgiri Retail web rebuild');
+    expect(rows[0]).toHaveTextContent('Developer, 80% from 1 Sep 2026');
+    expect(rows[0]).toHaveTextContent('On it now');
+    expect(rows[0]).toHaveTextContent('Suresh Iyer');
+    expect(rows[0]).toHaveTextContent('420 h');
+    expect(rows[0]).toHaveTextContent('380 h');
+    expect(rows[1]).toHaveTextContent('Project closed');
+  });
+
+  it('negative: no projects says so, with no table', () => {
+    render(<MyProjectsTable projects={[]} />);
+    expect(screen.getByText('No projects yet.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+});
 
 describe('T2-D 62 Activity', () => {
   it('shows each event newest first with who, and the reason for a reduced line', () => {

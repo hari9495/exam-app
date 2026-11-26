@@ -18,6 +18,7 @@ import { useNarrow } from '../../components/stepper';
 import { Tooltip } from '../../components/tooltip';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { FilterBar } from '../../components/filters';
 import { Select } from '../../components/select';
 import { BarChart, LineChart } from '../../components/charts';
@@ -29,7 +30,7 @@ import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TEAM, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
 import { ApplyLeavePanel, type LiveLeaveHome } from './leave';
-import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyTimesheet, TimesheetActivity, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyProject, MyTimesheet, TimesheetActivity, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
@@ -636,6 +637,8 @@ export interface LiveTimesheet {
   leave?: { data: MyLeave | null; live: LiveLeaveHome };
   /** Batch D A5: my weeks not sent (GET /time/me/timesheet/not-sent); `onShowOlder` asks for a year. */
   notSent?: { state: LoadState; data: { weeks: NotSentWeek[] } | null; onShowOlder?: () => void };
+  /** T2-D 55: the projects I am or was on, with my hours (GET /time/me/timesheet/projects). */
+  myProjects?: { state: LoadState; data: MyProject[] | null; onRetry?: () => void };
 }
 
 const ACTIVITY_TEXT: Record<string, string> = {
@@ -668,6 +671,29 @@ export function TimesheetActivityCard({ activity, projects }: { activity: Timesh
         ))}
       </ul>
     </Card>
+  );
+}
+
+const hoursText = (m: number) => `${Math.round((m / 60) * 100) / 100} h`;
+
+/** T2-D 55 (Keka A10 / A11): my projects, current first, with my allocation and my hours booked and approved. */
+export function MyProjectsTable({ projects }: { projects: MyProject[] }) {
+  const rows = [...projects].sort((a, b) => Number(b.current) - Number(a.current) || a.code.localeCompare(b.code));
+  if (!rows.length) return <EmptyState compact title="No projects yet." description="Projects you are allocated to show here with your hours." />;
+  return (
+    <PlainTable<MyProject>
+      label="My projects"
+      columns={[
+        { key: 'project', header: 'Project', cell: (p) => `${p.code} · ${p.name}`, rowHeader: true },
+        { key: 'me', header: 'My allocation', cell: (p) => p.allocations.map((a) => `${a.role ? `${a.role}, ` : ''}${a.percent}% from ${isoDate(a.fromOn)}${a.toOn ? ` to ${isoDate(a.toOn)}` : ''}${a.tentative ? ' (tentative)' : ''}`).join('; ') || 'Not allocated' },
+        { key: 'status', header: 'Status', cell: (p) => <Badge tone={p.current ? 'success' : 'neutral'}>{p.current ? 'On it now' : p.status === 'active' ? 'Not on it now' : 'Project ' + p.status}</Badge> },
+        { key: 'pm', header: 'Project manager', cell: (p) => p.manager ?? '—' },
+        { key: 'booked', header: 'My hours booked', cell: (p) => hoursText(p.bookedMinutes), num: true },
+        { key: 'approved', header: 'Approved', cell: (p) => hoursText(p.approvedMinutes), num: true },
+      ]}
+      rows={rows}
+      getRowId={(p) => p.id}
+    />
   );
 }
 
@@ -808,7 +834,15 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             <TabsTrigger value="week">Week</TabsTrigger>
             <TabsTrigger value="summary">Time summary</TabsTrigger>
             {live.notSent && <TabsTrigger value="not-sent">{`Not sent${live.notSent.data?.weeks.length ? ` (${live.notSent.data.weeks.length})` : ''}`}</TabsTrigger>}
+            {live.myProjects && <TabsTrigger value="projects">My projects</TabsTrigger>}
           </TabsList>
+          {live.myProjects && (
+            <TabsContent value="projects">
+              <LiveGate state={live.myProjects.state} onRetry={live.myProjects.onRetry} what="your projects">
+                {live.myProjects.data && <MyProjectsTable projects={live.myProjects.data} />}
+              </LiveGate>
+            </TabsContent>
+          )}
           <TabsContent value="week">{gate}</TabsContent>
           {live.notSent && (
             <TabsContent value="not-sent">

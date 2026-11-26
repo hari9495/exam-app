@@ -119,6 +119,40 @@ export class TimesheetService implements OnModuleInit {
   }
 
   /**
+   * T2-D 55 (Keka A10 / A11): the projects I am or was allocated to, with my allocations and my hours booked and approved
+   * on each (all my weeks). My own record only.
+   */
+  myProjects(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await myEmployeeId(tx, org, c.userId);
+      const allocations = await tx.projectAllocation.findMany({ where: { organizationId: org, employeeId: me }, orderBy: { fromOn: 'desc' } });
+      const sheets = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: me }, select: { id: true } });
+      const lines = sheets.length ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: { in: sheets.map((x) => x.id) } } }) : [];
+      const ids = [...new Set([...allocations.map((a) => a.projectId), ...lines.map((l) => l.projectId)])];
+      const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, id: { in: ids } }, orderBy: { code: 'asc' } });
+      const managers = await tx.user.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+      const sum = (ms: number[]) => ms.reduce((a, b) => a + b, 0);
+      const today = todayIst();
+      return projects.map((p) => {
+        const mine = lines.filter((l) => l.projectId === p.id);
+        const allocs = allocations.filter((a) => a.projectId === p.id);
+        return {
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          status: p.status,
+          manager: managers.find((m) => m.id === p.managerUserId)?.name ?? null,
+          current: allocs.some((a) => dateOf(a.fromOn) <= today && (!a.toOn || dateOf(a.toOn) >= today)),
+          allocations: allocs.map((a) => ({ role: a.role, fromOn: dateOf(a.fromOn), toOn: a.toOn ? dateOf(a.toOn) : null, percent: a.percent, tentative: a.tentative })),
+          bookedMinutes: sum(mine.map((l) => sum(l.minutes))),
+          approvedMinutes: sum(mine.filter((l) => l.status === 'approved' || l.status === 'reduced').map((l) => sum(lineApproved(l)))),
+        };
+      });
+    });
+  }
+
+  /**
    * Keka ideas (2026-11), Time summary: my weeks of a year with their hours and status (weeks starting that year), and the
    * years I have timesheets in. My own record only.
    */
