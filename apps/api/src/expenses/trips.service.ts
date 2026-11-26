@@ -183,10 +183,25 @@ export class ExpenseTripsService implements OnModuleInit {
 
   private async currentJob(tx: Tx, org: string, employeeId: string) {
     const today = asDate(todayIst());
-    const job = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, legalEntityId: true } });
+    const job = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, legalEntityId: true, gradeId: true } });
     if (!job) throw new ForbiddenException('You have no current job.');
     const entity = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: job.legalEntityId }, select: { currency: true } });
     return { ...job, currency: entity.currency };
+  }
+
+  /** T2-B 67 (A6): whether advances are on for the person's entity, and the most one advance can be for their grade. */
+  private async advancePolicy(tx: Tx, c: CompanyContext, job: { legalEntityId: string; gradeId: string | null }) {
+    const enabled = (await settingFor(tx, c, 'expense.advance.enabled', { legalEntityId: job.legalEntityId })) === 'on';
+    const cap = await settingFor(tx, c, 'expense.advance.cap', { legalEntityId: job.legalEntityId, gradeId: job.gradeId });
+    return { enabled, cap: cap === 'off' ? null : D(cap).toFixed(2) };
+  }
+
+  /** Refuses a new advance when advances are off, or one above the cap (pay currency; a forex advance has no cap, 2861). */
+  private async checkAdvance(tx: Tx, c: CompanyContext, job: { legalEntityId: string; gradeId: string | null }, amount: Prisma.Decimal, forex: boolean) {
+    if (amount.lte(0)) return;
+    const p = await this.advancePolicy(tx, c, job);
+    if (!p.enabled) throw new BadRequestException('Your company does not give expense advances.');
+    if (p.cap && !forex && amount.gt(p.cap)) throw new BadRequestException(`An advance can be at most ₹${Number(p.cap).toLocaleString('en-IN')} for you (your company's limit).`);
   }
 
   private async names(tx: Tx, org: string, employeeIds: string[]) {
@@ -236,6 +251,7 @@ export class ExpenseTripsService implements OnModuleInit {
       const me = await this.myEmployee(tx, org, v);
       if (!me) throw new ForbiddenException('Only employees can request trips.');
       const job = await this.currentJob(tx, org, me.id);
+      await this.checkAdvance(tx, c, job, D(dto.advanceRequested ?? '0'), Boolean(dto.advanceCurrency && dto.advanceCurrency !== job.currency));
       const trip = await tx.trip.create({ data: { organizationId: org, employeeId: me.id, employmentId: job.employmentId, legalEntityId: job.legalEntityId, purpose: dto.purpose, fromOn: asDate(dto.fromOn), toOn: asDate(dto.toOn), currency: job.currency, estimate: dto.estimate, advanceRequested: dto.advanceRequested ?? '0', advanceCurrency: dto.advanceCurrency && dto.advanceCurrency !== job.currency ? dto.advanceCurrency : null, bookingNeeded: Boolean(dto.bookingNeeded), createdBy: v.userId } });
       await this.writeLegs(tx, org, trip.id, dto);
       await audit(tx, c, 'expense.trip.created', 'trip', trip.id, {});
@@ -251,6 +267,7 @@ export class ExpenseTripsService implements OnModuleInit {
       const { trip, a } = await this.tripOr404(tx, c, v, id);
       if (!a.own) throw new ForbiddenException('Only the traveller can change the trip.');
       if (trip.status !== 'draft') throw new ConflictException('Only a draft trip can be changed.');
+      await this.checkAdvance(tx, c, await this.currentJob(tx, c.organizationId, trip.employeeId), D(dto.advanceRequested ?? '0'), Boolean(dto.advanceCurrency && dto.advanceCurrency !== trip.currency));
       const n = await tx.trip.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version ?? -1 }, data: { purpose: dto.purpose, fromOn: asDate(dto.fromOn), toOn: asDate(dto.toOn), estimate: dto.estimate, advanceRequested: dto.advanceRequested ?? '0', advanceCurrency: dto.advanceCurrency && dto.advanceCurrency !== trip.currency ? dto.advanceCurrency : null, bookingNeeded: Boolean(dto.bookingNeeded), version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this trip. Reload it.');
       await this.writeLegs(tx, c.organizationId, id, dto);
@@ -343,6 +360,7 @@ export class ExpenseTripsService implements OnModuleInit {
       const { trip, a } = await this.tripOr404(tx, c, v, id);
       if (!a.own || trip.status !== 'draft') throw new ConflictException('Only the traveller can send a draft trip.');
       if (trip.version !== version) throw new ConflictException('Someone else changed this trip. Reload it.');
+      await this.checkAdvance(tx, c, await this.currentJob(tx, org, trip.employeeId), trip.advanceRequested, Boolean(trip.advanceCurrency));
       const today = todayIst();
       const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate', selfApproval: 'never' }];
       if (trip.bookingNeeded) {
@@ -522,6 +540,7 @@ export class ExpenseTripsService implements OnModuleInit {
       if (!me) throw new ForbiddenException('Only employees can ask for an advance.');
       if (D(dto.amount).lte(0)) throw new BadRequestException('Enter the amount.');
       const job = await this.currentJob(tx, org, me.id);
+      await this.checkAdvance(tx, c, job, D(dto.amount), false);
       const adv = await tx.expenseAdvance.create({ data: { organizationId: org, employeeId: me.id, employmentId: job.employmentId, legalEntityId: job.legalEntityId, kind: 'imprest', purpose: dto.purpose, currency: job.currency, requested: dto.amount } });
       const today = todayIst();
       // §9.4: the manager, then finance (who will pay it); approve-with-changes on the amount only.
@@ -653,9 +672,13 @@ export class ExpenseTripsService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       let rows: Advance[] = [];
+      let policy: { enabled: boolean; cap: string | null } | null = null;
       if (view === 'mine') {
         const me = await this.myEmployee(tx, org, v);
         rows = me ? await tx.expenseAdvance.findMany({ where: { organizationId: org, employeeId: me.id }, orderBy: { createdAt: 'desc' }, take: 200 }) : [];
+        // T2-B 67: what the person may ask for now (no current job: nothing to ask).
+        const job = me ? await this.currentJob(tx, org, me.id).catch(() => null) : null;
+        if (job) policy = await this.advancePolicy(tx, c, job);
       } else if (view === 'approvals') {
         const tasks = v.userId ? await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: v.userId, status: 'open' }, select: { requestId: true } }) : [];
         rows = tasks.length ? await tx.expenseAdvance.findMany({ where: { organizationId: org, status: 'requested', wfRequestId: { in: tasks.map((t) => t.requestId) } }, orderBy: { createdAt: 'asc' }, take: 200 }) : [];
@@ -672,7 +695,7 @@ export class ExpenseTripsService implements OnModuleInit {
       const people = await this.names(tx, org, rows.map((r) => r.employeeId));
       const out = [];
       for (const r of rows) out.push({ ...(await this.advanceSummary(tx, org, r)), person: people.get(r.employeeId) ?? '' });
-      return { advances: out };
+      return { advances: out, ...(view === 'mine' ? { policy } : {}) };
     });
   }
 

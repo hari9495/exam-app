@@ -260,6 +260,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.route.payout_above': { label: 'Expenses: pay by bank transfer instead of payroll when a claim is above', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '5000', '10000', '25000', '50000', '100000'], default: 'off' },
   'expense.payroll_cutoff_day': { label: 'Expenses: claims approved after this day of the month go to the next payroll', scopes: ['tenant', 'legal_entity'], dated: false, values: ['15', '20', '23', '25', '28'], default: '23' },
   'expense.advance.recovery_instalments': { label: 'Expenses: an overdue advance is recovered from salary in this many instalments', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
+  // T2-B 67 (Expenses A6): advances on or off, and the most one advance can be (per grade if HR wants), in the pay currency.
+  'expense.advance.enabled': { label: 'Expenses: employees can ask for advances', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'Allowed', off: 'Switched off' } },
+  'expense.advance.cap': { label: 'Expenses: the most one advance can be', scopes: ['tenant', 'legal_entity', 'grade'], dated: false, values: ['off', '5000', '10000', '25000', '50000', '100000', '200000'], default: 'off', labels: { off: 'No limit' } },
   'expense.advance.settle_days': { label: 'Expenses: a trip advance is settled within this many days of the trip ending', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30', '45'], default: '15' },
   // Expenses round 2 (founder 3 Nov 2026): a rate the employee typed is flagged for the approver when it is further than
   // this from the company rate (was FX_TOLERANCE_PCT = 3 in code).

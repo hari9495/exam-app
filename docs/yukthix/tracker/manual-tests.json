@@ -29166,5 +29166,27 @@
                               "Screens/Ops/EXP-02 · Claim composer › AddLineProject"
                     ],
                     "note": "T2-B item 66. Positive and negative: kit expenses-live.test.tsx (two T2-B 66 tests). No API change."
+          },
+          {
+                    "id": "MT-T2B-67-ADVANCE-RULES",
+                    "area": "T2-B 67 (Expenses A6): advances on or off, and the most one advance can be (per grade)",
+                    "screen": "Settings › Expenses & travel (4.8) › Advances, travel and cards; Expenses › Advances (EXP-05); Expenses › Trips (trip request)",
+                    "url": "http://localhost:3000/yx/expenses/advances",
+                    "account": "admin@demo-org.test (company admin, expense.policy.manage) for the settings; panel@demo-org.test (employee) on one grade; a second employee on another grade.",
+                    "steps": [
+                              "As the admin open Settings › Expenses & travel. Under 'Advances, travel and cards' find 'Expenses: employees can ask for advances' (Allowed) and 'Expenses: the most one advance can be' (No limit). Set the most to 5000 for the company, then with 'Different for' set 25000 for the employee's grade. Save.",
+                              "As the employee open Expenses › Advances and press Request an advance. Choose Standing imprest, type 25000 and a purpose; send.",
+                              "Negative: request again with 25001.",
+                              "Negative: as the second employee (other grade) request 5001; then request a trip with an advance of 6000.",
+                              "As the admin switch 'employees can ask for advances' to Switched off. As the employee open Expenses › Advances.",
+                              "Negative: as the employee send a draft trip that asks for an advance; then request a trip with no advance.",
+                              "Set both settings back (Allowed, No limit)."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast; the grade value shows under 'Different for'. Step 2: the Amount field says 'At most ₹25,000.'; toast 'Advance sent for approval'. Step 3: 'An advance can be at most ₹25,000.' and nothing is sent. Step 4: 'An advance can be at most ₹5,000 for you (your company's limit).' on the advance and on the trip. Step 5: the notice 'Your company does not give expense advances' and no Request an advance button; advances already given are still listed and settle as usual. Step 6: 'Your company does not give expense advances.'; the trip with no advance is saved. Step 7: Request an advance shows again with no limit.",
+                    "stories": [
+                              "Screens/Expenses/EXP-05 · Advance card + request › Advances list · switched off by the company (T2-B 67)",
+                              "Screens/Expenses/EXP-05 · Advance card + request › Advances list · with the most one advance can be (T2-B 67)"
+                    ],
+                    "note": "T2-B item 67, answers 2861 (cap per advance, pay currency; a forex trip advance has no cap) and 2862 (off: no new advance, old ones settle). Settings expense.advance.enabled (default on) and expense.advance.cap (default off; company, legal entity or grade). Positive and negative: API expenses-e4 e2e (T2-B 67 test); kit expenses-travel-live.test.tsx (two T2-B 67 tests)."
           }
 ]
