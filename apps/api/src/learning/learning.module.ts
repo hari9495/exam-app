@@ -11,13 +11,14 @@ import { LearningReportsService } from './learning-reports.service';
 import { LearningSessionsService } from './learning-sessions.service';
 import { LearningFeedbackService } from './learning-feedback.service';
 import { LearningSkillsService } from './learning-skills.service';
+import { ScormContentController } from './scorm-content.controller';
 
 // Learning, the core (LRN-01 My learning and catalogue, LRN-02 player, LRN-03 course builder, LRN-07 assignment
 // rules, LRN-08 compliance, the manager's team view and the PPL-03 Learning tab). The daily check (rules, renewals,
-// reminders and escalation) runs on the scheduled sweeps.
+// reminders and escalation) runs on the scheduled sweeps. SCORM package files are served on their own origin (2781).
 @Module({
   imports: [AuthModule, CryptoModule, DocumentsModule, NotificationsModule, WorkflowModule],
-  controllers: [LearningController],
+  controllers: [LearningController, ScormContentController],
   providers: [LearningService, LearningAssignService, LearningReportsService, LearningSessionsService, LearningFeedbackService, LearningSkillsService],
   exports: [LearningAssignService, LearningReportsService],
 })

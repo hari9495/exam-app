@@ -26,6 +26,7 @@ import type { LoadState } from './perf-goals';
 import { LiveCoursePlayerScreen, LiveMyLearningScreen, type LiveMyLearning, type LivePlayer } from './learn-live';
 import { LiveTrainingFeedbackScreen, type LiveFeedback } from './learn-feedback-live';
 import { LiveSkillSuggestionsScreen, LiveSkillsProfileScreen, type LiveSkillSuggestions, type LiveSkillsProfile } from './learn-skills-live';
+import { LiveEnrolmentSheetView, type LiveEnrolmentSheet } from './learn-enrol-live';
 import './growth.css';
 
 /* ================================================================== Shared types */
@@ -421,7 +422,11 @@ export interface EnrolmentSheetProps {
 }
 
 /** LRN-06 request sheet (T4): nominate (seats / waitlist), self-enrol, external training (cost, bond, budget), decline a nomination. */
-export function EnrolmentSheet({ mode, persona, device = 'desktop', course, session, people = [], budget, bondAbove = 25000, defaultCost, mandatory }: EnrolmentSheetProps) {
+export function EnrolmentSheet(props: EnrolmentSheetProps | { live: LiveEnrolmentSheet }) {
+  return 'live' in props ? <LiveEnrolmentSheetView live={props.live} /> : <SampleEnrolmentSheet {...props} />;
+}
+
+function SampleEnrolmentSheet({ mode, persona, device = 'desktop', course, session, people = [], budget, bondAbove = 25000, defaultCost, mandatory }: EnrolmentSheetProps) {
   const [who, setWho] = useState<string[]>(mode === 'nominate' ? people.slice(0, 2).map((p) => p.value) : []);
   const [cost, setCost] = useState<number | null>(defaultCost ?? course.cost);
   const [bond, setBond] = useState(false);

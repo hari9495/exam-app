@@ -21,6 +21,7 @@ import { matchesFilter, type FilterValue } from '../../lib/table';
 import { GrowthFrame } from './growth-kit';
 import { enrol as seatFor } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { EnrolmentSheet } from './learn-me';
 import './growth.css';
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
@@ -562,7 +563,18 @@ export function LiveSessionPageScreen({ live }: { live: LiveSessionPage }) {
                 />
               )}
               {marking && <MarkDialog slots={s.slots} slotId={marking} people={d.attendance} onClose={() => setMarking(null)} onSave={live.onMark} />}
-              {nominating && <NominateSheet title={`Nominate for ${s.course}`} course={s.course} session={{ label: `${when(s.start)}, ${s.venue}`, seats: s.seats, enrolled: d.enrolled.length, waitlist: d.waitlist.length }} people={live.people.filter((p) => !d.enrolled.some((e) => e.employeeId === p.value) && !d.waitlist.some((w) => w.employeeId === p.value))} mandatory={s.mandatory} onClose={() => setNominating(false)} onNominate={live.onNominate} />}
+              {nominating && (
+                <EnrolmentSheet
+                  live={{
+                    mode: 'nominate',
+                    course: { id: s.id, title: s.course, type: s.mode, source: '', duration: '', skills: [], cost: 0, mandatory: s.mandatory },
+                    session: { label: `${when(s.start)}, ${s.venue}`, seats: s.seats, enrolled: d.enrolled.length, waitlist: d.waitlist.length },
+                    people: live.people.filter((p) => !d.enrolled.some((e) => e.employeeId === p.value) && !d.waitlist.some((w) => w.employeeId === p.value)),
+                    onClose: () => setNominating(false),
+                    onNominate: live.onNominate,
+                  }}
+                />
+              )}
               <ConfirmDialog
                 open={Boolean(withdrawing)}
                 onOpenChange={(o) => !o && setWithdrawing(null)}
@@ -645,139 +657,8 @@ function MarkDialog({ slots, slotId: first, people, onClose, onSave }: { slots: 
 
 /* ================================================================== LRN-06 · Nominate + decline */
 
-export interface SessionOption {
-  id: string;
-  label: string;
-  seats: number;
-  enrolled: number;
-  waitlist: number;
-}
-
-/** LRN-06 nominate: people for a session (seat or waitlist each), what happens before sending. */
-export function NominateSheet({ title, course, session, sessions, people, mandatory, onClose, onNominate }: { title: string; course: string; session?: { label: string; seats: number; enrolled: number; waitlist: number }; sessions?: SessionOption[]; people: SelectOption[]; mandatory: boolean; onClose: () => void; onNominate: (employeeIds: string[], sessionId?: string) => Promise<void> }) {
-  const [who, setWho] = useState<string[]>([]);
-  const [picked, setPicked] = useState<string | null>(sessions?.[0]?.id ?? null);
-  const [busy, setBusy] = useState(false);
-  const s = session ?? sessions?.find((x) => x.id === picked);
-  const preview = useMemo(() => {
-    if (!s) return [];
-    let state = { seats: s.seats, enrolled: Array.from({ length: s.enrolled }, (_, i) => `x${i}`), waitlist: Array.from({ length: s.waitlist }, (_, i) => `w${i}`) };
-    return who.map((id) => {
-      const r = seatFor(state, id);
-      state = r;
-      return { name: people.find((p) => p.value === id)?.label ?? '', result: r.result === 'Waitlisted' ? `Waitlist, position ${'position' in r ? r.position : ''}` : r.result };
-    });
-  }, [s, who, people]);
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={title}
-      footer={
-        <div className="yx-growth-foot">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!who.length || !s}
-            loading={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await onNominate(who, picked ?? undefined);
-                onClose();
-              } catch {
-                // The page said what went wrong.
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {`Nominate ${who.length} ${who.length === 1 ? 'person' : 'people'}`}
-          </Button>
-        </div>
-      }
-    >
-      <div className="yx-growth-stack">
-        {sessions ? (
-          sessions.length === 0 ? (
-            <InlineAlert tone="info">No session of {course} is scheduled yet. L&amp;D schedules sessions.</InlineAlert>
-          ) : (
-            <FormField label="Session" required>
-              <Select value={picked} onChange={setPicked} options={sessions.map((x) => ({ value: x.id, label: `${x.label} · ${x.enrolled} of ${x.seats} seats` }))} />
-            </FormField>
-          )
-        ) : (
-          <DescriptionList items={[{ label: 'Course', value: course }, { label: 'Session', value: session!.label }, { label: 'Seats', value: `${session!.enrolled} of ${session!.seats} taken` }]} />
-        )}
-        <FormField label="People" required>
-          <MultiSelect value={who} onChange={setWho} options={people} searchable />
-        </FormField>
-        <div className="yx-growth-effect" aria-live="polite">
-          <span className="yx-growth-effect__title">What happens</span>
-          <ul>
-            {preview.map((p) => (
-              <li key={p.name}>
-                {p.name}: {p.result}
-              </li>
-            ))}
-            <li>{mandatory ? 'Each person is told. This course is mandatory, so it can’t be declined.' : 'Each person is told and can decline with a reason, except for mandatory courses.'}</li>
-          </ul>
-        </div>
-      </div>
-    </Drawer>
-  );
-}
-
-/** LRN-06 decline: a reason (at least 10 characters) the manager sees; mandatory courses can't be declined. */
-export function DeclineSheet({ course, mandatory, onClose, onDecline }: { course: string; mandatory: boolean; onClose: () => void; onDecline: (reason: string) => Promise<void> }) {
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={`Decline nomination: ${course}`}
-      footer={
-        <div className="yx-growth-foot">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="danger"
-            disabled={mandatory || reason.trim().length < 10}
-            loading={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await onDecline(reason.trim());
-                onClose();
-              } catch {
-                // The page said what went wrong.
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Decline nomination
-          </Button>
-        </div>
-      }
-    >
-      <div className="yx-growth-stack">
-        {mandatory ? (
-          <InlineAlert tone="warning" title="Mandatory courses can’t be declined">
-            This course is required for your role. Talk to your manager if the date doesn’t work; they can move you to another session.
-          </InlineAlert>
-        ) : (
-          <>
-            <Text>Your manager sees your reason.</Text>
-            <FormField label="Reason" required helper="At least 10 characters.">
-              <TextArea value={reason} onChange={setReason} rows={3} />
-            </FormField>
-          </>
-        )}
-      </div>
-    </Drawer>
-  );
-}
+/** LRN-06's sheet is the designed EnrolmentSheet (learn-me.tsx), wired in learn-enrol-live.tsx. */
+export type { SessionOption } from './learn-enrol-live';
 
 /* ================================================================== LRN-05 · Trainer QR attendance + check-in */
 

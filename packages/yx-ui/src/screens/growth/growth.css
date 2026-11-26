@@ -99,6 +99,7 @@
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--yx-space-3);
   aspect-ratio: 16 / 9; border-radius: var(--yx-radius-card); background: var(--yx-color-bg-inverse); color: var(--yx-color-text-inverse); padding: var(--yx-space-6); text-align: center;
 }
+.yx-growth-player__frame { display: block; width: 100%; aspect-ratio: 16 / 9; min-height: calc(var(--yx-space-16) * 5); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
 .yx-growth-player__stage svg.yx-growth-player__art { width: calc(var(--yx-space-16) * 2); height: auto; }
 .yx-growth-player__art-line { fill: none; stroke: currentColor; stroke-width: 2; }
 @media (max-width: 767px) { .yx-growth-player { grid-template-columns: minmax(0, 1fr); } }
