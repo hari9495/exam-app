@@ -2,7 +2,9 @@
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { PerformanceSetupScreen, type PerformanceSetupScreenProps } from './setup';
-export { FeedbackTasksScreen, PeerFormScreen, ReviewerBlocksScreen, type FeedbackTasksScreenProps, type PeerFormScreenProps, type ReviewerBlocksScreenProps } from './peer';
+export { FeedbackTasksScreen, PeerFormScreen, type FeedbackTasksScreenProps, type PeerFormScreenProps } from '../../growth/peer-answer';
+// Batch T2-C: reviewer blocks re-wired as a designed PRF-07 screen.
+export { ReviewerBlocksScreen, type ReviewerBlocksScreenProps } from '../../growth/reviewer-blocks';
 // Designed screens made live (builder 2): PRF-08 Quick feedback, PRF-11 1:1s.
 export { QuickFeedbackScreen, VISIBILITY as FEEDBACK_VISIBILITY, type FeedbackAsk, type FeedbackItem as QuickFeedbackItem, type FeedbackVisibility, type LiveQuickFeedback } from '../../growth/perf-people';
 export { OneOnOneScreen, cadenceLabel, type Cadence, type LiveOneOnOnes, type OneOnOne as OneOnOneRow } from '../../growth/perf-people';

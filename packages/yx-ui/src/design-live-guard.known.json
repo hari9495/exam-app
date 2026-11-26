@@ -3,8 +3,7 @@
     "performance: CompCyclesScreen",
     "performance: PerformanceReportsScreen",
     "performance: PerformanceSetupScreen",
-    "performance: PipsScreen",
-    "performance: ReviewerBlocksScreen"
+    "performance: PipsScreen"
   ],
   "notLive": [
     "_kit: LinksFrame",

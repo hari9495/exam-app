@@ -1,8 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { PeerFormScreen, ReviewerBlocksScreen } from './peer';
-import type { PeerForm } from './types';
+import { PeerFormScreen } from './peer-answer';
+import { ReviewerBlocksScreen } from './reviewer-blocks';
+import type { PeerForm } from '../performance/live/types';
 
 // Performance batch PM5 screens (M06-BUILD-DESIGN §10, §15.3; PM-5.03). Nominations are the PRF-07 design and the
 // grouped answers the PRF-05 workspace's peer card (tested with those designs).
