@@ -2,8 +2,7 @@
   "liveCopies": [
     "performance: CompCyclesScreen",
     "performance: PerformanceReportsScreen",
-    "performance: PerformanceSetupScreen",
-    "performance: PipsScreen"
+    "performance: PerformanceSetupScreen"
   ],
   "notLive": [
     "_kit: LinksFrame",

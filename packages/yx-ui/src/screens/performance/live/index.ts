@@ -22,7 +22,7 @@ export { toGoal, type GoalItem, type PerfHome } from '../../growth/perf-live-dat
 export { CompCyclesScreen, type CompCyclesScreenProps } from './comp';
 // PRF-10 Comp review sheet, the designed screen made live (builder 2).
 export { CompReviewScreen, MarketDataScreen, MARKET_TEMPLATE, type CompProposalInput, type CompRow as CompReviewRow, type LiveCompReview, type MarketDataProps, type MarketSurveyRow, type MarketVersion } from '../../growth/perf-talent';
-export { PipsScreen, type PipsScreenProps } from './pips';
+export { PipsScreen, type PipsScreenProps } from '../../growth/pips-list';
 // PRF-07 360° nominations, PRF-12 PIP record: the designed screens made live (builder 2).
 export { NominationsScreen, type LiveNominations, type Nomination as NominationRow } from '../../growth/perf-reviews';
 export { PipRecordScreen, type LivePip, type Pip as PipRecord, type PipRating } from '../../growth/perf-people';

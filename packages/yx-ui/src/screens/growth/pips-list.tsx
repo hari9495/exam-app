@@ -1,21 +1,22 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Button } from '../../../components/button';
-import { DatePicker } from '../../../components/date';
-import { Badge, type BadgeTone } from '../../../components/display';
-import { EmptyState } from '../../../components/feedback';
-import { FormField } from '../../../components/field';
-import { Text } from '../../../components/foundations';
-import { TextArea, TextField } from '../../../components/inputs';
-import { ConfirmDialog } from '../../../components/overlay';
-import { Segment } from '../../../components/segment';
-import { PersonPicker, type PersonOption } from '../../../components/select';
-import { DataTable, type TableColumn } from '../../../components/table';
-import { dayKey } from '../../../lib/dates';
-import { LivePage, dateText } from '../../time/live/kit';
-import type { LoadState, PipStatus, PipSummary, PipsView } from './types';
+import { Button } from '../../components/button';
+import { DatePicker } from '../../components/date';
+import { Badge, type BadgeTone } from '../../components/display';
+import { EmptyState } from '../../components/feedback';
+import { FormField } from '../../components/field';
+import { Text } from '../../components/foundations';
+import { TextArea, TextField } from '../../components/inputs';
+import { ConfirmDialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
+import { PersonPicker, type PersonOption } from '../../components/select';
+import { DataTable, type TableColumn } from '../../components/table';
+import { dayKey } from '../../lib/dates';
+import { LivePage, dateText } from '../time/live/kit';
+import type { LoadState, PipStatus, PipSummary, PipsView } from '../performance/live/types';
 
-// Performance batch PM8, wired (M06-BUILD-DESIGN §13; PRF-12 the PIP record). A plan is seen by the person, their
+// PRF-12 improvement plans list (batch PM8, M06-BUILD-DESIGN §13; re-wired as a designed screen in batch T2-C, as answer
+// 2579 did for the feedback tasks). The plan itself is PipRecordScreen. A plan is seen by the person, their
 // manager chain and HR in scope only. Protected leave pauses it; "not met" opens nothing by itself.
 
 const STATUS: Record<PipStatus, { label: string; tone: BadgeTone }> = {
