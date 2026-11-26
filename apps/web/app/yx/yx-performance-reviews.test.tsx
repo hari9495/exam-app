@@ -107,6 +107,33 @@ describe('PRF-04 … 06 live (performance builder 1)', () => {
     await waitFor(() => expect(put).toEqual([{ answers: [{ questionId: 'g', rating: 4, text: null }], overallRating: null, comment: null }]));
   });
 
+  it('T2-C 2661: the person hides a kudos from the review; the manager sees no switch and never the hidden one', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
+    const posted: { path: string; body: unknown }[] = [];
+    const KUDOS = [{ value: 'Own it', items: [{ id: 'k1', message: 'Built the mock', from: 'Sita', on: '2025-06-10T10:00:00Z', badge: null, hidden: false }] }];
+    const nominations = { peer: null, nominations: [], can: { propose: false, decide: false, add: false } };
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/reviews/r1': { ...REVIEW, kudos: KUDOS, can: { ...REVIEW.can, hideKudos: true } },
+      'GET /performance/reviews/r1/nominations': nominations,
+      'POST /performance/reviews/r1/kudos/k1': (path: string, init: RequestInit) => (posted.push({ path, body: JSON.parse(String(init.body)) }), { ...REVIEW, kudos: [{ ...KUDOS[0], items: [{ ...KUDOS[0].items[0], hidden: true }] }] }),
+    });
+    const first = wrap(<YxReviewPage />);
+    await userEvent.click(await screen.findByRole('switch', { name: 'Hide from review' }));
+    await waitFor(() => expect(posted).toEqual([{ path: '/performance/reviews/r1/kudos/k1', body: { hidden: true } }]));
+    first.unmount();
+    // Negative: the manager's view has the kudos the API sent (never a hidden one) and no switch.
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/reviews/r1': { ...REVIEW, role: 'manager', kudos: [{ value: 'Customer first', items: [{ id: 'k2', message: 'Re-ran the tests', from: 'Kiran', on: '2025-07-01T10:00:00Z', badge: null, hidden: false }] }], can: { self: false, manager: true, hideKudos: false } },
+      'GET /performance/reviews/r1/nominations': nominations,
+    });
+    wrap(<YxReviewPage />);
+    expect(await screen.findByText(/Re-ran the tests/)).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Hide from review' })).toBeNull();
+    expect(screen.queryByText(/Built the mock/)).toBeNull();
+  });
+
   it('after release the employee acknowledges with a disagreement in one step; a short reason is refused', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
     const posted: unknown[] = [];

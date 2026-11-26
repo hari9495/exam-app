@@ -29189,5 +29189,26 @@
                               "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance)"
                     ],
                     "note": "Stored as three company settings (on/off, the Rating:share pairs, the tolerance), not a new table: the settings code already keeps company choices with history, audit and the 6.3 page."
+          },
+          {
+                    "id": "MT-T2C-2661",
+                    "area": "Batch T2-C 2661 (answer 2846): kudos in reviews",
+                    "screen": "Performance › Reviews › a review (PRF-05 workspace), Kudos this period",
+                    "url": "http://localhost:3000/yx/performance/reviews",
+                    "account": "An employee with an open review in a running cycle; their manager; the manager's manager (skip-level); a colleague to give kudos (Engage › Recognition).",
+                    "steps": [
+                              "As the colleague, give the employee two kudos in Engage › Recognition with two different company values (the cycle's period must include today; if not, use a cycle whose period does).",
+                              "As the employee open your review. Look at the 'Kudos this period' card.",
+                              "Turn on 'Hide from review' for one kudos.",
+                              "As the manager open the same review; then as the skip-level.",
+                              "As the employee turn the switch off again, then on again.",
+                              "As the manager submit the manager review. As the employee open the review again and try to change a switch (or call POST /api/v1/performance/reviews/<id>/kudos/<kudosId> with {\"hidden\": false}).",
+                              "Negative: as the manager call POST /api/v1/performance/reviews/<id>/kudos/<kudosId> with {\"hidden\": true}; as the employee call it for a kudos given outside the review period."
+                    ],
+                    "expected": "Step 2: the card lists the kudos grouped by value (for example 'Customer first · 1'), each with the message, who gave it, the date and badge, and says 'Context only, never scored.' with a 'Hide from review' switch on each. Step 3: a 5-second toast 'Hidden from this review.'; the kudos shows 'Hidden from reviewers'. Step 4: the manager and the skip-level see only the other kudos, with no switches and the note 'Kudos the person hid are not shown.'; the hidden one is not on the page at all. Step 5: 'Shown on this review again.' then hidden again. Step 6: the switches are gone and the card says the review was submitted so they can no longer be hidden; the API answers 409. The score is the same as without kudos. Step 7: 404 for both (only the person hides; only the period's kudos are on the review).",
+                    "stories": [
+                              "Screens/Performance/PRF-05 · Review workspace (Employee · kudos this period, Manager · kudos this period)"
+                    ],
+                    "note": "Kudos held for a moderator, or given outside the review period, never show. A former manager added as an other reviewer sees no kudos."
           }
 ]

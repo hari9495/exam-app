@@ -719,3 +719,9 @@ export class ExtendDto {
   @Min(1)
   version!: number;
 }
+
+/** T2-C 2661 (answer 2846): the person hides one kudos from their review, or shows it again. */
+export class KudosHideDto {
+  @IsBoolean()
+  hidden!: boolean;
+}

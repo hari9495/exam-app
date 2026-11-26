@@ -113,7 +113,7 @@ const IMPLICIT: Record<string, string[]> = {
   PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions', 'myNotes', 'addNote', 'editNote', 'deleteNote'], // batch F item 32: the author alone (service and RLS)
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope); pdf: the same
   // view as a file (PRF-05 / PRF-06).
-  PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
+  PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther', 'hideKudos'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
   PerformancePeerController: ['nominations', 'options', 'nominate', 'send', 'approveAll', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
   // PM6: the board is open to its facilitator, HR and the managers of the people in it (decided per session).

@@ -11142,6 +11142,8 @@ model Review {
   reopenedReason       String?   @map("reopened_reason") @db.VarChar(500)
   calibrationSessionId String?   @map("calibration_session_id") @db.Uuid
   remindedOn           DateTime? @map("reminded_on") @db.Date
+  /// T2-C 2661 (answer 2846): kudos (eng_kudos ids) the person hid from this review; never shown to reviewers.
+  hiddenKudos          String[]  @default([]) @map("hidden_kudos") @db.Uuid
   version              Int       @default(1)
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)

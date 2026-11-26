@@ -29,6 +29,7 @@ import { reviewStages, reviewScore } from './growth-logic';
 import { PerfReasonDialog, PERF_LINKS } from './perf-goals-live';
 import { day, type LoadState } from './perf-live-data';
 import { ReviewAssistantPanel, type LiveReviewAssistant } from './perf-assistant';
+import { ReviewKudosPanel } from './review-kudos';
 
 function useDone() {
   const { toast } = useToast();
@@ -738,6 +739,8 @@ export interface LiveReviewWorkspace {
   nominateHref?: string | null;
   /** PRF-05 "Download PDF" once the review is submitted: the review as this viewer sees it (audited by the API). */
   onDownload?: () => Promise<unknown>;
+  /** T2-C 2661: the person hides one kudos from the review (or shows it again) until the manager submits. */
+  onHideKudos?: (kudosId: string, hidden: boolean) => Promise<unknown>;
 }
 
 type Answers = Record<string, { rating: number | null; text: string | null }>;
@@ -1013,6 +1016,7 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
               {score.sections.length > 0 && <DescriptionList items={score.sections.map((s) => ({ label: `${s.title} (${s.weight}%)`, value: s.score == null ? 'Pending' : s.score.toFixed(2) }))} />}
             </Card>
             {peerPanel}
+            {r.kudos && r.role !== 'other' && <ReviewKudosPanel groups={r.kudos} forPerson={r.role === 'employee'} onHide={r.can.hideKudos ? live.onHideKudos : undefined} />}
             <Card title="History">
               <Timeline today={new Date()} aria-label="Review history" items={r.trail.map<TimelineItem>((t, i) => ({ id: String(i), actor: { name: STAGE_NAME[t.stage] ?? (t.stage === 'release' ? 'Release' : 'Review') }, action: `${t.event.replace('_', ' ')}${t.reason ? ` · ${t.reason}` : ''}`, at: new Date(t.at) }))} />
             </Card>

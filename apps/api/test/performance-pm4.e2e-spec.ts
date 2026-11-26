@@ -192,10 +192,49 @@ describe('Performance batch PM4', () => {
     expect((await api('priya', 'post', `/reviews/${meenaReview}/entries/manager/submit`).send({ answers: answers(mr, 'manager', { Goals: 3 }) }).expect(409)).body.message).toMatch(/Wait for the self review/);
   });
 
+  it('T2-C 2661 (answer 2846): the period kudos by value; the person hides one, which reviewers never see; never scored', async () => {
+    type K = { kudos: { value: string; items: { id: string; hidden: boolean; message: string; from: string }[] }[]; can: { hideKudos: boolean }; finalScore: number | null };
+    // Kudos to Arjun: two in the review period (published), one after it, one held for a moderator.
+    const give = (value: string, at: string, state = 'published') =>
+      inA(async (tx) => {
+        const p = await tx.engPost.create({ data: { organizationId: org.A.id, kind: 'kudos', authorUserId: users.sita, body: `Thanks ${value} ${at}`, state, publishAt: new Date(at) } });
+        return (await tx.engKudos.create({ data: { organizationId: org.A.id, postId: p.id, giverUserId: users.sita, receiverIds: [users.arjun], value, createdAt: new Date(at) } })).id;
+      });
+    ids.k1 = await give('Own it', '2025-06-10T10:00:00Z');
+    ids.k2 = await give('Customer first', '2026-03-31T17:00:00Z'); // 31 Mar, 10:30 pm in India: still in the period
+    ids.k3 = await give('Own it', '2026-04-02T10:00:00Z');
+    ids.k4 = await give('Own it', '2025-07-01T10:00:00Z', 'held');
+    const own = (await api('arjun', 'get', `/reviews/${ids.review}`).expect(200)).body as K;
+    expect(own.can.hideKudos).toBe(true);
+    expect(own.kudos.map((g) => [g.value, g.items.map((i) => i.id)])).toEqual([['Customer first', [ids.k2]], ['Own it', [ids.k1]]]);
+    expect(own.kudos[0].items[0]).toMatchObject({ hidden: false, from: expect.stringMatching(/^sita/), message: expect.stringMatching(/^Thanks Customer first/) });
+    // Negative: the manager cannot hide them; a kudos not on the review cannot be hidden; a bad body is refused.
+    await api('priya', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: true }).expect(404);
+    expect((await api('priya', 'get', `/reviews/${ids.review}`).expect(200)).body.can.hideKudos).toBe(false);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k3}`).send({ hidden: true }).expect(404);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k4}`).send({ hidden: true }).expect(404);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: 'yes' }).expect(400);
+    // Arjun hides one: he still sees it, marked; the manager and the skip-level never do.
+    const hid = (await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: true }).expect(200)).body as K;
+    expect(hid.kudos.find((g) => g.value === 'Own it')!.items[0]).toMatchObject({ id: ids.k1, hidden: true });
+    for (const who of ['priya', 'head'] as const) {
+      const seen = (await api(who, 'get', `/reviews/${ids.review}`).expect(200)).body as K;
+      expect(seen.kudos.map((g) => g.value)).toEqual(['Customer first']);
+      expect(JSON.stringify(seen)).not.toContain(ids.k1);
+    }
+    // Shown again, then hidden again (the manager submits next, with it hidden).
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: false }).expect(200);
+    expect((await api('priya', 'get', `/reviews/${ids.review}`).expect(200)).body.kudos.map((g: { value: string }) => g.value)).toEqual(['Customer first', 'Own it']);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: true }).expect(200);
+  });
+
   it('a section left unrated is named and left out of the score; the employee still sees no score before release (PM-4.04, YX-PERF-02)', async () => {
     const m = (await api('priya', 'get', `/reviews/${ids.review}`).expect(200)).body as Review;
     const done = (await api('priya', 'post', `/reviews/${ids.review}/entries/manager/submit`).send({ answers: answers(m, 'manager', { Goals: 4 }) }).expect(200)).body as Review;
     expect(done).toMatchObject({ status: 'ready', finalScore: 4, band: expect.any(String), excludedSections: ['Competencies'] });
+    // T2-C 2661: kudos are never scored (4 from the Goals answer alone), and once the manager submits they can no longer be hidden.
+    expect((await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k2}`).send({ hidden: true }).expect(409)).body.message).toMatch(/no longer change/);
+    expect((await api('arjun', 'get', `/reviews/${ids.review}`).expect(200)).body.can.hideKudos).toBe(false);
     expect(done.next.stage).toBe('release');
     const own = (await api('arjun', 'get', `/reviews/${ids.review}`).expect(200)).body as Review;
     expect(own).toMatchObject({ finalScore: null, band: null, managerEntry: null, excludedSections: [] });
