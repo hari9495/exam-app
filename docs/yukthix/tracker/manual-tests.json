@@ -28985,7 +28985,7 @@
                               "Turn Settings › Payroll policies › Back-dated pay off, approve another back-dated raise.",
                               "Negative access: the employee and another company's payroll admin open the tab and GET /api/v1/payroll/arrears-runs."
                     ],
-                    "expected": "Step 1: saved with a 5-second toast; the table shows 'On raise' per component. Step 2: a row 'Back-dated salary change · Done · 1 of 1' with the total and largest. Step 3: the admin who asked for the change is refused ('Someone other than the person who made the worksheet approves it'); the second approver approves; there is no HRA line. Step 4: a 'Joining date' row (or 'Not drafted: no salary from the joining date yet' until the salary exists). Step 5: the old draft says 'Replaced by a newer draft… bases confirmed by hand carried over'; the new draft keeps the confirmed amount and reason. Step 6: 'Work out the impact first…'; then the row shows people, total change and largest for one person, and Accept drafts the worksheets in the background (toast); dismiss needs 10 characters. Step 7: the ESI line is higher than paid (no refund). Step 8: nothing drafted. Step 9: the employee is refused (403); the other company sees nothing. No page scroll at 1278 x 635 on the tab.",
+                    "expected": "Step 1: saved with a 5-second toast; the table shows 'On raise' per component. Step 2: a row 'Back-dated salary change · Done · 1 of 1' with the total and largest. Step 3: the admin who asked for the change is refused ('Someone other than the person who made the worksheet approves it'); the second approver (not the HR who approved the change, 2850) approves; there is no HRA line. Step 4: a 'Joining date' row (or 'Not drafted: no salary from the joining date yet' until the salary exists). Step 5: the old draft says 'Replaced by a newer draft… bases confirmed by hand carried over'; the new draft keeps the confirmed amount and reason. Step 6: 'Work out the impact first…'; then the row shows people, total change and largest for one person, and Accept drafts the worksheets in the background (toast); dismiss needs 10 characters. Step 7: the ESI line is higher than paid (no refund). Step 8: nothing drafted. Step 9: the employee is refused (403); the other company sees nothing. No page scroll at 1278 x 635 on the tab.",
                     "stories": [
                               "Screens/Pay/PAY-28 · Arrears base confirmation (E3 · Rule changes and triggers, all three)"
                     ],
@@ -29045,5 +29045,24 @@
                               "Screens/Platform/E2 · Approval rules editor › PLT-12 · Hiring › Approvals with the move from the old routes"
                     ],
                     "note": "Answer 2818. Positive and negative: kit policy-editor-live.test.tsx (folded by default, Show and Hide)."
+          },
+          {
+                    "id": "MT-2850-ARREARS-THIRD-PERSON",
+                    "area": "Payroll: arrears from a salary change need a third person (answer 2850)",
+                    "screen": "Payroll › Arrears and recoveries › Arrears worksheets (a worksheet drawn from a salary change)",
+                    "url": "http://localhost:3000/yx/payroll/arrears",
+                    "account": "Payroll admin who asks for the salary change (A); a payroll approver who also approves employee changes (B, payroll.arrears.approve and employee.change.approve); a second payroll approver (C).",
+                    "steps": [
+                              "As A raise a salary change for someone, back-dated to the start of a month whose payroll is approved. As B approve the change (People › Changes).",
+                              "Open Payroll › Arrears and recoveries › Arrears worksheets and open the drafted worksheet as A, then as B.",
+                              "Negative (API): as B call POST /api/v1/payroll/arrears-worksheets/<id>/approve.",
+                              "As C open the worksheet and press Approve.",
+                              "Also: as A make a worksheet by hand for a change B approved (choose the change); open it as B."
+                    ],
+                    "expected": "Step 2: as A 'You made this worksheet, so someone else approves it.'; as B 'You approved the salary change, so a third person approves its arrears.'; neither sees Approve. Step 3: 403 'You approved the salary change, so a third person approves its arrears.' Step 4: toast 'Arrears for <name> approved; they are paid with the next run.' (5 s). Step 5: the same note for B and no Approve; a worksheet not drawn from a change (by hand with no change, joining date, rule change) has no such bar.",
+                    "stories": [
+                              "Screens/Pay/PAY-28 · Arrears base confirmation"
+                    ],
+                    "note": "Answer 2850. The change's approver is looked up from the change (employee_changes.decided_by); no new column. Positive and negative: api payroll-5g e2e (hand-made worksheet for a change: approver1 refused, approver2 approves; E3 trigger: approver1 refused; item 4 test approves as approver2); kit offcycle-live.test.tsx (2850 test)."
           }
 ]

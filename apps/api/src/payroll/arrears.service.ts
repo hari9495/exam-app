@@ -217,8 +217,16 @@ export class ArrearsService {
 
   // ------------------------------------------------------------------------------------------ arrears worksheets (PAY-7.02)
 
+  /** 2850: whoever approved the salary change a worksheet was drafted from (sources 'salary' and 'change'), else null. */
+  private async changeApprover(tx: Tx, org: string, w: Prisma.ArrearsWorksheetGetPayload<object>): Promise<string | null> {
+    if (!w.sourceRef || (w.source !== 'salary' && w.source !== 'change')) return null;
+    const ch = await tx.employeeChange.findFirst({ where: { organizationId: org, id: w.sourceRef }, select: { decidedBy: true } });
+    return ch?.decidedBy ?? null;
+  }
+
   private async sheetView(tx: Tx, org: string, w: Prisma.ArrearsWorksheetGetPayload<object>) {
     const lines = await tx.arrearsWorksheetLine.findMany({ where: { organizationId: org, worksheetId: w.id }, orderBy: [{ period: 'asc' }, { componentCode: 'asc' }] });
+    const changeApprovedBy = await this.changeApprover(tx, org, w);
     return {
       id: w.id,
       employeeId: w.employeeId,
@@ -233,6 +241,7 @@ export class ArrearsService {
       payMonth: w.payMonth ? dateOf(w.payMonth).slice(0, 7) : null,
       runId: w.runId,
       createdBy: w.createdBy,
+      changeApprovedBy,
       approvedBy: w.approvedBy,
       discardReason: w.discardReason,
       missing: lines.filter((l) => l.baseSource === 'missing').length,
@@ -442,6 +451,8 @@ export class ArrearsService {
       const w = await this.sheetIn(tx, c, v, id);
       if (w.status !== 'draft') throw new ConflictException(`A ${w.status} worksheet is not approved again.`);
       if (w.createdBy === v.userId) throw new ForbiddenException('Someone other than the person who made the worksheet approves it.');
+      // 2850: the salary change's approver does not approve its arrears either; a third person does.
+      if ((await this.changeApprover(tx, org, w)) === v.userId) throw new ForbiddenException('You approved the salary change, so a third person approves its arrears.');
       // E3 review item 1: a worksheet for the same months approved after this draft was made changed what was paid, so this
       // draft's differences are stale: it is refused (discard it and draft again).
       await lock(tx, `arrears-employment:${w.employmentId}`);

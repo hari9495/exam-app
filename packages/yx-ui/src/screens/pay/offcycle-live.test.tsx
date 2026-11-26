@@ -79,6 +79,20 @@ describe('Arrears and recoveries (PAY-28 live)', () => {
     expect(within(dlg).getByText('You made this worksheet, so someone else approves it.')).toBeInTheDocument();
   });
 
+  it('2850: whoever approved the salary change cannot approve its arrears; a third person can', async () => {
+    const fromChange = { ...READY, changeApprovedBy: 'u-hr' };
+    const { unmount } = render(<ArrearsBaseScreen live={arrears({ me: 'u-hr', worksheets: [fromChange] })} />);
+    let dlg = await openSheet('Lakshmi Devi');
+    expect(within(dlg).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(within(dlg).getByText('You approved the salary change, so a third person approves its arrears.')).toBeInTheDocument();
+    unmount();
+    const live = arrears({ me: 'u-third', worksheets: [fromChange] });
+    render(<ArrearsBaseScreen live={live} />);
+    dlg = await openSheet('Lakshmi Devi');
+    await ue.click(within(dlg).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(live.onApprove).toHaveBeenCalledWith(fromChange));
+  });
+
   it('hides Approve and Write off without the permission', async () => {
     render(<ArrearsBaseScreen live={arrears({ can: { approve: false, writeOff: false } })} />);
     const dlg = await openSheet('Lakshmi Devi');
