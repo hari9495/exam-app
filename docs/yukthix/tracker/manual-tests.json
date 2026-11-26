@@ -29158,7 +29158,7 @@
                               "Choose 'A bill without a receipt', choose a category, type the amount and date, and press 'Save and add another'; then press Cancel.",
                               "Negative: press Add line, choose Mileage and press 'Save and add another' with the distance empty.",
                               "Negative: open an existing line with Edit line (or Edit distance).",
-                              "Negative: choose 'Receipt' (upload) in the Add line drawer."
+                              "Negative: choose 'A receipt' (upload) in the Add line drawer."
                     ],
                     "expected": "Step 1: toast 'Line added' (5 s); the drawer stays open with an empty Mileage form; the claim shows the 42 km line behind it. Step 2: a second line, the drawer closes. Step 3: the bill line is added and a fresh bill form opens; Cancel closes it. Step 4: 'Enter the distance in km.' and nothing is saved. Step 5: the edit drawer has Save line only, no 'Save and add another'. Step 6: no 'Save and add another' (each receipt becomes its own line). Buttons have a border, hover, pointer and focus ring.",
                     "stories": [
