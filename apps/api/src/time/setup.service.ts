@@ -32,6 +32,20 @@ export const SCOPE_MODEL: Record<string, 'employee' | 'designation' | 'grade' | 
   tenant: null,
 };
 
+/**
+ * Answer 2754: starter leave types HR adds in one click, each editable afterwards. `line` is the suggested policy line
+ * (days a year, carry forward): the policy drawer fills it in when the type is first added to a policy.
+ */
+export const LEAVE_STARTERS: readonly { key: string; code: string; name: string; kind: string; paid: boolean; colour: string; rules: Record<string, unknown>; summary: string; line?: { annualDays: number; frequency: 'monthly' | 'yearly'; proRata: boolean; rounding: number; carryForwardMax: number | null } }[] = [
+  { key: 'casual', code: 'CL', name: 'Casual leave', kind: 'casual', paid: true, colour: 'blue', rules: {}, summary: '12 days a year, credited monthly, lapses at year end', line: { annualDays: 12, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: 0 } },
+  { key: 'sick', code: 'SL', name: 'Sick leave', kind: 'sick', paid: true, colour: 'teal', rules: { noticeDays: 0, medical: true }, summary: '12 days a year, credited monthly, no notice', line: { annualDays: 12, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: 0 } },
+  { key: 'earned', code: 'EL', name: 'Earned leave', kind: 'earned', paid: true, colour: 'green', rules: { encashable: true }, summary: '15 days a year, credited monthly, carry forward up to 30', line: { annualDays: 15, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: 30 } },
+  { key: 'maternity', code: 'ML', name: 'Maternity leave', kind: 'maternity', paid: true, colour: 'pink', rules: { noticeDays: 0, maxDays: 182, eligibleGenders: ['female'] }, summary: '26 weeks, paid in full (Maternity Benefit Act 1961)' },
+  { key: 'paternity', code: 'PL', name: 'Paternity leave', kind: 'paternity', paid: true, colour: 'purple', rules: { maxDays: 5 }, summary: '5 days for each child' },
+  { key: 'comp_off', code: 'CO', name: 'Comp-off', kind: 'comp_off', paid: true, colour: 'orange', rules: {}, summary: 'Days earned by working a weekly off or holiday' },
+  { key: 'lwp', code: 'LWP', name: 'Leave without pay', kind: 'lop', paid: false, colour: 'grey', rules: {}, summary: 'Unpaid, no balance' },
+];
+
 @Injectable()
 export class TimeSetupService {
   constructor(
@@ -97,7 +111,10 @@ export class TimeSetupService {
       return {
         today,
         injuryLeave: { code: injury, missing: !types.some((t) => t.code.toUpperCase() === injury.toUpperCase()) },
+        // Answer 2754: the starter gallery; one already added (or whose code is taken) shows as added.
+        starters: LEAVE_STARTERS.map((x) => ({ key: x.key, code: x.code, name: x.name, kind: x.kind, summary: x.summary, added: types.some((t) => t.starter === x.key || t.code.toUpperCase() === x.code) })),
         types: await Promise.all(types.map(async (t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version, statutory: law[t.kind as keyof typeof law] ?? null,
+          starter: t.starter, suggestedLine: LEAVE_STARTERS.find((x) => x.key === t.starter)?.line ?? null,
           // Answer 2477: the dated versions, newest first (a waiting one shows its date).
           versions: (await tx.leaveTypeVersion.findMany({ where: { organizationId: org, leaveTypeId: t.id }, orderBy: { validFrom: 'desc' }, take: 20 })).map((v) => ({ validFrom: dateOf(v.validFrom), paid: v.paid, rules: parseRules(v.rules) })) }))),
         maternity: await maternityValues(tx, today),
@@ -256,6 +273,21 @@ export class TimeSetupService {
       await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, validFrom: asDate('2000-01-01'), rules: rules as unknown as Prisma.InputJsonValue, paid: dto.paid, createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules });
       return { id: t.id };
+    });
+  }
+
+  /** Answer 2754: adds one starter leave type (marked with its starter key); HR edits it like any other afterwards. */
+  addStarter(ctx: TenantContext, user: ScopeUser, key: string) {
+    const x = LEAVE_STARTERS.find((s) => s.key === key);
+    if (!x) throw new NotFoundException('No such starter leave type.');
+    return this.run(ctx, user, true, async (tx, c) => {
+      if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, OR: [{ code: x.code }, { starter: x.key }] } })) throw new ConflictException(`${x.name} (${x.code}) is already there. Open it from Leave types to change it.`);
+      const dto = { code: x.code, name: x.name, kind: x.kind, paid: x.paid, colour: x.colour, rules: x.rules, active: true } as LeaveTypeDto;
+      const rules = await this.checkType(tx, c, dto);
+      const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code: x.code, name: x.name, kind: x.kind, paid: x.paid, colour: x.colour, rules: rules as unknown as Prisma.InputJsonValue, active: true, starter: x.key, createdBy: c.userId ?? null } });
+      await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, validFrom: asDate('2000-01-01'), rules: rules as unknown as Prisma.InputJsonValue, paid: x.paid, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules, via: 'starter', starter: x.key });
+      return { id: t.id, code: x.code };
     });
   }
 

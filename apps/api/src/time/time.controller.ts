@@ -269,6 +269,13 @@ export class TimeController {
     return this.setup.createType(ctx, this.user(req), dto);
   }
 
+  /** Answer 2754: adds one starter leave type from the gallery. */
+  @Post('setup/types/starter/:key')
+  @RequirePermissions('leave.settings.manage')
+  addStarter(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('key') key: string) {
+    return this.setup.addStarter(ctx, this.user(req), key);
+  }
+
   /** HLP-12 answer 62: creates the injury leave type on HR's press (never automatically). */
   @Post('setup/types/injury-leave')
   @RequirePermissions('leave.settings.manage')

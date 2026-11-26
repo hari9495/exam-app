@@ -451,6 +451,19 @@ export interface LeaveTypeRow {
   statutory?: StatutoryMinimum | null;
   /** Answer 2477: the dated versions of the rules and pay, newest first. */
   versions?: { validFrom: string; paid: boolean; rules: LeaveRules }[];
+  /** Answer 2754: the starter it was added from (null: made by HR), and the policy line it suggests. */
+  starter?: string | null;
+  suggestedLine?: Omit<PolicyLine, 'leaveTypeId'> | null;
+}
+
+/** Answer 2754: one starter leave type HR can add in one click. */
+export interface LeaveStarter {
+  key: string;
+  code: string;
+  name: string;
+  kind: string;
+  summary: string;
+  added: boolean;
 }
 
 export interface PolicyLine {
@@ -481,6 +494,8 @@ export interface TimeSetup {
   today: string;
   /** HLP-12 answer 62: the injury leave type code (company setting) and whether the company has that type yet. */
   injuryLeave?: { code: string; missing: boolean };
+  /** Answer 2754: the starter gallery. */
+  starters?: LeaveStarter[];
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
   calendars: {

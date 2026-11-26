@@ -24,7 +24,7 @@ import { EMPLOYEES, ENTITIES, LOCATIONS, entityHeadcount, locationHeadcount } fr
 import { DueBadge, GeoMap, Kpis, TimePage, type TimeNav } from './time-kit';
 import { formatDate } from '../../lib/format';
 import { errorText, useRun } from '../org/org-kit';
-import type { BlockDateInput, BlockDates, FactoriesActCover, GeoPointInput, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearChangePreview, YearEndPreview } from './live/types';
+import type { BlockDateInput, BlockDates, FactoriesActCover, GeoPointInput, HolidayFeeds, HolidayRow, LeaveRules, LeaveStarter, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearChangePreview, YearEndPreview } from './live/types';
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
@@ -1970,6 +1970,8 @@ export interface LiveLeavePolicies extends SetupLive {
   blockDates?: LiveBlockDates;
   /** HLP-12 answer 62: creates the injury leave type (only when HR presses "Add injury leave"). */
   onAddInjuryLeave?: () => Promise<unknown>;
+  /** Answer 2754: adds one starter leave type by its key. */
+  onAddStarter?: (key: string) => Promise<unknown>;
 }
 export interface LiveLeaveTypeEditor extends SetupLive {
   /** A leave type's id, or 'new'. */
@@ -2057,7 +2059,8 @@ const choosable = (kind: string | null) => kind === 'optional' || kind === 'rest
 const versionToday = (p: SetupPolicy, today: string) => p.versions.find((v) => v.validFrom <= today) ?? p.versions[p.versions.length - 1];
 /** Types a policy credits days of; leave without pay, comp-off and the statutory ones carry no yearly days. */
 const creditedTypes = (d: TimeSetup) => d.types.filter((t) => t.active && !['lop', 'maternity', 'paternity', 'comp_off'].includes(t.kind));
-const blankLine = (leaveTypeId: string): PolicyLine => ({ leaveTypeId, annualDays: 0, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: 0 });
+// Answer 2754: a starter type comes with its suggested line (casual 12, earned 15 carrying 30 ...).
+const blankLine = (leaveTypeId: string, t?: LeaveTypeRow): PolicyLine => ({ leaveTypeId, annualDays: 0, frequency: 'monthly', proRata: true, rounding: 0.5, carryForwardMax: 0, ...(t?.suggestedLine ?? {}) });
 const typeShort = (d: TimeSetup, id: string) => (d.types.find((t) => t.id === id)?.name ?? 'Unknown type').replace(/ leave$/, '');
 const lineText = (l: PolicyLine) => `${num(l.annualDays)} days a year, ${l.frequency === 'monthly' ? 'credited every month' : 'all at the start of the year'}${l.proRata ? ', a share for joiners' : ''}`;
 const carryText = (l: PolicyLine) => (l.carryForwardMax === null ? 'carries forward in full' : l.carryForwardMax === 0 ? 'lapses at year end' : `carries forward up to ${num(l.carryForwardMax)} days`);
@@ -2304,6 +2307,7 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
   const [triedOrder, setTriedOrder] = useState(false);
   const [showUncovered, setShowUncovered] = useState(false);
   const [addingInjury, setAddingInjury] = useState(false);
+  const [startersOpen, setStartersOpen] = useState(false);
   const { toast } = useToast();
   const addInjury = async () => {
     setAddingInjury(true);
@@ -2398,10 +2402,12 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
                         <MenuItem key={t.id} onSelect={() => live.onOpenType(t.id)}>
                           {t.name}
                           {t.active ? '' : ' (not in use)'}
+                          {t.starter ? ' · starter' : ''}
                         </MenuItem>
                       ))}
                       {d.types.length > 0 && <MenuSeparator />}
                       <MenuItem onSelect={() => live.onOpenType('new')}>New leave type</MenuItem>
+                      {live.onAddStarter && d.starters?.length ? <MenuItem onSelect={() => setStartersOpen(true)}>Add starter leave types</MenuItem> : null}
                     </MenuContent>
                   </Menu>
                   {newPolicy}
@@ -2410,6 +2416,12 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
             />
             <PoliciesAndBlocks blocks={live.blockDates ? <BlockDatesCard {...live.blockDates} today={d.today} /> : null}>
             <Statutory d={d} />
+            {d.types.length === 0 && live.onAddStarter && d.starters?.length ? (
+              <InlineAlert tone="info" title="No leave types yet" actions={<Button size="sm" variant="primary" onClick={() => setStartersOpen(true)}>Choose starter leave types</Button>}>
+                Start with the common types (casual, sick, earned, maternity, paternity, comp-off and leave without pay) and change them later, or add your own from Leave types.
+              </InlineAlert>
+            ) : null}
+            {startersOpen && live.onAddStarter && <StarterDrawer starters={d.starters ?? []} onAdd={live.onAddStarter} onClose={() => setStartersOpen(false)} />}
             {d.injuryLeave?.missing && live.onAddInjuryLeave && (
               <InlineAlert
                 tone="info"
@@ -2486,11 +2498,34 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
   );
 }
 
+/** Answer 2754: the starter gallery. Each starter is added in one click and can be changed afterwards like any type. */
+function StarterDrawer({ starters, onAdd, onClose }: { starters: LeaveStarter[]; onAdd: (key: string) => Promise<unknown>; onClose: () => void }) {
+  const { busy, error, run } = useRun();
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Starter leave types" subtitle="Add the common types in one click. You can change each one afterwards." size="md">
+      <div className="yx-tim-stack">
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        <ul className="yx-tim-list">
+          {starters.map((s) => (
+            <li key={s.key}>
+              <span className="yx-tim-list__main">
+                <strong>{s.name} · {s.code}</strong>
+                <span className="yx-tim-muted">{s.summary}</span>
+              </span>
+              {s.added ? <Badge tone="success">Added</Badge> : <Button size="sm" loading={busy === s.key} onClick={() => void run(s.key, () => onAdd(s.key))}>Add</Button>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Drawer>
+  );
+}
+
 function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; policy: SetupPolicy | null; live: LiveLeavePolicies; onOpen: (id: string) => void; onClose: () => void }) {
   const types = creditedTypes(d);
   const latest = policy?.versions[0];
   const [name, setName] = useState('');
-  const [lines, setLines] = useState<PolicyLine[]>(() => types.map((t) => latest?.lines.find((l) => l.leaveTypeId === t.id) ?? blankLine(t.id)));
+  const [lines, setLines] = useState<PolicyLine[]>(() => types.map((t) => latest?.lines.find((l) => l.leaveTypeId === t.id) ?? blankLine(t.id, t)));
   const [from, setFrom] = useState<Date | null>(dateOfIso(d.today));
   const [editing, setEditing] = useState<string | null>(null);
   const [dirty, setDirty] = useState(!policy);

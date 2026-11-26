@@ -28940,5 +28940,25 @@
                               "Screens/Time/TIM-27 · Leave type (Rules tab)"
                     ],
                     "note": "Positive and negative (joined-run.spec 5 tests; kit leave-rules-live test; leave e2e unchanged and green). Rules in the type's rules JSON (no migration); either type naming the other refuses."
+          },
+          {
+                    "id": "MT-T2A-STARTERS",
+                    "area": "T2-A (answer 2754): starter leave types gallery (27 Nov 2026)",
+                    "screen": "Time › Set-up (TIM-28): Leave types › Add starter leave types; first set-up prompt",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin (leave.settings.manage company-wide); a second company with no leave types for the first set-up prompt.",
+                    "steps": [
+                              "In a company with no leave types open Time › Set-up. Press Choose starter leave types.",
+                              "Press Add on Casual leave, then on Earned leave and Maternity leave.",
+                              "Open Leave types: the three show '· starter'. Open Casual leave, change its name, Save.",
+                              "New policy: Casual 12 and Earned 15 carrying forward 30 are filled in.",
+                              "Negative: in the demo company (EL already exists) open Leave types › Add starter leave types: Earned leave shows Added with no Add button.",
+                              "Negative: as an employee or a manager, POST /time/setup/types/starter/casual: refused (403)."
+                    ],
+                    "expected": "Step 1: the drawer lists casual 12, sick 12, earned 15 carry 30, maternity 26 weeks, paternity 5 days, comp-off, leave without pay. Step 2: each Add gives a 5-second toast '<name> added' and the row turns to Added. Step 3: saved like any type. Step 4: the suggested days are filled. Step 5: no second EL. Step 6: 403. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-28 · Leave policies (No leave types yet · starter gallery)"
+                    ],
+                    "note": "Positive and negative (api leave-starters.spec 4; kit setup-live 3; web yx-time-starters 2). Migration 850 (leave_types.starter). State rules (Factories Act 1 day per 20 worked) stay as the factory leave table, not a starter."
           }
 ]
