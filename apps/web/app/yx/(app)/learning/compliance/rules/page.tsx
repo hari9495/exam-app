@@ -5,6 +5,7 @@ import { AssignmentRulesScreen, type CourseRow, type LearningRuleInput, type Liv
 import { loadState } from '../../../../../../lib/yx-org';
 import { useJoinerPlaces } from '../../../../../../lib/yx-lifecycle';
 import { useLearning, useLearningWrite } from '../../../../../../lib/yx-learning';
+import { useGroupOptions } from '../../../../../../lib/hooks/useUserGroups';
 import { learnState } from '../../my-learning';
 
 // Learning › Compliance › Assignment rules (LRN-07, learning.manage): who must complete which course, by when, how
@@ -15,6 +16,8 @@ export default function YxAssignmentRulesPage() {
   const courses = useLearning<CourseRow[]>('/admin/courses');
   const places = useJoinerPlaces(true);
   const write = useLearningWrite();
+  // T2-G 42 (answer 2745): a rule may also name groups.
+  const groups = useGroupOptions();
   return (
     <AssignmentRulesScreen
       rules={[]}
@@ -26,6 +29,7 @@ export default function YxAssignmentRulesPage() {
         entities: places.entities,
         locations: places.locations,
         departments: places.departments,
+        groups: (groups.data ?? []).map((g) => ({ value: g.id, label: g.name })),
         onPreview: (input: LearningRuleInput) => write<{ matches: number; toEnrol: number }>('POST', '/rules/preview', input),
         onSave: async (input, rule) => {
           try {

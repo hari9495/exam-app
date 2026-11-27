@@ -109,4 +109,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'asset-licence-alerts', cron: '0 2 * * *' },
   // IT assets answer 2715: the person is reminded the day before a booked asset is due back; IT when overdue (07:35 IST).
   { id: 'asset-booking-alerts', cron: '5 2 * * *' },
+  // T2-G 42: rule groups (after the day's job changes, 'employee-changes').
+  { id: 'rule-groups', cron: '20 2 * * *' },
 ];

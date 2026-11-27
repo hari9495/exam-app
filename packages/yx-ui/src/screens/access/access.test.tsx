@@ -417,4 +417,25 @@ describe('Roles & access · hiring fields and groups', () => {
     await ue.click(within(sure).getByRole('button', { name: 'Delete group' }));
     await waitFor(() => expect(g.onDelete).toHaveBeenCalledWith('g1'));
   });
+  // T2-G 42 (answer 2745): groups worked out from rules.
+  const choices = { legalEntityIds: [], locationIds: [{ value: 'l1', label: 'Hosur plant' }], departmentIds: [{ value: 'd1', label: 'Operations' }], gradeIds: [], employmentTypeIds: [] };
+  it('a group from rules needs at least one rule; its rules are sent; it has no hand-picked members', async () => {
+    const g = { ...groups(), ruleChoices: choices, groups: [...groups().groups, { id: 'g2', name: 'Hosur floor', description: null, rules: { legalEntityIds: [], locationIds: ['l1'], departmentIds: [], gradeIds: [], employmentTypeIds: [] }, members: [] }] };
+    roles({ groups: g, initialView: 'groups' });
+    const row = screen.getByRole('row', { name: /Hosur floor/ });
+    expect(row).toHaveTextContent('0 people today · from rules: Hosur plant');
+    expect(within(row).queryByRole('button', { name: 'Members' })).toBeNull();
+    await ue.click(screen.getAllByRole('button', { name: 'New group' })[0]!);
+    const dlg = screen.getByRole('dialog', { name: 'New group' });
+    await ue.type(within(dlg).getByRole('textbox', { name: /Name/ }), 'Ops');
+    await ue.click(within(dlg).getByRole('radio', { name: 'Worked out from rules' }));
+    await ue.click(within(dlg).getByRole('button', { name: 'Make group' }));
+    expect(within(dlg).getByText('Add at least one rule.')).toBeInTheDocument();
+    expect(g.onCreate).not.toHaveBeenCalled();
+    await ue.click(within(dlg).getByRole('combobox', { name: /Departments/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Operations' }));
+    await ue.keyboard('{Escape}');
+    await ue.click(within(screen.getByRole('dialog', { name: 'New group' })).getByRole('button', { name: 'Make group' }));
+    await waitFor(() => expect(g.onCreate).toHaveBeenCalledWith({ name: 'Ops', rules: { legalEntityIds: [], locationIds: [], departmentIds: ['d1'], gradeIds: [], employmentTypeIds: [] } }));
+  });
 });

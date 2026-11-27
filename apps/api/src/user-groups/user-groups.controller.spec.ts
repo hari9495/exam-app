@@ -6,7 +6,7 @@ import { UserGroupsController } from './user-groups.controller';
 import { UserGroupsService } from './user-groups.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { PERMISSIONS_ANY_KEY, PERMISSIONS_KEY } from '../rbac/permissions.decorator';
+import { PERMISSIONS_ANY_KEY } from '../rbac/permissions.decorator';
 
 class MockGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -127,12 +127,10 @@ describe('UserGroupsController', () => {
       expect(reflector.get(PERMISSIONS_ANY_KEY, UserGroupsController.prototype.mine)).toEqual(['results:view', 'candidate:view']);
     });
 
-    it('admin routes require users:manage_groups', () => {
-      expect(reflector.get(PERMISSIONS_KEY, UserGroupsController.prototype.list)).toEqual(['users:manage_groups']);
-      expect(reflector.get(PERMISSIONS_KEY, UserGroupsController.prototype.create)).toEqual(['users:manage_groups']);
-      expect(reflector.get(PERMISSIONS_KEY, UserGroupsController.prototype.update)).toEqual(['users:manage_groups']);
-      expect(reflector.get(PERMISSIONS_KEY, UserGroupsController.prototype.setMembers)).toEqual(['users:manage_groups']);
-      expect(reflector.get(PERMISSIONS_KEY, UserGroupsController.prototype.remove)).toEqual(['users:manage_groups']);
+    it('admin routes need users:manage_groups or the HR groups key (T2-G 42); pickers read the options', () => {
+      for (const m of ['list', 'create', 'update', 'setMembers', 'remove', 'refresh'] as const)
+        expect(reflector.get(PERMISSIONS_ANY_KEY, UserGroupsController.prototype[m])).toEqual(['users:manage_groups', 'people.group.manage']);
+      expect(reflector.get(PERMISSIONS_ANY_KEY, UserGroupsController.prototype.options)).toEqual(['users:manage_groups', 'people.group.manage', 'engage.announce', 'engage.survey.manage', 'learning.manage', 'org.settings.manage']);
     });
   });
 

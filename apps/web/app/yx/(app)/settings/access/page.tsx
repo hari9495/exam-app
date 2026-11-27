@@ -29,13 +29,16 @@ export default function YxRolesAccessPage() {
   const entities = useOrg<LegalEntity[]>('/legal-entities');
   const locations = useOrg<OrgLocation[]>('/locations');
   const departments = useOrg<MasterRecord[]>('/masters/departments');
+  const grades = useOrg<MasterRecord[]>('/masters/grades');
+  const types = useOrg<MasterRecord[]>('/masters/employment-types');
   const read = useAccessRead();
   const write = useAccessWrite();
   const loadEffective = useCallback((userId: string) => read<EffectiveAccess>(`/users/${id(userId)}/effective`), [read]);
   // Answers 2426 and 2430 (retiring /v2): hiring field access (org:manage_settings) and staff groups (users:manage_groups).
   const perms = useYxPermissions();
   const canFields = perms.has('org:manage_settings');
-  const canGroups = perms.has('users:manage_groups');
+  // T2-G 42: HR's groups key too; groups may be worked out from rules (entity, location, department, grade, type).
+  const canGroups = perms.has('users:manage_groups') || perms.has('people.group.manage');
   const fieldConfig = useFieldPermissions(canFields);
   const saveFields = useUpdateFieldPermissions();
   const groups = useUserGroups(canGroups);
@@ -88,6 +91,13 @@ export default function YxRolesAccessPage() {
               onUpdate: (groupId, input) => updateGroup.mutateAsync({ groupId, ...input }),
               onMembers: (groupId, userIds) => setMembers.mutateAsync({ groupId, userIds }),
               onDelete: (groupId) => deleteGroup.mutateAsync(groupId),
+              ruleChoices: {
+                legalEntityIds: (entities.data ?? []).map((e) => ({ value: e.id, label: e.name })),
+                locationIds: (locations.data ?? []).map((l) => ({ value: l.id, label: l.name })),
+                departmentIds: (departments.data ?? []).map((d) => ({ value: d.id, label: d.name })),
+                gradeIds: (grades.data ?? []).map((g) => ({ value: g.id, label: g.name })),
+                employmentTypeIds: (types.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+              },
             }
           : undefined
       }
