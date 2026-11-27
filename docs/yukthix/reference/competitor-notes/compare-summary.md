@@ -1013,3 +1013,10 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2878: 52 phones without the installed app (iPhone Safari needs it added to the Home Screen). Suggested answer: show "Add YukthiX to your Home Screen to get push" on iPhone, and keep email as the fallback; no native app now (2741).
 - 2879: 52 WhatsApp. Suggested answer: wait for the provider choice (2742); when chosen, WhatsApp is one more column in Me › Notifications for the same neutral messages, with the company's approved templates, opt-in per person (phone number confirmed by a code).
 - Founder answers (27 Nov 2026, "ok for all"): 2872-2879 (T2-E) approved exactly as suggested.
+- 2900: T2-D 57 team members without a Projects key cannot open the project page, so they never see who is away. Suggested answer: show "Who is away" per project on their Me › My timesheet › My projects tab.
+- 2901: T2-E 52 the push title is the notification kind's label; kinds not on the registered list get a generic title. Suggested answer: keep it, and add the timesheet-line kinds to the list so they get their own neutral title and a Push switch.
+- 2902: T2-E 51 Home reminders are worked out each time Home opens. Suggested answer: keep it; add caching only if Home gets slow.
+- 2920: T2-F 79 who may use Edit home: the Settings 2.2 design has "Roles that may personalise their own home", off for everyone; built as a company setting with that default. Suggested answer: keep off by default; turn on Employee and Manager in the demo company for testing.
+- 2921: T2-F 79 the recruiter home has no option in that setting (the design lists Employee, Manager, HR, Finance). Suggested answer: add Recruiter when the setting is next touched.
+- 2922: T2-F 81 "+ New" links to each type's existing form; the inline form per type waits for the approvals pass. Suggested answer: keep it so (as 2886).
+- Also on merge (27 Nov 2026, lead): push endpoints are accepted only on the browsers' push services (FCM, Mozilla, Apple, Windows), because the server posts to them; any other address is refused.
