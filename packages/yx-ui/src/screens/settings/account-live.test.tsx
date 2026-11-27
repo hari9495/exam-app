@@ -78,6 +78,12 @@ describe('group 8 live (S-9)', () => {
     expect(field(none, 'export.schedule.send')).toBeUndefined();
   });
 
+  it('answer 2925: Google Drive says the folder must be in a shared drive (a service account has no My Drive space)', async () => {
+    render(<ToastProvider><StorageDrawer current={{ frequency: 'weekly', destination: null }} onClose={() => {}} onSave={vi.fn()} /></ToastProvider>);
+    await userEvent.click(screen.getByRole('radio', { name: 'Google Drive' }));
+    expect(screen.getByText(/must be in a shared drive: a service account cannot store files in anyone.s My Drive/)).toBeTruthy();
+  });
+
   it('the storage drawer needs every field and a 12-character password typed twice; then sends kind, fields and how often', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<ToastProvider><StorageDrawer current={{ frequency: 'weekly', destination: null }} onClose={() => {}} onSave={onSave} /></ToastProvider>);

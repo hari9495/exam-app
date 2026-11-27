@@ -30149,5 +30149,21 @@
                               "Screens/Global (Me › Language)"
                     ],
                     "note": "Positive and negative (t2g e2e '84b Hindi screens': Hindi reader, others English, company switch off/on, settings key only, bad value 400, Tamil reads English; API notification-hindi.spec: Hindi template per kind, English when none, never looked up for kinds without one; kit i18n.test: every Hindi key in English, fallback, Indian formats, Me › Language in Hindi and English; web yx-i18n.test: Hindi keys exist in English, menu labels match, admin links stay English). Library: next-intl 4.14.10 (use-intl 4.15.1 in the kit). Left for the next parts: the Home, leave, attendance, payslip, helpdesk and approval pages' own words."
+          },
+          {
+                    "id": "MT-T2G-2925-DRIVE-HELP",
+                    "area": "T2-G 2925: the Google Drive help text in the scheduled export drawer",
+                    "screen": "Settings › Data export & closure › Change the storage or schedule › Google Drive",
+                    "url": "http://localhost:3000/yx/settings/account/data-export-and-closure",
+                    "account": "The System Admin (admin@demo-org.test).",
+                    "steps": [
+                              "Open the page, press Change, choose Google Drive and read the help under Shared drive folder ID.",
+                              "Negative: choose Amazon S3 and Azure Blob."
+                    ],
+                    "expected": "Step 1: 'The folder must be in a shared drive: a service account cannot store files in anyone's My Drive. Add the service account to that shared drive as Content manager.' Step 2: that text does not show for S3 or Azure.",
+                    "stories": [
+                              "Screens/Settings/Group 8 (8.5 Data export & closure, storage drawer)"
+                    ],
+                    "note": "Kit account-live test (answer 2925). Text only; no API change."
           }
 ]
