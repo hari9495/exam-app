@@ -702,6 +702,70 @@ export class ProjectsService {
     });
   }
 
+  /**
+   * T2-D 57 (answers 2867, 2868): the project page's actions pending, for its manager only (weeks waiting for their
+   * approval, people on the project who have not sent last week, resource requests waiting, work ready to invoice), and
+   * who on the project is away in the next 14 days, for the manager and the project's team: "Away" with the days, never
+   * the leave type (2759, 2760). Anyone else who may open the project sees neither (null).
+   */
+  async glance(ctx: TenantContext, user: ScopeUser, id: string) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, id, w);
+      const today = todayIst();
+      const me = await tx.employee.findFirst({ where: { organizationId: org, userId: w.userId }, select: { id: true } });
+      const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, projectId: id, tentative: false, OR: [{ toOn: null }, { toOn: { gte: asDate(today) } }] } });
+      const pm = p.managerUserId === w.userId;
+      const member = Boolean(me && allocs.some((a) => a.employeeId === me.id));
+      const team = [...new Set(allocs.filter((a) => day(a.fromOn)! <= today).map((a) => a.employeeId))];
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: team } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const nameOf = (eid: string) => {
+        const e = people.find((x) => x.id === eid);
+        return e ? [e.preferredName ?? e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
+      };
+      let pending: { kind: string; count: number; people?: string[]; href: string }[] | null = null;
+      if (pm) {
+        const waiting = await tx.timesheetLine.findMany({ where: { organizationId: org, projectId: id, status: 'pending', approverUserIds: { has: w.userId } }, select: { timesheetId: true } });
+        const sheets = await tx.timesheet.count({ where: { organizationId: org, id: { in: [...new Set(waiting.map((l) => l.timesheetId))] }, status: 'pending' } });
+        const last = addDaysIso(mondayOf(today), -7);
+        const onLast = [...new Set(allocs.filter((a) => day(a.fromOn)! <= addDaysIso(last, 6)).map((a) => a.employeeId))];
+        const sent = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: { in: onLast }, weekStart: asDate(last), status: { in: ['pending', 'approved'] } }, select: { employeeId: true } });
+        const notSent = onLast.filter((e) => !sent.some((s) => s.employeeId === e));
+        const requests = await tx.projectResourceRequest.count({ where: { organizationId: org, projectId: id, status: 'open' } });
+        // Approved hours of the project not yet on an invoice (each week line once), and accepted milestones.
+        const [{ n: ready }] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT ((SELECT count(*) FROM timesheet_lines l JOIN timesheets t ON t.organization_id = l.organization_id AND t.id = l.timesheet_id
+             WHERE l.organization_id = ${org}::uuid AND l.project_id = ${id}::uuid AND t.status = 'approved' AND coalesce(l.status, 'approved') IN ('approved', 'reduced', 'corrected')
+               AND (l.client_status IS NULL OR l.client_status = 'approved')
+               AND NOT EXISTS (SELECT 1 FROM project_billings b WHERE b.organization_id = l.organization_id AND b.source_type = 'hours' AND b.source_id = l.id::text))
+           + (SELECT count(*) FROM project_milestones m WHERE m.organization_id = ${org}::uuid AND m.project_id = ${id}::uuid AND m.status = 'accepted'))::int AS n`;
+        pending = [
+          { kind: 'approvals', count: sheets, href: '/yx/projects/approvals' },
+          { kind: 'not_sent', count: notSent.length, people: notSent.map(nameOf).sort(), href: '/yx/projects/approvals' },
+          { kind: 'requests', count: requests, href: '/yx/projects/requests' },
+          { kind: 'billing', count: p.billingModel === 'non_billable' ? 0 : ready, href: '/yx/projects/billing' },
+        ];
+      }
+      let away: { from: string; to: string; people: { employeeId: string; person: string; days: string[] }[] } | null = null;
+      if (pm || member) {
+        const to = addDaysIso(today, 13);
+        const rows = team.length
+          ? await tx.$queryRaw<{ employee_id: string; on: string }[]>`
+              SELECT DISTINCT d.employee_id::text, d.leave_on::text AS on FROM leave_request_days d
+              JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+              WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${today}::date AND ${to}::date AND d.employee_id = ANY(${team}::uuid[])
+              ORDER BY 2 LIMIT 1000`
+          : [];
+        const by = new Map<string, string[]>();
+        for (const r of rows) by.set(r.employee_id, [...(by.get(r.employee_id) ?? []), r.on]);
+        away = { from: today, to, people: [...by].map(([employeeId, days]) => ({ employeeId, person: nameOf(employeeId), days })).sort((a, b) => a.days[0]!.localeCompare(b.days[0]!) || a.person.localeCompare(b.person)) };
+      }
+      return { pending, away };
+    });
+  }
+
   /** People and clients to choose from in the forms (names only). */
   async choices(ctx: TenantContext, user: ScopeUser) {
     const w = await this.who(user);

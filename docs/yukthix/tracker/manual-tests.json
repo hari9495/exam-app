@@ -29619,5 +29619,24 @@
                               "Screens/Time/TIM-15 · Timesheets (Live · my assigned task first)"
                     ],
                     "note": "Positive and negative (projects-t2d2 e2e 56: 4 stages refused 400, moves and assigns audited, stale version 409, unknown stage 400, team member 404, viewer 403, other company 404, assignee off the team 400; my tasks first; Done task refuses new hours, keeps the same; task-stages unit 4; kit prj-t2d2 6, timesheet-t2d 2). Migration 900 (stage, assignee_employee_ids, version on project_tasks); setting projects.task.extra_stages; routes POST projects/:id/tasks/:tid/stage, PUT projects/:id/tasks/:tid/assignees."
+          },
+          {
+                    "id": "MT-T2D-57-PENDING-AND-AWAY",
+                    "area": "T2-D 57 (answers 2867, 2868): the project page's actions pending and who is away",
+                    "screen": "Projects › a project › Overview (Actions pending, Away in the next 14 days)",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "The project's manager; a team member who also holds Projects view; someone with Projects manage who is not the manager; another company's admin.",
+                    "steps": [
+                              "As a team member send last week's timesheet with hours on the project; leave another member's week as a draft. Raise a resource request for the project. Approve a leave for a team member three days from now.",
+                              "As the project manager open the project's Overview. Press Open on 'weeks waiting for your approval'.",
+                              "As the team member who holds Projects view open the same project.",
+                              "As someone with Projects manage who is not the manager open the project.",
+                              "As another company's admin open /yx/projects/<that id>."
+                    ],
+                    "expected": "Step 2: Actions pending lists '1 week is waiting for your approval', '1 person has not sent last week' with the name, '1 resource request is waiting' (a line with nothing to do is left out); Open goes to Projects › Timesheet approvals. Away in the next 14 days shows the member with 'Away <day>' and never the leave type. Step 3: only Away in the next 14 days. Step 4: neither card. Step 5: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-01 · Projects and project workspace (Live · actions pending and who is away (PM), who is away only (a team member), nothing pending, no one away)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 57: approvals 1, not sent 1 with the name, requests 1, billing 0 on an internal project, away with the day and no leave type, Projects manage and a viewer get neither, a member without a key 404, other company 404; kit prj-t2d2 3). Route GET projects/:id/glance. A team member without a Projects key still cannot open the project page (unchanged), so they see Away only if they hold Projects view (question 2900)."
           }
 ]

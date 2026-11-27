@@ -179,4 +179,30 @@ describe('Projects T2-D part 2', () => {
     const after = await task(ids.build!);
     await api('pm', 'post', `/projects/${ids.int}/tasks/${ids.build}/stage`).send({ stage: 'in_progress', version: after.version }).expect(want(200));
   });
+  it('57: the PM sees actions pending; the team sees who is away (never the leave type); others see neither', async () => {
+    // emp sends last week (waiting for pm); peer's week stays a draft (not sent); one resource request is open.
+    await api('emp', 'post', '/time/me/timesheet/submit').send({ week: lastWeek }).expect(want(200));
+    await inA((tx) => tx.projectResourceRequest.create({ data: { organizationId: org.A.id, projectId: ids.int!, role: 'Tester', percent: 50, fromOn: day(week), toOn: day(addDays(week, 30)), requestedBy: users.pm! } }));
+    // peer is away on approved leave in three days (a sick leave type: its name never shows).
+    const inThree = addDays(today, 3);
+    await inA(async (tx) => {
+      const lt = await tx.leaveType.create({ data: { organizationId: org.A.id, name: 'Sick leave', code: `SL${run.slice(0, 3)}`, kind: 'sick' } });
+      const lr = await tx.leaveRequest.create({ data: { organizationId: org.A.id, employeeId: ids.peerEmp!, leaveTypeId: lt.id, fromOn: day(inThree), toOn: day(inThree), days: 1, status: 'approved' } });
+      await tx.leaveRequestDay.create({ data: { organizationId: org.A.id, requestId: lr.id, employeeId: ids.peerEmp!, leaveOn: day(inThree), part: 'full', portion: 1, countedAs: 'leave' } });
+    });
+    type Glance = { pending: { kind: string; count: number; people?: string[] }[] | null; away: { people: { employeeId: string; person: string; days: string[] }[] } | null };
+    const g = (await api('pm', 'get', `/projects/${ids.int}/glance`).expect(want(200))).body as Glance;
+    const count = (k: string) => g.pending!.find((x) => x.kind === k)!;
+    expect(count('approvals').count).toBe(1);
+    expect(count('not_sent')).toMatchObject({ count: 1, people: [`peer ${run}`] });
+    expect(count('requests').count).toBe(1);
+    expect(count('billing').count).toBe(0); // internal project: nothing to invoice
+    expect(g.away!.people).toEqual([{ employeeId: ids.peerEmp, person: `peer ${run}`, days: [inThree] }]);
+    expect(JSON.stringify(g)).not.toMatch(/Sick/i);
+    // Negative: Projects manage (not the manager) and a viewer see neither; another company gets no project.
+    expect((await api('boss', 'get', `/projects/${ids.int}/glance`).expect(want(200))).body).toEqual({ pending: null, away: null });
+    expect((await api('viewer', 'get', `/projects/${ids.int}/glance`).expect(want(200))).body).toEqual({ pending: null, away: null });
+    await api('emp', 'get', `/projects/${ids.int}/glance`).expect(404); // a team member without a key cannot open the project page
+    await api('adminB', 'get', `/projects/${ids.int}/glance`).expect(404);
+  });
 });

@@ -57,6 +57,12 @@ export class ProjectsController {
     return this.projects.timesheets(ctx, this.user(req), id, week);
   }
 
+  /** T2-D 57 (2867, 2868): actions pending (the PM) and who on the project is away (the PM and the team). */
+  @Get(':id/glance')
+  glance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.projects.glance(ctx, this.user(req), id);
+  }
+
   @Get(':id')
   get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: HoursRangeQueryDto) {
     return this.projects.get(ctx, this.user(req), id, q.range ?? 'week');

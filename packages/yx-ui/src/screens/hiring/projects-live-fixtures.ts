@@ -180,7 +180,7 @@ export const LIVE_CORRECTION_LINES: import('./billing-live').LiveCorrectionLine[
 export const LIVE_PROJECT_GLANCE: import('./projects').LiveProjectGlance = {
   pending: [
     { kind: 'approvals', count: 2, href: '/yx/projects/approvals' },
-    { kind: 'not_sent', count: 1, people: ['Meera Iyer'], href: 'timesheets' },
+    { kind: 'not_sent', count: 1, people: ['Meera Iyer'], href: '/yx/projects/approvals' },
     { kind: 'requests', count: 1, href: '/yx/projects/requests' },
     { kind: 'billing', count: 0, href: '/yx/projects/billing' },
   ],
