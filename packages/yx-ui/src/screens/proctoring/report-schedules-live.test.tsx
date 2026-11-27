@@ -51,4 +51,17 @@ describe('ANL-08 schedules (live)', () => {
     await ue.click(screen.getByRole('button', { name: 'Download log' }));
     expect(onDownload).toHaveBeenCalled();
   });
+
+  // T2-G 46: the import log next to the export log.
+  it('the import log tab shows only when given, with rows in and rows not in', async () => {
+    const { unmount } = show(<SchedulesScreen library={base()} />);
+    expect(screen.queryByRole('tab', { name: /Import log/ })).toBeNull();
+    unmount();
+    show(<SchedulesScreen library={base({ reports: [], importLog: { rows: [{ id: 'i', at: '2026-11-25T06:10:00.000Z', who: 'Lakshmi', what: 'Employees', detail: 'joiners.csv', ok: 38, failed: 2 }] } })} />);
+    expect(screen.getByRole('heading', { name: 'Export and import log' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: /Import log/ }));
+    expect(screen.getByText('Employees · joiners.csv')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Rows not in/ })).toBeInTheDocument();
+    expect(screen.getByText('38')).toBeInTheDocument();
+  });
 });

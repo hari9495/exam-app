@@ -29878,5 +29878,24 @@
                               "Screens/Settings/6 Help (6.3 Not found; 6.3 Access denied · with Request access; 6.5 Availability · down for maintenance)"
                     ],
                     "note": "Positive and negative (web: not found with and without reference; downForMaintenance during, outside, without window, API answering; kit: live access denied without sample request, not found without reference, maintenance without button). The /yx catch-all moved into the app group so the 404 sits in the frame; public pages that call notFound() keep the public YukthiX 404."
+          },
+          {
+                    "id": "MT-T2G-46-IMPORT-LOG",
+                    "area": "T2-G part 2 item 46: the import log next to the export log",
+                    "screen": "Analytics › Schedules and exports › Import log",
+                    "url": "http://localhost:3000/yx/analytics/schedules",
+                    "account": "System Admin (has exports.log.view); HR Admin (no exports.log.view); an employee; another company's System Admin.",
+                    "steps": [
+                              "As HR Admin import a small employee file in People › Import with one bad row, and import goals in Performance › Goals.",
+                              "As the System Admin open Analytics › Schedules and exports and open the Import log tab.",
+                              "Look at the Export log tab next to it.",
+                              "As HR Admin and as the employee open /yx/analytics/schedules; call GET /api/v1/library/imports.",
+                              "As another company's System Admin open the Import log."
+                    ],
+                    "expected": "Step 2: newest first, one line per file: When, Who (HR Admin's name), What ('Employees · <file name>', 'Goals'), Rows in and Rows not in (the bad row counted as not in). Step 3: the export log is unchanged. Step 4: no Import log tab; the API answers 403. Step 5: the list is empty (only that company's imports). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Analytics/ANL-08 · Schedules and export log (Live · import log; Live · auditor: export and import logs only)"
+                    ],
+                    "note": "Positive and negative (library-g4 e2e: employee and HR 403, bad date 400, ok / failed counts, unreadable metadata shown as System 0/0, a per-row goal audit not listed, other company empty; kit test: tab only when given). Goals and competencies imports now write one 'imported' line per file. Same key as the export log (exports.log.view); no CSV download for the import log yet."
           }
 ]

@@ -105,6 +105,13 @@ export class LibraryController {
     return this.exportLog.list(ctx, this.user(req), q.from);
   }
 
+  // T2-G 46: the import log next to it (same key).
+  @Get('imports')
+  @RequirePermissions('exports.log.view')
+  imports(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: FromQueryDto) {
+    return this.exportLog.imports(ctx, this.user(req), q.from);
+  }
+
   @Get('exports/csv')
   @RequirePermissions('exports.log.view')
   async exportsCsv(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: FromQueryDto) {
