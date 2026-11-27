@@ -13,6 +13,7 @@ import {
   PanelLink,
   RAIL_ITEMS,
   SideRail,
+  TopBar,
   Tabs,
   TabsContent,
   TabsList,
@@ -367,5 +368,17 @@ describe('CommandPalette (founder review 30 Sep 2026)', () => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'field' }), { key: 'n' });
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'field' }), { key: 'l' });
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TopBar + New (T2-F 81)', () => {
+  it('shows New only with a handler, and it opens the picker', () => {
+    const onNew = vi.fn();
+    const { unmount } = render(<TopBar onNew={onNew} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    expect(onNew).toHaveBeenCalledTimes(1);
+    unmount();
+    render(<TopBar />);
+    expect(screen.queryByRole('button', { name: 'New' })).toBeNull();
   });
 });

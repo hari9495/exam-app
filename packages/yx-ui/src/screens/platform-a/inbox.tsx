@@ -1,6 +1,6 @@
 // Notifications, approvals, request sheet, my requests, delegation (PLT-03…07; APX-D §1.1 Approvals).
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowLeftRight, BellOff, Briefcase, CalendarDays, CalendarPlus, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, FileText, Laptop, Mail, MailOpen, MoreHorizontal, Plus, Receipt, Settings as SettingsIcon, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, BellOff, Briefcase, CalendarDays, CalendarPlus, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, FileText, Laptop, LifeBuoy, Mail, MailOpen, MoreHorizontal, Plus, Receipt, Settings as SettingsIcon, UserPlus, Wallet } from 'lucide-react';
 import { Segment } from '../../components/segment';
 import { PageHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Button, IconButton, Link } from '../../components/button';
@@ -1146,7 +1146,7 @@ export function ApprovalsInboxPhone({ waiting, openId, defaultDecision }: { wait
 
 /* ================================================================ PLT-05 Request sheet */
 
-export type RequestTypeId = 'leave' | 'wfh' | 'onduty' | 'compoff' | 'regularise' | 'shiftswap' | 'expense' | 'advance' | 'letter';
+export type RequestTypeId = 'leave' | 'wfh' | 'onduty' | 'compoff' | 'regularise' | 'shiftswap' | 'expense' | 'advance' | 'letter' | 'ticket' | 'job';
 interface RequestType {
   id: RequestTypeId;
   label: string;
@@ -1154,7 +1154,7 @@ interface RequestType {
   title: string;
   desc: string;
   icon: typeof CalendarDays;
-  group: 'Time off' | 'Attendance' | 'Money' | 'Documents';
+  group: (typeof TYPE_GROUPS)[number];
 }
 /** Every request an employee can raise, grouped (founder review 30 Sep 2026). */
 const REQUEST_TYPES: RequestType[] = [
@@ -1166,9 +1166,41 @@ const REQUEST_TYPES: RequestType[] = [
   { id: 'shiftswap', label: 'Shift swap', title: 'Swap a shift', desc: 'Exchange a shift with a colleague', icon: ArrowLeftRight, group: 'Attendance' },
   { id: 'expense', label: 'Expense claim', title: 'Claim an expense', desc: 'Travel, meals, internet, client visits', icon: Receipt, group: 'Money' },
   { id: 'advance', label: 'Salary advance', title: 'Ask for a salary advance', desc: 'Recovered from the next salaries', icon: Wallet, group: 'Money' },
-  { id: 'letter', label: 'Letter request', title: 'Request a letter', desc: 'Employment, address proof or salary letter', icon: FileText, group: 'Documents' },
+  { id: 'letter', label: 'Letter or certificate', title: 'Request a letter', desc: 'Employment, address proof, salary or bonafide', icon: FileText, group: 'Documents' },
+  // T2-F 81 (answer 2886): "+ New" also offers a helpdesk ticket and, for managers, a job request.
+  { id: 'ticket', label: 'Helpdesk ticket', title: 'Raise a ticket', desc: 'Ask HR, IT, payroll or admin for help', icon: LifeBuoy, group: 'Help' },
+  { id: 'job', label: 'Job request', title: 'Ask to hire', desc: 'A new or replacement position in your team', icon: UserPlus, group: 'Hiring' },
 ];
-const TYPE_GROUPS = ['Time off', 'Attendance', 'Money', 'Documents'] as const;
+const TYPE_GROUPS = ['Time off', 'Attendance', 'Money', 'Documents', 'Help', 'Hiring'] as const;
+
+/** The type buttons, grouped (PLT-05); the sample sheet and the live "+ New" both draw them. */
+function TypeGroups({ types, onPick }: { types: RequestType[]; onPick: (t: RequestTypeId) => void }) {
+  return (
+    <>
+      {TYPE_GROUPS.map((g) => {
+        const list = types.filter((t) => t.group === g);
+        return list.length === 0 ? null : (
+          <section key={g} className="yx-plt-stack" data-gap="sm" aria-label={g}>
+            <h3 className="yx-plt-h">{g}</h3>
+            <div className="yx-plt-types" role="group" aria-label={g}>
+              {list.map((t) => (
+                <button key={t.id} type="button" className="yx-plt-type" onClick={() => onPick(t.id)}>
+                  <Icon icon={t.icon} size="md" />
+                  <span className="yx-plt-type__text">
+                    <span>{t.label}</span>
+                    <span className="yx-plt-type__desc">{t.desc}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+const typeMatches = (q: string) => (t: RequestType) => !q || `${t.label} ${t.desc}`.toLowerCase().includes(q);
 
 const LEAVE_BALANCES: Record<string, number> = { casual: 4, sick: 5, earned: 9 };
 const LEAVE_OPTIONS = [
@@ -1303,7 +1335,7 @@ function useRequestSheet({ defaultType = null, defaultLeaveType = 'casual', defa
     );
   else if (!type) {
     const q = query.trim().toLowerCase();
-    const matches = REQUEST_TYPES.filter((t) => !q || `${t.label} ${t.desc}`.toLowerCase().includes(q));
+    const matches = REQUEST_TYPES.filter(typeMatches(q));
     body = (
       <div className="yx-plt-stack">
         {proxy && (
@@ -1324,25 +1356,7 @@ function useRequestSheet({ defaultType = null, defaultLeaveType = 'casual', defa
           </div>
         )}
         {matches.length === 0 && <EmptyState compact title="No request type matches." description="Try another word, or ask HR from Help." />}
-        {TYPE_GROUPS.map((g) => {
-          const list = matches.filter((t) => t.group === g);
-          return list.length === 0 ? null : (
-            <section key={g} className="yx-plt-stack" data-gap="sm" aria-label={g}>
-              <h3 className="yx-plt-h">{g}</h3>
-              <div className="yx-plt-types" role="group" aria-label={g}>
-                {list.map((t) => (
-                  <button key={t.id} type="button" className="yx-plt-type" onClick={() => pickType(t.id)}>
-                    <Icon icon={t.icon} size="md" />
-                    <span className="yx-plt-type__text">
-                      <span>{t.label}</span>
-                      <span className="yx-plt-type__desc">{t.desc}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        <TypeGroups types={matches} onPick={(t) => pickType(t)} />
       </div>
     );
   } else
@@ -1527,6 +1541,28 @@ function useRequestSheet({ defaultType = null, defaultLeaveType = 'casual', defa
             <EffectSummary rows={[['Ready in', 'About 1 working day, as a signed PDF in Documents & letters'], ['Approver', 'HR team']]} />
           </>
         )}
+        {type === 'ticket' && (
+          <>
+            <FormField label="Who can help" required>
+              <Select options={[{ value: 'hr', label: 'HR help desk' }, { value: 'it', label: 'IT help desk' }, { value: 'payroll', label: 'Payroll' }]} value={category === 'travel' ? 'hr' : category} onChange={setCategory} />
+            </FormField>
+            <FormField label="What do you need?" required>
+              <TextArea value={description} onChange={setDescription} rows={3} />
+            </FormField>
+            <EffectSummary rows={[['First reply', 'Within 4 working hours'], ['Follow it', 'Helpdesk › My tickets']]} />
+          </>
+        )}
+        {type === 'job' && (
+          <>
+            <FormField label="Job title" required>
+              <TextField value={description} onChange={setDescription} />
+            </FormField>
+            <FormField label="Why" required>
+              <Segment label="Why" value={category === 'replacement' ? 'replacement' : 'new'} onChange={setCategory} options={[{ value: 'new', label: 'A new position' }, { value: 'replacement', label: 'A replacement' }]} />
+            </FormField>
+            <EffectSummary rows={[['Approver', 'Karthik Subramanian, then HR'], ['Then', 'Recruiting opens the job']]} />
+          </>
+        )}
       </div>
     );
 
@@ -1552,8 +1588,47 @@ export function RequestSheetBody(props: RequestSheetProps) {
   );
 }
 
+/** T2-F 81 (answer 2886): "+ New" in the top bar: the drawn type picker with only the types this person may raise;
+ * picking one opens that type's live form (its own page). The inline forms wait for the approvals pass. */
+export interface LiveRequestSheet {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  types: { id: RequestTypeId; href: string }[];
+  onPick: (href: string) => void;
+}
+
+function LiveRequestPicker({ live }: { live: LiveRequestSheet }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const mine = REQUEST_TYPES.filter((t) => live.types.some((x) => x.id === t.id));
+  const matches = mine.filter(typeMatches(q));
+  const pick = (id: RequestTypeId) => {
+    live.onOpenChange(false);
+    live.onPick(live.types.find((x) => x.id === id)!.href);
+  };
+  return (
+    <Drawer open={live.open} onOpenChange={live.onOpenChange} title="What do you want to request?" size="lg" description="Pick a type. Its form opens.">
+      <div className="yx-plt-stack">
+        {mine.length > 0 && <TextField value={query} onChange={setQuery} aria-label="Search request types" placeholder="Search: leave, ticket, letter…" />}
+        {mine.length === 0 ? (
+          <EmptyState compact title="Nothing to request here yet." description="Your company has not set up requests you can raise. Ask HR from Help." />
+        ) : matches.length === 0 ? (
+          <EmptyState compact title="No request type matches." description="Try another word, or ask HR from Help." />
+        ) : (
+          <TypeGroups types={matches} onPick={pick} />
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
 // PLT-05 · Request sheet (desk: drawer over Home). Send lives in the drawer footer, always visible.
-export function RequestSheetScreen(props: RequestSheetProps) {
+export function RequestSheetScreen(props: RequestSheetProps & { live?: LiveRequestSheet }) {
+  if (props.live) return <LiveRequestPicker live={props.live} />;
+  return <DesignRequestSheet {...props} />;
+}
+
+function DesignRequestSheet(props: RequestSheetProps) {
   const [open, setOpen] = useState(true);
   const { title, changeType, body, footer } = useRequestSheet(props);
   return (

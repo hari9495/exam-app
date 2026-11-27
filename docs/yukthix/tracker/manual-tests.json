@@ -29697,5 +29697,26 @@
                               "Screens/Platform/PLT-02 · Role homes"
                     ],
                     "note": "Positive and negative (small-features e2e 16: off by default and saving refused 403, setting only by a settings manager and only known roles, persona not allowed 403, pinned widget hidden or ordered 400, a widget twice 400, size 5 400, bad id 400, unknown persona 400, saved and read back, another person and another company never see it, one row per person, reset removes it, audit saved/saved/reset, signed out 401; API unit home-layout 3; kit shell-home 34 and settings 175; web pages 'Edit home' 2). Migration 941 (home_layouts, RLS + support-session exclusion, in the rls-isolation list); setting home.personalise_roles (multi, default none); routes GET/PUT/DELETE workspace/home/layout (the caller's own row only)."
+          },
+          {
+                    "id": "MT-T2F-81",
+                    "area": "Platform (T2-F item 81, answer 2886): \"+ New\" quick create in the top bar",
+                    "screen": "Every YukthiX page: top bar › New (PLT-05 request type picker)",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee (demo org); a manager who may raise requisitions (panel@, Divya); HR Admin without an employee record; a YukthiX support session.",
+                    "steps": [
+                              "As the employee press New in the top bar.",
+                              "Type 'ticket' in the search, then 'visa'.",
+                              "Pick Leave; come back, press New › Regularise attendance, then Expense claim, Helpdesk ticket, Letter or certificate.",
+                              "As the manager press New and pick Job request.",
+                              "As HR without an employee record press New.",
+                              "In a support session look for New."
+                    ],
+                    "expected": "Step 1: the drawer 'What do you want to request?' with groups Time off (Leave), Attendance (Regularise attendance), Money (Expense claim), Documents (Letter or certificate), Help (Helpdesk ticket); no Job request. Step 2: only Helpdesk ticket; then 'No request type matches.'. Step 3: the drawer closes and each opens its live form: the leave request sheet, the regularise sheet on attendance, the new expense claim, the new ticket form, the certificate request. Step 4: Job request is listed and opens the new-requisition sheet on Requisitions. Step 5: only what HR may raise (a helpdesk ticket). Step 6: no New button. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/PLT-05 · Request sheet (\"+ New\" · an employee, a manager, nothing to raise; helpdesk ticket; job request)",
+                              "Shell/… · Top bar · with + New"
+                    ],
+                    "note": "Positive and negative (kit inbox 'PLT-05 + New' 2 and shell 24: only allowed types, grouped, pick closes and opens, search, nothing to raise, New only with a handler; web palette 'newRequestTypes' 2: employee list and hrefs, none without a record, job only with ats.requisition.raise; requisitions ?new=1 opens the sheet only with the key (2); layout + New opens the picker and the pick navigates (1)). No API change: each form keeps its own checks."
           }
 ]

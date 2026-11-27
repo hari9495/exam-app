@@ -465,3 +465,23 @@ describe('/yx layout: the rail last-used slot (T2-F 80, answer 2885)', () => {
     expect(within(again).queryByRole('link', { name: /^Last used/ })).toBeNull();
   });
 });
+
+describe('/yx layout: + New in the top bar (T2-F 81, answer 2886)', () => {
+  it('opens the type picker with the types this person may raise; picking one opens its form', async () => {
+    const { usePathname } = jest.requireMock('next/navigation') as { usePathname: jest.Mock };
+    usePathname.mockReturnValue('/yx/home');
+    const { default: YxAppLayout } = await import('./(app)/layout');
+    route({
+      'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' },
+      [`GET ${PERMS_PATH}`]: [],
+      'GET /people/team': { managerId: 'm-1', members: [] },
+      'GET /users/me': { id: 'u-emp', email: 'emp@demo-org.test', name: 'Emp', role: 'panel', organizationId: 'org-1' },
+    });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await ue.click(await screen.findByRole('button', { name: 'New' }));
+    const sheet = await screen.findByRole('dialog', { name: 'What do you want to request?' });
+    expect(within(sheet).queryByRole('button', { name: /Job request/ })).toBeNull();
+    await ue.click(within(sheet).getByRole('button', { name: /Helpdesk ticket/ }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/desk/help?new=1'));
+  });
+});

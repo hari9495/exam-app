@@ -48,6 +48,29 @@ export interface PaletteTarget {
   deskStatus?: AgentStatus;
 }
 
+/**
+ * T2-F 81 (answer 2886): what "+ New" offers: the request types the person may raise, each opening its live form,
+ * by the same rules as their menu and Ctrl K actions (self: they have an employee record; help: not a support session;
+ * job: they may raise a requisition).
+ */
+export function newRequestTypes(nav: NavArea[], p: { self: boolean; help: boolean; job: boolean }): { id: 'leave' | 'regularise' | 'expense' | 'ticket' | 'letter' | 'job'; href: string }[] {
+  const link = (id: string) => nav.flatMap((a) => a.sections.flatMap((s) => s.items)).find((l) => l.id === id);
+  const out: ReturnType<typeof newRequestTypes> = [];
+  const leave = p.self ? link('my-leave') : undefined;
+  const attendance = p.self ? link('my-attendance') : undefined;
+  const expenses = p.self ? link('expenses') : undefined;
+  const desk = p.help ? link('desk-help') : undefined;
+  const docs = p.self ? link('my-documents') : undefined;
+  const reqs = p.job ? link('hiring-requisitions') : undefined;
+  if (leave) out.push({ id: 'leave', href: `${leave.href}?apply=1` });
+  if (attendance) out.push({ id: 'regularise', href: `${attendance.href}?request=regularise` });
+  if (expenses) out.push({ id: 'expense', href: `${expenses.href}?new=1` });
+  if (desk) out.push({ id: 'ticket', href: `${desk.href}?new=1` });
+  if (docs) out.push({ id: 'letter', href: `${docs.href}/certificate` });
+  if (reqs) out.push({ id: 'job', href: `${reqs.href}?new=1` });
+  return out;
+}
+
 export function buildPalette(p: PaletteInput): { groups: PaletteGroup[]; targets: Map<string, PaletteTarget>; shortcuts: Record<string, string> } {
   const targets = new Map<string, PaletteTarget>();
   const shortcuts: Record<string, string> = {};

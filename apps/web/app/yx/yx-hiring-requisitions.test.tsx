@@ -89,6 +89,26 @@ describe('Hiring › Requisitions (HIR-02 + HIR-26)', () => {
     expect(asked.filter((x) => x === '/candidate-email-templates' || x === '/org-sender-addresses')).toEqual([]);
   });
 
+  it('T2-F 81: + New › Job request (?new=1) opens the new-requisition sheet for someone who may raise one, then tidies the address', async () => {
+    const replace = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('new=1'));
+    serve(['ats.requisition.raise'], 'own');
+    wrap(<YxRequisitionsPage />);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/yx/hiring/requisitions', { scroll: false }));
+  });
+
+  it('T2-F 81: ?new=1 without the key to raise opens nothing', async () => {
+    const replace = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('new=1'));
+    serve(['pipeline:manage'], 'all');
+    wrap(<YxRequisitionsPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/yx/hiring/requisitions', { scroll: false }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('re-walk of answer 476: a plain employee is told they have no access; nothing is asked for and no table shows', async () => {
     serve([], 'own');
     wrap(<YxRequisitionsPage />);

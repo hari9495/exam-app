@@ -346,6 +346,12 @@ export const RailLastUsed: S = {
   ),
 };
 
+// T2-F 81 (answer 2886): "+ New" opens the PLT-05 type picker; left out when the person has nothing to raise.
+export const TopBarWithNew: S = {
+  name: 'Top bar · with + New',
+  render: () => <TopBar onNew={() => {}} onSearch={() => {}} onHelp={() => {}} profile={<ProfileMenu name="Divya Raghunathan" email="divya.r@kaverifoods.in" />} />,
+};
+
 export const TopBarAlone: S = {
   name: 'Top bar',
   render: () => (

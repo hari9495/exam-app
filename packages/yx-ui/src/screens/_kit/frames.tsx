@@ -121,6 +121,8 @@ export interface LiveFrame {
   tabs?: Partial<Record<'home' | 'time' | 'requests' | 'pay' | 'me', string>>;
   /** Dialogs and drawers the frame opens: the search palette, help. */
   overlays?: ReactNode;
+  /** T2-F 81: "+ New" in the top bar (render the RequestSheetScreen live picker in `overlays`). */
+  onNew?: () => void;
   /** T2-F 80: the rail's "last used" slot (an area not on the person's rail, with the page last opened there). */
   lastUsed?: RailItem | null;
 }
@@ -211,7 +213,7 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
             ))}
           </SidePanel>
         }
-        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} helpUnread={live.helpUnread} profile={live.profile} accessibility={live.accessibility} />}
+        topBar={<TopBar onNew={live.onNew} onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} helpUnread={live.helpUnread} profile={live.profile} accessibility={live.accessibility} />}
         mobileTabBar={mobileTabs.length ? <MobileTabBar items={mobileTabs} activeId={mobileActive} onSelect={(id) => go(tabs[id as keyof typeof tabs])} /> : undefined}
         panelCollapsed={live.panelCollapsed}
         onPanelCollapsedChange={live.onPanelCollapsedChange}

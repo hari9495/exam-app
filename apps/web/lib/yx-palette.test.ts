@@ -1,4 +1,4 @@
-import { buildPalette, type PaletteInput } from './yx-palette';
+import { buildPalette, newRequestTypes, type PaletteInput } from './yx-palette';
 import { MAX_RECENT, addRecent, clearAllRecent, readRecent, recentKey } from './yx-recent';
 import { approvableTask, toBellItem } from './yx-bell';
 import { buildNav, withAccount, type NavInput } from './yx-nav';
@@ -132,5 +132,23 @@ describe('buildPalette: desk actions (answer 1649)', () => {
     expect(labels(buildPalette(input({ desk: desk({ ticket: { ...ticket, canWork: false } }) })), 'Desk').every((l) => l.startsWith('Set my status'))).toBe(true);
     // Words that are not a ticket number never offer a jump.
     expect(labels(buildPalette(input({ typed: 'leave', desk: desk({ ticket: null, work: false }) })), 'Desk')).toEqual([]);
+  });
+});
+
+describe('+ New request types (T2-F 81, answer 2886)', () => {
+  it('an employee: leave, attendance correction, expense claim, ticket and letter, each opening its live form', () => {
+    expect(newRequestTypes(employeeNav, { self: true, help: true, job: false })).toEqual([
+      { id: 'leave', href: '/yx/time/leave?apply=1' },
+      { id: 'regularise', href: '/yx/time/attendance?request=regularise' },
+      { id: 'expense', href: '/yx/expenses?new=1' },
+      { id: 'ticket', href: '/yx/desk/help?new=1' },
+      { id: 'letter', href: '/yx/me/documents/certificate' },
+    ]);
+  });
+  it('no employee record: nothing of their own to raise; a job request only with the key and its menu entry', () => {
+    expect(newRequestTypes(buildNav(base), { self: false, help: false, job: false })).toEqual([]);
+    const hm = withAccount(buildNav({ ...base, employee: true, has: (k: string) => k === 'ats.requisition.raise' } as NavInput), { support: false, employee: true });
+    expect(newRequestTypes(hm, { self: true, help: true, job: true }).map((t) => t.id)).toContain('job');
+    expect(newRequestTypes(hm, { self: true, help: true, job: false }).map((t) => t.id)).not.toContain('job');
   });
 });

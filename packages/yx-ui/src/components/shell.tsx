@@ -44,6 +44,7 @@ import {
   Menu as MenuIcon,
   MoreHorizontal,
   PanelLeftClose,
+  Plus,
   Search,
   Settings,
   SlidersHorizontal,
@@ -528,6 +529,8 @@ export interface TopBarProps {
    * one that keeps the choices in this browser: a company can never turn it off (answer 2330).
    */
   accessibility?: ReactNode;
+  /** T2-F 81 (answer 2886): "+ New" opens the request type picker (PLT-05). Left out when there is nothing to raise. */
+  onNew?: () => void;
 }
 
 export function TopBar({
@@ -542,6 +545,7 @@ export function TopBar({
   helpUnread,
   profile,
   accessibility,
+  onNew,
 }: TopBarProps) {
   const shell = useContext(ShellContext);
   return (
@@ -559,6 +563,11 @@ export function TopBar({
         </button>
       )}
       <div className="yx-topbar__end">
+        {onNew && (
+          <Button size="sm" variant="primary" icon={Plus} onClick={onNew} aria-haspopup="dialog">
+            New
+          </Button>
+        )}
         {entity && <div className="yx-topbar__entity">{entity}</div>}
         {/* Ask AI sits in the bar with the other tools, never floating over the page (R8). */}
         {onAsk && <IconButton icon={MessageCircleQuestionMark} label="Ask AI" variant="secondary" className="yx-ask-fab" onClick={onAsk} />}

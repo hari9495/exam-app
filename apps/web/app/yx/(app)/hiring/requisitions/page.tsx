@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { EmailDialog, RequisitionsScreen, type LiveRequisitionRow, type RediscoveryMatch } from '@yukthix/ui/hiring';
 import { RequisitionSheet, type LiveRequisitionSheet, type PlanLine } from '@yukthix/ui/frame';
@@ -99,6 +99,13 @@ export default function YxRequisitionsPage() {
   // The request sheet (PPL-08) for whoever may raise a requisition, signed in as themselves: new, change (252), copy (253).
   const canRaise = perms.has('ats.requisition.raise') && !acting;
   const [sheet, setSheet] = useState<{ edit: string | null; initial?: Input } | null>(null);
+  // T2-F 81: "+ New" › Job request opens the new-requisition sheet (?new=1), then drops it from the address.
+  const startNew = useSearchParams()?.get('new') === '1';
+  useEffect(() => {
+    if (!startNew || !perms.isSuccess) return;
+    if (canRaise) setSheet({ edit: null });
+    router.replace('/yx/hiring/requisitions', { scroll: false });
+  }, [startNew, canRaise, perms.isSuccess, router]);
   const lines = useHiring<OpenLine[]>('/plan-lines', Boolean(sheet));
   const team = usePeople<{ members: TeamMember[] }>(sheet ? '/team' : null);
   const planLines: PlanLine[] = (lines.data ?? []).map((l) => ({ id: l.id, department: l.department, designation: l.designation, grade: l.grade ?? '', location: l.location ?? '', approved: l.count, filled: l.filled, open: l.committed, budget: l.budget ?? Number.MAX_SAFE_INTEGER, committed: l.committedBudget }));
