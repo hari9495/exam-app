@@ -66,7 +66,7 @@ export class LineApprovalsService {
       let approvers = pm && pm !== c.userId ? [pm] : managerUser && managerUser !== c.userId ? [managerUser] : (hr ??= await hrApprovers(tx, org, sheet.employeeId, todayIst(), c.userId));
       approvers = approvers.filter((x) => x !== c.userId);
       const unallocated = booking === 'approval' && l.minutes.some((m, k) => m > 0 && !allocs.some((a) => a.projectId === l.projectId && dateOf(a.fromOn) <= addDays(week, k) && (!a.toOn || dateOf(a.toOn) >= addDays(week, k))));
-      await tx.timesheetLine.update({ where: { id: l.id }, data: { status: 'pending', approverUserIds: approvers, unallocated, approvedMinutes: [], reason: null, decidedBy: null, decidedAt: null, clientStatus: null, clientNote: null, clientContactId: null, clientDecidedAt: null, version: { increment: 1 } } });
+      await tx.timesheetLine.update({ where: { id: l.id }, data: { status: 'pending', level: 1, approverUserIds: approvers, unallocated, approvedMinutes: [], reason: null, decidedBy: null, decidedAt: null, clientStatus: null, clientNote: null, clientContactId: null, clientDecidedAt: null, version: { increment: 1 } } });
       approvers.forEach((a) => everyone.add(a));
     }
     return [...everyone];
@@ -74,9 +74,10 @@ export class LineApprovalsService {
 
   /** Withdraw: only while no line is decided yet. */
   async withdrawLines(tx: Tx, org: string, sheetId: string) {
-    const decided = await tx.timesheetLine.count({ where: { organizationId: org, timesheetId: sheetId, status: { in: ['approved', 'reduced', 'rejected'] } } });
+    // T2-D 59: a line waiting for the second approver was decided once already.
+    const decided = await tx.timesheetLine.count({ where: { organizationId: org, timesheetId: sheetId, OR: [{ status: { in: ['approved', 'reduced', 'rejected'] } }, { level: 2 }] } });
     if (decided) throw new ConflictException('A manager already decided some lines of this week, so it can no longer be withdrawn.');
-    await tx.timesheetLine.updateMany({ where: { organizationId: org, timesheetId: sheetId }, data: { status: null, approverUserIds: [], unallocated: false } });
+    await tx.timesheetLine.updateMany({ where: { organizationId: org, timesheetId: sheetId }, data: { status: null, level: 1, approverUserIds: [], unallocated: false } });
   }
 
   private self(user: ScopeUser) {
@@ -126,6 +127,8 @@ export class LineApprovalsService {
             unallocated: mine.some((l) => l.unallocated),
             mismatch: mismatchOf(s),
             bulk: mine.every((l) => bulkOk({ unallocated: l.unallocated, weekMinutesOnProject: total, allocationPercent: a?.percent ?? null, withinAllocation: within })),
+            // T2-D 59 (2870): lines the project manager already decided, waiting for me as the second approver.
+            second: mine.some((l) => l.level === 2) ? { approvedHours: hrs(sum(mine.flatMap((l) => (l.approvedMinutes.length === l.minutes.length ? l.approvedMinutes : l.minutes)))), bookedHours: hrs(total) } : null,
             lines: mine.map((l) => ({ id: l.id, task: l.activity, hours: hrs(sum(l.minutes)), /** B1: Monday to Sunday, for the week → day → task drill-down. */ days: l.minutes.map(hrs), billable: l.billable, comments: sevenComments(l.dayComments), version: l.version })),
           });
         }
@@ -145,6 +148,7 @@ export class LineApprovalsService {
       const sheets = await tx.timesheet.findMany({ where: { organizationId: org, id: { in: [...new Set(lines.map((l) => l.timesheetId))] } } });
       for (const sId of new Set(lines.map((l) => l.timesheetId))) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tsl:${org}:${sId}`}))`;
       const told: { userId: string | null; text: string; week: string; sheetId: string }[] = [];
+      const seconds = new Set<string>();
       for (const d of decisions) {
         const l = lines.find((x) => x.id === d.lineId)!;
         const s = sheets.find((x) => x.id === l.timesheetId)!;
@@ -159,14 +163,24 @@ export class LineApprovalsService {
         }
         const reason = d.reason?.trim() ?? '';
         if (d.status !== 'approved' && reason.length < 3) throw new BadRequestException(d.status === 'reduced' ? 'Say why you are reducing the hours: the person sees it.' : 'Say why you are rejecting the hours: the person sees it.');
-        let approvedMinutes: number[] = [];
+        // T2-D 59 (2870): at the second level the hours start from what the project manager approved.
+        const firstReduced = l.level === 2 && l.approvedMinutes.length === l.minutes.length;
+        const upTo = firstReduced ? sum(l.approvedMinutes) : sum(l.minutes);
+        let approvedMinutes: number[] = firstReduced ? l.approvedMinutes : [];
         if (d.status === 'reduced') {
           const target = Math.round((d.hours ?? -1) * 60);
-          if (d.hours == null || target < 0 || target >= sum(l.minutes)) throw new BadRequestException(`Approve fewer hours than the ${hrs(sum(l.minutes))} booked.`);
+          if (d.hours == null || target < 0 || target >= upTo) throw new BadRequestException(`Approve fewer hours than the ${hrs(upTo)} ${firstReduced ? 'the project manager approved' : 'booked'}.`);
           approvedMinutes = reduceMinutes(l.minutes, target);
         }
-        await tx.timesheetLine.update({ where: { id: l.id }, data: { status: d.status, approvedMinutes, reason: d.status === 'approved' ? null : reason.slice(0, 300), decidedBy: c.userId ?? null, decidedAt: new Date(), version: { increment: 1 } } });
-        await audit(tx, c, `time.timesheet_line.${d.status}`, 'timesheet_line', l.id, { timesheetId: s.id, projectId: l.projectId, bookedMinutes: sum(l.minutes), approvedMinutes: sum(lineApproved({ minutes: l.minutes, status: d.status, approvedMinutes })), reason: d.status === 'approved' ? null : reason, bulk });
+        const status = d.status === 'approved' && firstReduced ? 'reduced' : d.status;
+        const why = d.status === 'approved' ? (firstReduced ? l.reason : null) : reason.slice(0, 300);
+        // T2-D 59: the project's second approver (never the person, never the one who just decided) decides next.
+        const second = l.level === 1 && d.status !== 'rejected' ? await this.secondApprover(tx, org, l.projectId, s.employeeId, c.userId!) : null;
+        if (second) {
+          await tx.timesheetLine.update({ where: { id: l.id }, data: { status: 'pending', level: 2, approverUserIds: [second], approvedMinutes, reason: why, decidedBy: c.userId ?? null, decidedAt: new Date(), version: { increment: 1 } } });
+          seconds.add(second);
+        } else await tx.timesheetLine.update({ where: { id: l.id }, data: { status, approvedMinutes, reason: why, decidedBy: c.userId ?? null, decidedAt: new Date(), version: { increment: 1 } } });
+        await audit(tx, c, `time.timesheet_line.${d.status}`, 'timesheet_line', l.id, { timesheetId: s.id, projectId: l.projectId, bookedMinutes: sum(l.minutes), approvedMinutes: sum(lineApproved({ minutes: l.minutes, status, approvedMinutes })), reason: d.status === 'approved' ? null : reason, bulk, level: l.level, ...(second ? { next: 'second_approver' } : {}) });
         if (d.status !== 'approved') {
           const p = await tx.timesheetProject.findFirst({ where: { organizationId: org, id: l.projectId }, select: { code: true } });
           const person = await tx.employee.findFirst({ where: { organizationId: org, id: s.employeeId }, select: { userId: true } });
@@ -175,13 +189,27 @@ export class LineApprovalsService {
       }
       const finals = [];
       for (const sId of new Set(lines.map((l) => l.timesheetId))) finals.push(await this.finalize(tx, c, sId));
-      return { told, finals };
+      return { told, finals, seconds: [...seconds] };
     });
+    if (done.seconds.length)
+      await this.notifications
+        .notifySystem(ctx, done.seconds, 'time.timesheet.lines', { entityType: 'timesheet', entityId: done.finals[0]!.id, contextText: 'Timesheet hours are waiting for your second approval.', linkPath: '/yx/projects/approvals' }, { subject: 'Timesheet hours are waiting for your approval', html: '<p>Timesheet hours are waiting for your second approval, after the project manager.</p>' })
+        .catch((e: unknown) => this.logger.error(e));
     for (const t of done.told.filter((x) => x.userId))
       await this.notifications
         .notifySystem(ctx, [t.userId!], 'time.timesheet.line', { entityType: 'timesheet', entityId: t.sheetId, contextText: t.text, linkPath: `/yx/time/timesheet?week=${t.week}` }, { subject: `Your timesheet for the week of ${fmt(t.week)}`, html: `<p>${escapeHtml(t.text)}</p>` })
         .catch((e: unknown) => this.logger.error(e));
     return { decided: decisions.length, weeks: done.finals };
+  }
+
+  /** T2-D 59 (2870): the project's second approver for this person's line, or null (off, the person, or the decider). */
+  private async secondApprover(tx: Tx, org: string, projectId: string, employeeId: string, decider: string): Promise<string | null> {
+    const p = await tx.timesheetProject.findFirst({ where: { organizationId: org, id: projectId }, select: { secondApproverUserId: true } });
+    const second = p?.secondApproverUserId ?? null;
+    if (!second || second === decider) return null;
+    const person = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { userId: true } });
+    // Nobody approves their own hours: the second approver's own lines stop at the project manager.
+    return person?.userId === second ? null : second;
   }
 
   /** Answer 1407: approve lines in bulk, each inside the person's allocation (the company may lift the share check). */

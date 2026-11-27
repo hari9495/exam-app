@@ -123,9 +123,13 @@ export interface ApprovalTask {
   note?: string | null;
   /** Answer 2500: who holds the task now ("Everyone's pending"). */
   approver?: string;
+  /** T2-E 49 (2872): the requester is in my direct or whole team. */
+  requesterTeam?: 'direct' | 'whole' | null;
 }
 export interface ApprovalHistory {
-  decided: { requestId: string; title: string; type: string; decision: string; at: string; requestStatus: string }[];
+  /** T2-E 50 (2873): my decisions in the period (`days`), newest first, with the request's present status. */
+  days?: 30 | 90 | 365;
+  decided: { taskId?: string; requestId: string; title: string; type: string; decision: string; at: string; requestStatus: string; requester?: string; requesterTeam?: 'direct' | 'whole' | null; submittedAt?: string | null; onBehalfOf?: string | null }[];
   sent: { requestId: string; title: string; type: string; status: string; submittedAt: string; decidedAt: string | null }[];
 }
 export interface Delegation {

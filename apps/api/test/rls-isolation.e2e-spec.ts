@@ -76,6 +76,8 @@ const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 're
 const LATER_SUPPORT_EXCLUDED = [
   // Settings S-9 (answer 1332): a whole-company export never runs inside a support session.
   'company_exports',
+  // T2-E 52: Web Push subscriptions (a person's devices) are never read or changed inside a support session.
+  'push_subscriptions',
   // HLP-12 accidents, HLP-13 collective disputes, speak-up cases.
   'accident_cases', 'accident_medical_records', 'accident_steps', 'ir_disputes', 'ir_dispute_steps',
   'speakup_cases', 'speakup_case_members', 'speakup_case_steps', 'speakup_messages', 'speakup_team_members',
@@ -878,6 +880,29 @@ describe('PostgreSQL row-level security (app role)', () => {
         await tx.grade.delete({ where: { id: grade } });
       });
     }
+  });
+
+  // Batch T2-E item 52 (answer 2875): Web Push subscriptions, one per signed-in device.
+  const T2E_TABLES = ['push_subscriptions'];
+  it('the T2-E push subscriptions table is a forced-RLS tenant table with the support-session exclusion', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced, (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname = ANY(${T2E_TABLES}) ORDER BY c.relname`;
+    expect(rows).toEqual(T2E_TABLES.map((table) => ({ table, forced: true, policies: BigInt(2) })));
+  });
+
+  it("(b) org A cannot read, change, delete or plant org B's push subscriptions", async () => {
+    const endpoint = `https://push.example.test/${randomUUID()}`;
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) => tx.pushSubscription.create({ data: { organizationId: orgB, userId: userB, endpoint, p256dh: 'fake-p256dh-key', auth: 'fake-auth' } }));
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      count: await tx.pushSubscription.count({ where: { organizationId: orgB } }),
+      changed: await tx.$executeRaw`UPDATE push_subscriptions SET endpoint = 'https://evil.test' WHERE organization_id = ${orgB}::uuid`,
+      deleted: await tx.$executeRaw`DELETE FROM push_subscriptions WHERE organization_id = ${orgB}::uuid`,
+    }));
+    expect(seenByA).toEqual({ count: 0, changed: 0, deleted: 0 });
+    await expect(tenantPrisma.forTenant(asA(), (tx) => tx.pushSubscription.create({ data: { organizationId: orgB, userId: userB, endpoint: `${endpoint}/2`, p256dh: 'fake-p256dh-key', auth: 'fake-auth' } }))).rejects.toThrow();
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) => tx.pushSubscription.deleteMany({ where: { endpoint } }));
   });
 
   // Batch T2-C: 1:1 agenda templates (item 70) and goal templates (item 71).

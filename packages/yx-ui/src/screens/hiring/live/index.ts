@@ -87,7 +87,7 @@ export { PortalSignInScreen } from '../../portals/portals-kit';
 export type { SettingDef, SettingValue, SettingsGroupDef, SettingsPageDef } from '../../settings/settings-types';
 // Projects P-1 (answers 1401 to 1405, 1412, 1420): the designed PRJ-01 list and workspace, live with their `live` prop,
 // and Settings 3.11 Projects & timesheets.
-export { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectsList, type LiveProjectWorkspace, type LiveProjectBilling } from '../projects';
+export { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectsList, type LiveProjectWorkspace, type LiveProjectBilling, type LiveProjectGlance } from '../projects';
 export type { AllocationInput as ProjectAllocationInput, LiveProjectDetail, LiveProjectRow, MilestoneInput as ProjectMilestoneInput, ProjectChoices, ProjectInput, ProjectStatus, TaskInput as ProjectTaskInput } from '../projects-live';
 export { PROJECT_SETTING_KEYS, projectSettingsChanges, projectSettingsPage, type ProjectSettingsData } from '../../settings/projects-live';
 // Settings S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings.
@@ -123,3 +123,5 @@ export { LookupTableScreen } from '../../platform-b/rules-screens';
 export type { LiveLimits, LimitFamily } from '../../platform-b/limits-live';
 // Answer 2631: the pipeline editor on Settings › Hiring (6.1).
 export { PipelineSheet, type EditablePipeline, type EditableStage, type PipelineSheetProps, type StageKind, type StageRule, type StageSave } from '../pipeline-sheet';
+// T2-D 60 (answer 2871): PRJ-09 hours reports.
+export { HoursReportsScreen, type HoursReportData, type HoursReportFilters, type HoursReportKind, type LiveHoursReports } from '../projects-reports';

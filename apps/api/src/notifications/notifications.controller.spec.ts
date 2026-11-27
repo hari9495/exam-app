@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/co
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { NotificationsController } from './notifications.controller';
+import { PushService } from './push.service';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -29,7 +30,7 @@ describe('NotificationsController', () => {
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [NotificationsController],
-      providers: [{ provide: NotificationsService, useValue: service }],
+      providers: [{ provide: NotificationsService, useValue: service }, { provide: PushService, useValue: {} }],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(MockGuard)
@@ -45,7 +46,7 @@ describe('NotificationsController', () => {
 
   it('updatePreference delegates to service.setPreference(tenant, userId, dto.type, dto.emailEnabled)', async () => {
     const result = await controller.updatePreference(tenant, 'user-1', { type: 'mention', emailEnabled: false });
-    expect(service.setPreference).toHaveBeenCalledWith(tenant, 'user-1', 'mention', false);
+    expect(service.setPreference).toHaveBeenCalledWith(tenant, 'user-1', 'mention', false, undefined);
     expect(result).toEqual({ success: true });
   });
 
@@ -54,7 +55,7 @@ describe('NotificationsController', () => {
   it('is unreachable when JwtAuthGuard rejects the request', async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [NotificationsController],
-      providers: [{ provide: NotificationsService, useValue: service }],
+      providers: [{ provide: NotificationsService, useValue: service }, { provide: PushService, useValue: {} }],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(RejectingGuard)

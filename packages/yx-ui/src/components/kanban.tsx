@@ -15,7 +15,8 @@ export interface KanbanCard {
   photo?: string | null;
   /** Two short facts: "Senior Accountant", "₹12,00,000 expected". */
   facts: [ReactNode, ReactNode?];
-  daysInStage: number;
+  /** Days in this stage; absent: not tracked, so no days line (e.g. project tasks, T2-D 56). */
+  daysInStage?: number;
   /** The next open task, e.g. "Laptop from IT · due 3 Oct"; `overdue` shows it in red. */
   next?: { text: string; overdue?: boolean };
 }
@@ -324,7 +325,7 @@ interface CardItemProps {
 }
 
 function CardItem({ card, col, columns, dragging, onOpen, movable, onDragStart, onDragEnd, onMoveTo, defaultMenuOpen, pendingRef, reasonOpen, onReasonOpenChange, reasonForm }: CardItemProps) {
-  const late = col.slaDays !== undefined && card.daysInStage > col.slaDays;
+  const late = col.slaDays !== undefined && card.daysInStage !== undefined && card.daysInStage > col.slaDays;
   return (
     <li data-card className="yx-kanban__item">
       <Popover open={reasonOpen} onOpenChange={onReasonOpenChange}>
@@ -379,13 +380,15 @@ function CardItem({ card, col, columns, dragging, onOpen, movable, onDragStart, 
                 {card.next.overdue && <span className="yx-visually-hidden"> (overdue)</span>}
               </p>
             )}
-            <p className="yx-kanban__days" data-late={late || undefined}>
-              <Icon icon={late ? AlertTriangle : Clock} />
-              <span className="yx-kanban__line">
-                {days(card.daysInStage)} in stage
-                {late ? ` · over ${days(col.slaDays!)} target` : ''}
-              </span>
-            </p>
+            {card.daysInStage !== undefined && (
+              <p className="yx-kanban__days" data-late={late || undefined}>
+                <Icon icon={late ? AlertTriangle : Clock} />
+                <span className="yx-kanban__line">
+                  {days(card.daysInStage)} in stage
+                  {late ? ` · over ${days(col.slaDays!)} target` : ''}
+                </span>
+              </p>
+            )}
           </article>
         </PopoverAnchor>
         <PopoverContent className="yx-kanban__reason" align="start" side="bottom">

@@ -8,7 +8,7 @@ export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, Approvals
 export type { ApprovalRow } from '../platform-a/platform-data';
 export type { ApprovalStep } from '../../components/timeline';
 export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../platform-a/shell-home';
-export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
+export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps, type PushPreferences } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
 // People › person record (design audit step 3): PPL-03 with the live record.
 // PPL-36 / PPL-37: possible same person, merge and unmerge.
@@ -152,3 +152,5 @@ export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } fro
 // G4 (2690-2692): scheduled report emails and the export log (ANL-08).
 export { SchedulesScreen } from '../proctoring/analytics';
 export type { LiveExportRow, LiveReportSchedules, LiveScheduleRow, ScheduleFrequency } from '../proctoring/report-schedules-live';
+// T2-E 51 (answer 2874): Home cards for a window that is closing.
+export { HomeReminderCards, dismissedToday, dismissForToday, type HomeReminder } from '../platform-a/home-reminders';

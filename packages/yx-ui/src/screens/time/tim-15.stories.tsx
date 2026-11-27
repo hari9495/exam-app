@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { MyProjectsTable, TimesheetActivityCard, TimesheetNudgeCard, TimesheetScreen, TS_LINES } from './ops';
 import { T2D_ACTIVITY, T2D_MY_PROJECTS, T2D_PROJECTS } from './timesheet-t2d-samples';
+import { MY_TIMESHEET, TODAY } from './live/fixtures';
 
 const meta: Meta<typeof TimesheetScreen> = { title: 'Screens/Time/TIM-15 · Timesheets', component: TimesheetScreen, render: (args) => <TimesheetScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -40,3 +41,6 @@ export const TimeSummary: S = { name: 'Time summary · hours per week this year'
 export const MyProjects: S = { name: 'My projects tab · my allocations and hours (T2-D 55)', render: () => <MyProjectsTable projects={T2D_MY_PROJECTS} /> };
 export const MyProjectsEmpty: S = { name: 'My projects tab · none yet (T2-D 55)', render: () => <MyProjectsTable projects={[]} /> };
 export const Activity: S = { name: 'Activity card · sent, a line reduced, recalled (T2-D 62)', render: () => <TimesheetActivityCard activity={T2D_ACTIVITY} projects={T2D_PROJECTS} /> };
+// T2-D 56 (answer 2866): a task assigned to me comes first in the picker and says so.
+const noop = async () => ({});
+export const MyTaskFirst: S = { name: 'Live · my assigned task first (T2-D 56)', render: () => <TimesheetScreen live={{ state: 'ready', data: { ...MY_TIMESHEET, projects: MY_TIMESHEET.projects.map((p) => (p.id === 'pr1' ? { ...p, myTasks: ['Documentation'] } : p)) }, week: MY_TIMESHEET.week, today: TODAY, onWeek: () => {}, onSave: noop, onSubmit: noop, onWithdraw: noop }} /> };

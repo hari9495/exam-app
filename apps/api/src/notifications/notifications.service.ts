@@ -1,10 +1,12 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional, Logger } from '@nestjs/common';
 import { TenantPrismaService, TenantContext, isApprovalEmailEventType, renderTemplateString } from '@exam-platform/shared';
 import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_BY_KEY } from './notification-types';
 import { renderNotificationEmail, escapeHtml, buildNotificationEmailFooter } from './notification-email-render';
 import { Prisma } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { companySetting } from '../time/time-core';
+import { pushDefault } from './push-rules';
+import { PushService } from './push.service';
 
 export const DIGEST_MODES = ['immediate', 'daily', 'off'];
 
@@ -38,6 +40,8 @@ export class NotificationsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
+    // T2-E 52: Web Push after each notice (optional so unit tests and other modules can make the service without it).
+    @Optional() private readonly push?: PushService,
   ) {}
 
   // Core: notify teammates of some event. Validated: only users that actually belong to the same
@@ -168,6 +172,8 @@ export class NotificationsService {
       return box;
     });
 
+    // T2-E 52: a push to each recipient's devices where their choices allow (after the bell rows are saved).
+    if (this.push) void this.push.send(context, ids, type, target.linkPath).catch(() => undefined);
     if (outbox.length === 0) return;
     try {
       const sends = outbox
@@ -274,23 +280,28 @@ export class NotificationsService {
   // Full catalog with effective per-type email preference: stored row wins, missing row = ON.
   async getPreferences(context: TenantContext, userId: string) {
     const rows = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.userNotificationPreference.findMany({ where: { userId }, select: { type: true, emailEnabled: true } }),
+      tx.userNotificationPreference.findMany({ where: { userId }, select: { type: true, emailEnabled: true, pushEnabled: true } }),
     );
-    const byType = new Map(rows.map((r) => [r.type, r.emailEnabled]));
-    return NOTIFICATION_TYPES.map((t) => ({ type: t.type, group: t.group, label: t.label, emailEnabled: byType.get(t.type) ?? true }));
+    const byType = new Map(rows.map((r) => [r.type, r]));
+    // T2-E 52 (2877): push per kind, on by default for approvals, off for the rest.
+    return NOTIFICATION_TYPES.map((t) => ({ type: t.type, group: t.group, label: t.label, emailEnabled: byType.get(t.type)?.emailEnabled ?? true, pushEnabled: byType.get(t.type)?.pushEnabled ?? pushDefault(t.type) }));
   }
 
-  // Sparse storage: ON is represented by absence of a row, so opting back in deletes it.
-  async setPreference(context: TenantContext, userId: string, type: string, emailEnabled: boolean): Promise<{ success: true }> {
+  // Sparse storage: the defaults (email on, push by kind) are the absence of a row, so going back to both deletes it.
+  async setPreference(context: TenantContext, userId: string, type: string, emailEnabled?: boolean, pushEnabled?: boolean): Promise<{ success: true }> {
     if (!NOTIFICATION_TYPE_BY_KEY.has(type)) throw new BadRequestException('Unknown notification type');
+    if (emailEnabled === undefined && pushEnabled === undefined) throw new BadRequestException('Say what to change: email or push.');
     await this.tenantPrisma.forTenant(context, async (tx) => {
-      if (emailEnabled) {
+      const was = await tx.userNotificationPreference.findUnique({ where: { userId_type: { userId, type } } });
+      const email = emailEnabled ?? was?.emailEnabled ?? true;
+      const push = pushEnabled === undefined ? (was?.pushEnabled ?? null) : pushEnabled === pushDefault(type) ? null : pushEnabled;
+      if (email && push === null) {
         await tx.userNotificationPreference.deleteMany({ where: { userId, type } });
       } else {
         await tx.userNotificationPreference.upsert({
           where: { userId_type: { userId, type } },
-          create: { organizationId: context.organizationId as string, userId, type, emailEnabled: false },
-          update: { emailEnabled: false },
+          create: { organizationId: context.organizationId as string, userId, type, emailEnabled: email, pushEnabled: push },
+          update: { emailEnabled: email, pushEnabled: push },
         });
       }
     });

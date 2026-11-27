@@ -8,7 +8,7 @@ import { ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type Channel
 import { ApprovalsInboxScreen } from '@yukthix/ui/frame';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
-import { profileRows, sentRow, teamRow, waitingRow, type TeamDecision } from '../../../../lib/yx-approvals';
+import { decidedRow, profileRows, sentRow, teamRow, waitingRow, type TeamDecision } from '../../../../lib/yx-approvals';
 import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import type { ProfileRequest } from '@yukthix/ui/access';
@@ -27,7 +27,9 @@ function Approvals() {
   const delegation = useLiveDelegation();
   const get = <T,>(path: string) => ({ queryKey: ['workflow', path], queryFn: () => apiFetch(`/workflow${path}`, {}, token) as Promise<T>, enabled: Boolean(token), retry: false });
   const tasks = useQuery(get<ApprovalTask[]>('/approvals/inbox'));
-  const history = useQuery(get<ApprovalHistory>('/approvals/history'));
+  // T2-E 50 (answer 2873): "Decided by me" over 30 days, 3 months (the default) or 12 months.
+  const [days, setDays] = useState<30 | 90 | 365>(90);
+  const history = useQuery(get<ApprovalHistory>(`/approvals/history?days=${days}`));
   const team = useQuery(get<TeamDecision[]>('/approvals/team-history'));
   // SD-2.06: linked chat apps, and (local demo only) the cards they were sent.
   const links = useQuery(get<ChannelLinkView>('/channel-links'));
@@ -54,10 +56,13 @@ function Approvals() {
       sent={(history.data?.sent ?? []).map(sentRow)}
       history={(team.data ?? []).map(teamRow)}
       everyone={oversee ? (everyone.data ?? []).map((t) => waitingRow(t, false)) : undefined}
+      decided={(history.data?.decided ?? []).map(decidedRow)}
       openId={openId}
       state={tasks.isLoading ? 'loading' : tasks.isError ? 'error' : 'ready'}
       live={{
         today: new Date(new Date().toDateString()),
+        decidedDays: days,
+        onDecidedDays: setDays,
         onRetry: () => void tasks.refetch(),
         onDecide: async (row, decision, reason) => {
           await post(`/approvals/tasks/${encodeURIComponent(row.id)}/decide`, { decision, ...(reason ? { reason } : {}) });

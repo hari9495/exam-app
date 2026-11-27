@@ -90,7 +90,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const bankKeys = perms.has('asmt.bank.manage' as never) || perms.has('question_bank:manage' as never);
   const assessmentsOn = useQuery<{ enabled: boolean }>({ queryKey: ['api', '/question-bank/settings'], queryFn: () => apiFetch('/question-bank/settings', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && bankKeys && !actingSuperAdmin, retry: false });
   // Projects P-1: the menu shows Projects once the company switched it on, to key holders and project managers.
-  const projectsOn = useQuery<{ enabled: boolean; canOpen: boolean; lineApprovals?: number }>({ queryKey: ['projects', '/status'], queryFn: () => apiFetch('/projects/status', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
+  const projectsOn = useQuery<{ enabled: boolean; canOpen: boolean; lineApprovals?: number; reports?: boolean }>({ queryKey: ['projects', '/status'], queryFn: () => apiFetch('/projects/status', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
@@ -147,6 +147,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         assessments: Boolean(assessmentsOn.data?.enabled),
         projects: Boolean(projectsOn.data?.canOpen),
         lineApprovals: projectsOn.data?.lineApprovals ?? 0,
+        projectReports: Boolean(projectsOn.data?.reports),
         panellist: Boolean(myInterviews.data?.length),
         trainer: Boolean(learningRoles.data?.trainer),
       }),

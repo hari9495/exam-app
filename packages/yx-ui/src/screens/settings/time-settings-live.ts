@@ -273,8 +273,17 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     links: ['ntf.templates'],
     settings: [
       { section: 'Channels and defaults', key: 'notify.email.enabled', synonyms: ['notification channel', 'email notifications'] },
+      // T2-E 52 (answer 2877): push through the installable web app.
+      { section: 'Channels and defaults', key: 'notify.push.enabled', synonyms: ['push', 'push notifications', 'web app'] },
       { section: 'Digests and quiet hours', key: 'notify.email.default_cadence', synonyms: ['digest default', 'new people'] },
       { section: 'Digests and quiet hours', key: 'notify.digest.time', synonyms: ['summary email', 'digest'] },
+      // T2-E 51 (answer 2874): the Home cards for a window that is closing, each kind on or off for the company.
+      { section: 'Home reminders', key: 'home.reminders.tax_declarations', synonyms: ['tax declaration', 'reminder', 'nudge'] },
+      { section: 'Home reminders', key: 'home.reminders.tax_proofs', synonyms: ['tax proof', 'investment proof', 'reminder'] },
+      { section: 'Home reminders', key: 'home.reminders.tax_regime', synonyms: ['tax regime', 'reminder'] },
+      { section: 'Home reminders', key: 'home.reminders.review', synonyms: ['self-review', 'manager review', 'reminder'] },
+      { section: 'Home reminders', key: 'home.reminders.survey', synonyms: ['survey', 'pulse', 'reminder'] },
+      { section: 'Home reminders', key: 'home.reminders.sent_back', synonyms: ['sent back', 'request', 'reminder'] },
     ],
   },
   // Settings S-8 (answer 1323): 4.8 Expenses & travel with the 14 company choices that had no screen; the policy matrix

@@ -13,7 +13,9 @@ import { OrgSettingsService } from '../org-structure/org-settings.service';
 import { SETTINGS } from '../org-structure/settings-registry';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
-import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskDto } from './dto';
+import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectOwnSettingsDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskAssigneesDto, TaskDto, TaskStageDto } from './dto';
+import { EXTRA_STAGES_KEY, parseExtraStages, stageOf, taskStages } from './task-stages';
+import { byPerson, byTask, reportCsv, type HoursReportKind, type ReportLine } from './hours-reports';
 
 // Projects P-1 (founder answers 1401 to 1405, 1412, 1420). The project is Time's project grown up (one list, 1402):
 // a client from the staffing desk (1403), a billing model (1420), budgets, dates and a status; its team (allocations),
@@ -23,7 +25,7 @@ import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, Proj
 // people book time when the company says so (1404, in TimesheetService). Burn alerts at the company's 80% and 100%
 // (1405), sent once per level to the manager and Projects finance. Everything is audited; forced RLS on every table.
 
-const KEYS = ['projects.view', 'projects.manage', 'projects.finance', 'projects.resource'] as const;
+const KEYS = ['projects.view', 'projects.manage', 'projects.finance', 'projects.resource', 'projects.reporting'] as const;
 const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 const asDate = (s: string) => new Date(`${s}T00:00:00Z`);
 const addDaysIso = (s: string, n: number) => new Date(Date.parse(`${s}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -33,7 +35,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day', 'timesheet.nudge.daily_from', 'timesheet.reminder.cutoff_day', 'timesheet.reminder.time'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day', 'timesheet.nudge.daily_from', 'timesheet.reminder.cutoff_day', 'timesheet.reminder.time', EXTRA_STAGES_KEY] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -42,7 +44,7 @@ export function burnLevel(usedHours: number, budgetHours: number | null, warn: n
   return pct >= over ? over : pct >= warn ? warn : 0;
 }
 
-type Who = { userId: string; finance: boolean; manage: boolean; resource: boolean; any: boolean };
+type Who = { userId: string; finance: boolean; manage: boolean; resource: boolean; reporting?: boolean; any: boolean };
 
 @Injectable()
 export class ProjectsService {
@@ -59,7 +61,8 @@ export class ProjectsService {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     const v = await buildViewer(this.prisma, this.tenantPrisma, user, KEYS);
     const keys = KEYS.filter((k) => has(v, k));
-    return { userId: user.userId!, finance: keys.includes('projects.finance'), manage: keys.includes('projects.manage'), resource: keys.includes('projects.resource'), any: keys.length > 0 };
+    // T2-D 60: the reporting key alone opens only the hours reports (it is not a key to the projects themselves).
+    return { userId: user.userId!, finance: keys.includes('projects.finance'), manage: keys.includes('projects.manage'), resource: keys.includes('projects.resource'), reporting: keys.includes('projects.reporting'), any: keys.some((k) => k !== 'projects.reporting') };
   }
 
   /** Answer 1401: the company switched Projects on. */
@@ -80,7 +83,9 @@ export class ProjectsService {
       const canOpen = Boolean(enabled && w && (w.any || (await tx.timesheetProject.count({ where: { organizationId: c.organizationId, managerUserId: w.userId } }))));
       // P-2 (1406): timesheet lines waiting for me (a reporting manager approves without any Projects key).
       const lineApprovals = enabled && w ? await tx.timesheetLine.count({ where: { organizationId: c.organizationId, status: 'pending', approverUserIds: { has: w.userId } } }) : 0;
-      return { enabled, canOpen, lineApprovals };
+      // T2-D 60: the hours reports, for project managers and the reporting key (which alone opens nothing else).
+      const reports = Boolean(enabled && w && (w.reporting || (await tx.timesheetProject.count({ where: { organizationId: c.organizationId, managerUserId: w.userId } }))));
+      return { enabled, canOpen, lineApprovals, reports };
     });
   }
 
@@ -116,7 +121,13 @@ export class ProjectsService {
       if (!(PROJECT_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a Projects setting.`);
       if (seen.has(ch.key)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is in the list twice.`);
       seen.add(ch.key);
-      if (!SETTINGS[ch.key]!.values.includes(ch.value)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is one of: ${SETTINGS[ch.key]!.values.join(', ')}`);
+      if (ch.key === EXTRA_STAGES_KEY) {
+        try {
+          parseExtraStages(ch.value);
+        } catch (e) {
+          throw new BadRequestException(`Task stages: ${(e as Error).message}`);
+        }
+      } else if (!SETTINGS[ch.key]!.values.includes(ch.value)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is one of: ${SETTINGS[ch.key]!.values.join(', ')}`);
     }
     const now = (await this.readSettings(ctx, user)).values;
     const next: Record<string, string> = { ...now, ...Object.fromEntries(changes.map((ch) => [ch.key, ch.value])) };
@@ -248,7 +259,21 @@ export class ProjectsService {
         p.clientId ? tx.staffingClient.findFirst({ where: { organizationId: org, id: p.clientId }, select: { name: true } }) : null,
         p.managerUserId ? tx.user.findFirst({ where: { organizationId: org, id: p.managerUserId }, select: { name: true, email: true } }) : null,
       ]);
-      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: allocations.map((a) => a.employeeId) } }, select: { id: true, givenName: true, familyName: true } });
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set([...allocations.map((a) => a.employeeId), ...tasks.flatMap((t) => t.assigneeEmployeeIds)])] } }, select: { id: true, givenName: true, familyName: true } });
+      const stages = taskStages(String(await settingFor(tx, c, EXTRA_STAGES_KEY, { legalEntityId: '' })));
+      // T2-D 58 (2869): the project's own settings, for whoever may run it, with the company rules they override.
+      const second = p.secondApproverUserId ? await tx.user.findFirst({ where: { organizationId: org, id: p.secondApproverUserId }, select: { name: true, email: true } }) : null;
+      const own = this.canRun(p, w)
+        ? {
+            bookingRule: p.bookingRule ?? 'company',
+            bookingEmployeeIds: p.bookingEmployeeIds,
+            notesRequired: p.notesRequired == null ? 'company' : p.notesRequired ? 'on' : 'off',
+            billableDefault: p.billableDefault == null ? 'company' : p.billableDefault ? 'on' : 'off',
+            secondApproverUserId: p.secondApproverUserId,
+            secondApprover: second ? second.name?.trim() || second.email : null,
+            company: { booking: String(await settingFor(tx, c, 'projects.booking.allocated_only', { legalEntityId: '' })), notesRequired: (await settingFor(tx, c, 'timesheet.note.required', { legalEntityId: '' })) === 'on', billable: p.billable },
+          }
+        : undefined;
       const name = (eid: string) => {
         const e = people.find((x) => x.id === eid);
         return e ? [e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
@@ -280,7 +305,10 @@ export class ProjectsService {
           hours: ((h) => ({ billable: hoursOf(h.billable), nonBillable: hoursOf(h.nonBillable), booked: hoursOf(h.booked) }))(range$.get(a.employeeId) ?? { billable: 0, nonBillable: 0, booked: 0 }),
           version: a.version,
         })),
-        tasks: tasks.map((t) => ({ id: t.id, name: t.name, budgetHours: num(t.budgetHours), usedHours: hoursOf(booked.filter((b) => b.activity === t.name).reduce((s, b) => s + b.minutes, 0)), billable: t.billable, active: t.active })),
+        // T2-D 56 (2865, 2866): the board's stages, each task's stage and who it is assigned to.
+        stages,
+        settings: own,
+        tasks: tasks.map((t) => ({ id: t.id, name: t.name, budgetHours: num(t.budgetHours), usedHours: hoursOf(booked.filter((b) => b.activity === t.name).reduce((s, b) => s + b.minutes, 0)), billable: t.billable, active: t.active, stage: stageOf(t.stage, stages), assignees: t.assigneeEmployeeIds.map((eid) => ({ employeeId: eid, name: name(eid) })), version: t.version })),
         milestones: milestones.map((m) => ({ id: m.id, name: m.name, pct: num(m.pct), dueOn: day(m.dueOn), status: m.status, version: m.version })),
       };
     });
@@ -389,6 +417,38 @@ export class ProjectsService {
     });
   }
 
+  /**
+   * T2-D 58 and 59 (answers 2869, 2870): the project's own settings, by its manager (or Projects manage). Anything left
+   * on 'company' follows the company rule. Named booking needs at least one person of the team. The second approver is
+   * an active person of the company other than the project manager; off when empty.
+   */
+  async saveOwnSettings(ctx: TenantContext, user: ScopeUser, id: string, dto: ProjectOwnSettingsDto) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, id, w);
+      this.needRun(p, w);
+      if (p.version !== dto.version) throw new ConflictException('Someone changed this project. Reload to see the latest.');
+      const named = dto.bookingRule === 'named' ? [...new Set(dto.bookingEmployeeIds)] : [];
+      if (dto.bookingRule === 'named') {
+        if (!named.length) throw new BadRequestException('Name at least one person who may book time to this project.');
+        const team = await tx.projectAllocation.findMany({ where: { organizationId: org, projectId: id, employeeId: { in: named } }, select: { employeeId: true } });
+        if (named.some((e) => !team.some((a) => a.employeeId === e))) throw new BadRequestException('Name people on the project team.');
+      }
+      const second = dto.secondApproverUserId ?? null;
+      if (second) {
+        if (second === p.managerUserId) throw new BadRequestException('The second approver is someone other than the project manager.');
+        if (!(await tx.user.findFirst({ where: { organizationId: org, id: second, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company as the second approver.');
+      }
+      const tri = (v: 'company' | 'on' | 'off') => (v === 'company' ? null : v === 'on');
+      const data = { bookingRule: dto.bookingRule === 'company' ? null : dto.bookingRule, bookingEmployeeIds: named, notesRequired: tri(dto.notesRequired), billableDefault: tri(dto.billableDefault), secondApproverUserId: second };
+      await tx.timesheetProject.update({ where: { id }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
+      await audit(tx, c, 'projects.project.settings_changed', 'timesheet_project', id, { from: { bookingRule: p.bookingRule, bookingEmployeeIds: p.bookingEmployeeIds, notesRequired: p.notesRequired, billableDefault: p.billableDefault, secondApproverUserId: p.secondApproverUserId }, to: data });
+      return { id, version: p.version + 1 };
+    });
+  }
+
   // ---- team (answer 1404) ----
 
   private async checkAllocation(tx: Tx, org: string, p: { startOn: Date | null; endOn: Date | null }, dto: { fromOn: string; toOn?: string | null }) {
@@ -494,6 +554,47 @@ export class ProjectsService {
       await this.syncActivities(tx, org, projectId);
       await audit(tx, c, 'projects.task.changed', 'project_task', t.id, { projectId, from: { budgetHours: num(t.budgetHours), billable: t.billable, active: t.active }, to: { budgetHours: dto.budgetHours ?? null, billable: dto.billable, active: dto.active ?? t.active } });
       return { id: t.id };
+    });
+  }
+
+  /** T2-D 56 (2865): moves a task to another stage of the board (the project manager, by drag or the menu). */
+  async moveTask(ctx: TenantContext, user: ScopeUser, projectId: string, taskId: string, dto: TaskStageDto) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, projectId, w);
+      this.needRun(p, w);
+      const t = await tx.projectTask.findFirst({ where: { organizationId: org, projectId, id: taskId } });
+      if (!t) throw new NotFoundException('No such task.');
+      if (t.version !== dto.version) throw new ConflictException('Someone changed this task. Reload to see the latest.');
+      const stages = taskStages(String(await settingFor(tx, c, EXTRA_STAGES_KEY, { legalEntityId: '' })));
+      if (!stages.some((s) => s.id === dto.stage)) throw new BadRequestException(`Choose one of the stages: ${stages.map((s) => s.label).join(', ')}.`);
+      const from = stageOf(t.stage, stages);
+      if (from === dto.stage) throw new ConflictException('The task is already in this stage.');
+      await tx.projectTask.update({ where: { id: t.id }, data: { stage: dto.stage, version: { increment: 1 } } });
+      await audit(tx, c, 'projects.task.moved', 'project_task', t.id, { projectId, from, to: dto.stage });
+      return { id: t.id, stage: dto.stage, version: t.version + 1 };
+    });
+  }
+
+  /** T2-D 56 (2866): who a task is assigned to: people allocated to the project (the project manager assigns). */
+  async assignTask(ctx: TenantContext, user: ScopeUser, projectId: string, taskId: string, dto: TaskAssigneesDto) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, projectId, w);
+      this.needRun(p, w);
+      const t = await tx.projectTask.findFirst({ where: { organizationId: org, projectId, id: taskId } });
+      if (!t) throw new NotFoundException('No such task.');
+      if (t.version !== dto.version) throw new ConflictException('Someone changed this task. Reload to see the latest.');
+      const ids = [...new Set(dto.employeeIds)];
+      const on = await tx.projectAllocation.findMany({ where: { organizationId: org, projectId, employeeId: { in: ids } }, select: { employeeId: true } });
+      if (ids.some((id) => !on.some((a) => a.employeeId === id))) throw new BadRequestException('Assign the task to people on the project team.');
+      await tx.projectTask.update({ where: { id: t.id }, data: { assigneeEmployeeIds: ids, version: { increment: 1 } } });
+      await audit(tx, c, 'projects.task.assigned', 'project_task', t.id, { projectId, from: t.assigneeEmployeeIds, to: ids });
+      return { id: t.id, version: t.version + 1 };
     });
   }
 
@@ -648,6 +749,124 @@ export class ProjectsService {
           };
         }),
       };
+    });
+  }
+
+  /**
+   * T2-D 57 (answers 2867, 2868): the project page's actions pending, for its manager only (weeks waiting for their
+   * approval, people on the project who have not sent last week, resource requests waiting, work ready to invoice), and
+   * who on the project is away in the next 14 days, for the manager and the project's team: "Away" with the days, never
+   * the leave type (2759, 2760). Anyone else who may open the project sees neither (null).
+   */
+  async glance(ctx: TenantContext, user: ScopeUser, id: string) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, id, w);
+      const today = todayIst();
+      const me = await tx.employee.findFirst({ where: { organizationId: org, userId: w.userId }, select: { id: true } });
+      const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, projectId: id, tentative: false, OR: [{ toOn: null }, { toOn: { gte: asDate(today) } }] } });
+      const pm = p.managerUserId === w.userId;
+      const member = Boolean(me && allocs.some((a) => a.employeeId === me.id));
+      const team = [...new Set(allocs.filter((a) => day(a.fromOn)! <= today).map((a) => a.employeeId))];
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: team } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const nameOf = (eid: string) => {
+        const e = people.find((x) => x.id === eid);
+        return e ? [e.preferredName ?? e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
+      };
+      let pending: { kind: string; count: number; people?: string[]; href: string }[] | null = null;
+      if (pm) {
+        const waiting = await tx.timesheetLine.findMany({ where: { organizationId: org, projectId: id, status: 'pending', approverUserIds: { has: w.userId } }, select: { timesheetId: true } });
+        const sheets = await tx.timesheet.count({ where: { organizationId: org, id: { in: [...new Set(waiting.map((l) => l.timesheetId))] }, status: 'pending' } });
+        const last = addDaysIso(mondayOf(today), -7);
+        const onLast = [...new Set(allocs.filter((a) => day(a.fromOn)! <= addDaysIso(last, 6)).map((a) => a.employeeId))];
+        const sent = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: { in: onLast }, weekStart: asDate(last), status: { in: ['pending', 'approved'] } }, select: { employeeId: true } });
+        const notSent = onLast.filter((e) => !sent.some((s) => s.employeeId === e));
+        const requests = await tx.projectResourceRequest.count({ where: { organizationId: org, projectId: id, status: 'open' } });
+        // Approved hours of the project not yet on an invoice (each week line once), and accepted milestones.
+        const [{ n: ready }] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT ((SELECT count(*) FROM timesheet_lines l JOIN timesheets t ON t.organization_id = l.organization_id AND t.id = l.timesheet_id
+             WHERE l.organization_id = ${org}::uuid AND l.project_id = ${id}::uuid AND t.status = 'approved' AND coalesce(l.status, 'approved') IN ('approved', 'reduced', 'corrected')
+               AND (l.client_status IS NULL OR l.client_status = 'approved')
+               AND NOT EXISTS (SELECT 1 FROM project_billings b WHERE b.organization_id = l.organization_id AND b.source_type = 'hours' AND b.source_id = l.id::text))
+           + (SELECT count(*) FROM project_milestones m WHERE m.organization_id = ${org}::uuid AND m.project_id = ${id}::uuid AND m.status = 'accepted'))::int AS n`;
+        pending = [
+          { kind: 'approvals', count: sheets, href: '/yx/projects/approvals' },
+          { kind: 'not_sent', count: notSent.length, people: notSent.map(nameOf).sort(), href: '/yx/projects/approvals' },
+          { kind: 'requests', count: requests, href: '/yx/projects/requests' },
+          { kind: 'billing', count: p.billingModel === 'non_billable' ? 0 : ready, href: '/yx/projects/billing' },
+        ];
+      }
+      let away: { from: string; to: string; people: { employeeId: string; person: string; days: string[] }[] } | null = null;
+      if (pm || member) {
+        const to = addDaysIso(today, 13);
+        const rows = team.length
+          ? await tx.$queryRaw<{ employee_id: string; on: string }[]>`
+              SELECT DISTINCT d.employee_id::text, d.leave_on::text AS on FROM leave_request_days d
+              JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+              WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${today}::date AND ${to}::date AND d.employee_id = ANY(${team}::uuid[])
+              ORDER BY 2 LIMIT 1000`
+          : [];
+        const by = new Map<string, string[]>();
+        for (const r of rows) by.set(r.employee_id, [...(by.get(r.employee_id) ?? []), r.on]);
+        away = { from: today, to, people: [...by].map(([employeeId, days]) => ({ employeeId, person: nameOf(employeeId), days })).sort((a, b) => a.days[0]!.localeCompare(b.days[0]!) || a.person.localeCompare(b.person)) };
+      }
+      return { pending, away };
+    });
+  }
+
+  /**
+   * T2-D 60 (answer 2871): hours by person (week by week, billable and not, per project) or by task (budget, booked,
+   * approved), from sent and approved weeks, filtered by project, client and the weeks between two dates. Holders of
+   * projects.reporting see every project; a project's manager sees their own projects; anyone else is refused. The CSV
+   * download is audited. The payroll feed is unchanged.
+   */
+  async hoursReport(ctx: TenantContext, user: ScopeUser, q: { kind: HoursReportKind; from: string; to: string; projectId?: string; clientId?: string; format?: 'csv' }) {
+    const w = await this.who(user);
+    if (q.to < q.from) throw new BadRequestException('The end date is before the start date.');
+    if (Date.parse(q.to) - Date.parse(q.from) > 400 * 86_400_000) throw new BadRequestException('Choose at most about a year (400 days).');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const all = Boolean(w.reporting);
+      const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, ...(all ? {} : { managerUserId: w.userId }) }, orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, clientId: true } });
+      if (!all && !projects.length) throw new ForbiddenException('The hours reports are for project managers and holders of the projects reporting key.');
+      if (q.projectId && !projects.some((p) => p.id === q.projectId)) throw new NotFoundException('No such project.');
+      const chosen = projects.filter((p) => (!q.projectId || p.id === q.projectId) && (!q.clientId || p.clientId === q.clientId));
+      const ids = chosen.map((p) => p.id);
+      const raw = ids.length
+        ? await tx.$queryRaw<{ project_id: string; employee_id: string; week: string; activity: string | null; billable: boolean; minutes: number[]; status: string | null; approved_minutes: number[]; sheet: string }[]>`
+            SELECT l.project_id::text, t.employee_id::text, t.week_start::text AS week, l.activity, l.billable, l.minutes::int[] AS minutes, l.status, l.approved_minutes::int[] AS approved_minutes, t.status AS sheet
+            FROM timesheet_lines l JOIN timesheets t ON t.organization_id = l.organization_id AND t.id = l.timesheet_id
+            WHERE l.organization_id = ${org}::uuid AND l.project_id = ANY(${ids}::uuid[]) AND t.status IN ('pending', 'approved')
+              AND t.week_start BETWEEN ${q.from}::date - 6 AND ${q.to}::date`
+        : [];
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set(raw.map((r) => r.employee_id))] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const nameOf = (id: string) => {
+        const e = people.find((x) => x.id === id);
+        return e ? [e.preferredName ?? e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
+      };
+      const total = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+      const lines: ReportLine[] = raw.map((r) => ({
+        projectId: r.project_id,
+        code: chosen.find((p) => p.id === r.project_id)!.code,
+        employeeId: r.employee_id,
+        person: nameOf(r.employee_id),
+        week: r.week,
+        task: r.activity,
+        billable: r.billable,
+        booked: total(r.minutes),
+        // Approved: a decided line's approved minutes; a week approved as a whole (no line decisions) counts in full.
+        approved: r.status ? (['approved', 'reduced', 'corrected'].includes(r.status) ? total(lineApproved({ minutes: r.minutes, status: r.status, approvedMinutes: r.approved_minutes })) : 0) : r.sheet === 'approved' ? total(r.minutes) : 0,
+      }));
+      const rows = q.kind === 'person' ? byPerson(lines) : byTask(lines, (await tx.projectTask.findMany({ where: { organizationId: org, projectId: { in: ids } }, select: { projectId: true, name: true, budgetHours: true } })).map((t) => ({ ...t, budgetHours: num(t.budgetHours) })), new Map(chosen.map((p) => [p.id, p.code])));
+      if (q.format === 'csv') {
+        await audit(tx, c, 'projects.report.exported', q.projectId ? 'timesheet_project' : 'organization', q.projectId ?? org, { kind: q.kind, from: q.from, to: q.to, clientId: q.clientId ?? null, rows: rows.length, scope: all ? 'all' : 'mine' });
+        return { csv: reportCsv(q.kind, rows) };
+      }
+      const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.clientId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+      return { kind: q.kind, scope: all ? 'all' : 'mine', rows, projects: projects.map((p) => ({ id: p.id, label: `${p.code} · ${p.name}` })), clients };
     });
   }
 

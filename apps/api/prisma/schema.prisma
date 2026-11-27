@@ -243,6 +243,10 @@ model User {
   // 'daily' (batched into one daily digest by the digest sweep), or 'off' (no notification emails at
   // all; the in-app bell is unaffected). lastDigestSentAt anchors the once-per-day digest sweep.
   notificationDigest     String               @default("immediate") @map("notification_digest") @db.VarChar(1000)
+  /// T2-E 52 (2877): Pause push, and the quiet hours (India time) when nothing is pushed.
+  pushPaused             Boolean              @default(false) @map("push_paused")
+  pushQuietFrom          String               @default("21:00") @map("push_quiet_from") @db.VarChar(5)
+  pushQuietTo            String               @default("08:00") @map("push_quiet_to") @db.VarChar(5)
   lastDigestSentAt       DateTime?            @map("last_digest_sent_at") @db.Timestamptz(3)
   passwordHash           String               @map("password_hash") @db.VarChar(1000)
   role                   String               @db.VarChar(1000)
@@ -1106,6 +1110,8 @@ model UserNotificationPreference {
   userId         String   @map("user_id") @db.Uuid
   type           String   @db.VarChar(1000)
   emailEnabled   Boolean  @map("email_enabled")
+  /// T2-E 52 (2877): push for this kind; null = the kind's default (on for approvals, off for the rest).
+  pushEnabled    Boolean? @map("push_enabled")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -6701,6 +6707,13 @@ model TimesheetProject {
   burnAlertedPct          Int       @default(0) @map("burn_alerted_pct") @db.SmallInt
   closedAt                DateTime? @map("closed_at") @db.Timestamptz(3)
   version                 Int       @default(1)
+  /// T2-D 58 (2869): the project's own rules, set by its manager; null follows the company rule.
+  bookingRule             String?   @map("booking_rule") @db.VarChar(10)
+  bookingEmployeeIds      String[]  @default([]) @map("booking_employee_ids") @db.Uuid
+  notesRequired           Boolean?  @map("notes_required")
+  billableDefault         Boolean?  @map("billable_default")
+  /// T2-D 59 (2870): approves each line after the project manager (off when null).
+  secondApproverUserId    String?   @map("second_approver_user_id") @db.Uuid
 
   @@map("timesheet_projects")
 }
@@ -6734,6 +6747,11 @@ model ProjectTask {
   billable       Boolean  @default(true)
   active         Boolean  @default(true)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// T2-D 56 (2865): the board stage: todo, in_progress, done, or one of the company's own stages (by name).
+  stage               String   @default("todo") @db.VarChar(20)
+  /// T2-D 56 (2866): who the task is assigned to (people on the project); anyone allocated may still book to it.
+  assigneeEmployeeIds String[] @default([]) @map("assignee_employee_ids") @db.Uuid
+  version             Int      @default(1)
 
   @@map("project_tasks")
 }
@@ -6889,6 +6907,8 @@ model TimesheetLine {
   /// Projects P-2 (1406): null in a draft or a week decided as a whole; else pending, approved, reduced or rejected.
   status          String?   @db.VarChar(10)
   approverUserIds String[]  @default([]) @map("approver_user_ids") @db.Uuid
+  /// T2-D 59 (2870): the level a pending line waits at (1 the project manager, 2 the second approver).
+  level           Int       @default(1) @db.SmallInt
   approvedMinutes Int[]     @map("approved_minutes") @db.SmallInt
   reason          String?   @db.VarChar(300)
   decidedBy       String?   @map("decided_by") @db.Uuid
@@ -16287,4 +16307,21 @@ model ApprovalLimit {
 
   @@unique([organizationId, family, gradeId], map: "approval_limits_org_family_grade_key")
   @@map("approval_limits")
+}
+
+/// T2-E 52 (answer 2875): one Web Push subscription per signed-in device that allows notifications.
+model PushSubscription {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  endpoint       String    @db.VarChar(1000)
+  p256dh         String    @db.VarChar(200)
+  auth           String    @db.VarChar(100)
+  userAgent      String?   @map("user_agent") @db.VarChar(200)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSentAt     DateTime? @map("last_sent_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, endpoint], map: "push_subscriptions_endpoint_key")
+  @@index([organizationId, userId], map: "push_subscriptions_user_idx")
+  @@map("push_subscriptions")
 }

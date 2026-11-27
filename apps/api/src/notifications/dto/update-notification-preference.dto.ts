@@ -1,6 +1,8 @@
-import { IsBoolean, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class UpdateNotificationPreferenceDto {
   @IsString() type!: string;
-  @IsBoolean() emailEnabled!: boolean;
+  @IsOptional() @IsBoolean() emailEnabled?: boolean;
+  /** T2-E 52 (2877): push for this kind. */
+  @IsOptional() @IsBoolean() pushEnabled?: boolean;
 }

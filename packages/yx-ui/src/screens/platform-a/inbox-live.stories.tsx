@@ -44,3 +44,15 @@ export const Empty: S = { name: 'Nothing waits', render: () => inbox({}, { waiti
 export const Loading: S = { name: 'Loading', render: () => inbox({}, { waiting: [], state: 'loading' }) };
 export const LoadFailed: S = { name: 'Could not load', render: () => inbox({ onRetry: () => undefined }, { waiting: [], state: 'error' }) };
 export const TeamTab: S = { name: 'Team history (tab pressed)', render: () => inbox(), play: play(tab('Team history')) };
+
+// T2-E 49 and 50 (answers 2872, 2873): Asked by (a person, my direct team, my whole team) and Status filters, and
+// "Decided by me" with its period (30 days, 3 months, 12 months; decisions for someone else say for whom).
+const DECIDED: ApprovalRow[] = [
+  row('d1', { requester: 'Rekha Balan', requesterTeam: 'direct', summary: 'Casual leave, 27 Oct (1 day)', detail: 'You approved on 24 Oct 2026', status: 'Approved', requestStatus: 'Approved', lowRisk: false }),
+  row('d2', { type: 'Expense', requester: 'Anil Kumar', requesterTeam: 'whole', summary: 'Taxi claim, ₹1,840', detail: 'You did not approve on 22 Oct 2026 · for Meena Raghavan', status: 'Rejected', requestStatus: 'Rejected', onBehalfOf: 'Meena Raghavan', lowRisk: false }),
+  row('d3', { requester: 'Kavya Reddy', requesterTeam: 'direct', summary: 'Earned leave, 1–5 Dec (5 days)', detail: 'You sent it back on 20 Oct 2026', status: 'Sent back', requestStatus: 'Waiting', lowRisk: false }),
+];
+const TEAMED = WAITING.map((w, i) => ({ ...w, requesterTeam: (i === 0 ? 'direct' : i === 1 ? 'whole' : null) as ApprovalRow['requesterTeam'] }));
+export const DecidedByMe: S = { name: 'Decided by me · 3 months (T2-E 50)', render: () => inbox({ decidedDays: 90 }, { decided: DECIDED, defaultTab: 'decided' }) };
+export const DecidedByMeYear: S = { name: 'Decided by me · 12 months, none (T2-E 50)', render: () => inbox({ decidedDays: 365 }, { decided: [], defaultTab: 'decided' }) };
+export const AskedByFilter: S = { name: 'Waiting for me · Asked by filter with my teams (T2-E 49)', render: () => <ApprovalsInboxScreen waiting={TEAMED} sent={SENT} history={TEAM} live={LIVE} decided={DECIDED} /> };

@@ -39,7 +39,8 @@ describe('S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
   });
 
   it('5.4 Notifications: the email switch and the digest time, with the link to the wording editor', () => {
-    expect(keysOf('5.4')).toEqual(['notify.email.enabled', 'notify.email.default_cadence', 'notify.digest.time']);
+    // T2-E 51 (answer 2874): plus the six Home reminder kinds, each a company switch.
+    expect(keysOf('5.4')).toEqual(['notify.email.enabled', 'notify.push.enabled', 'notify.email.default_cadence', 'notify.digest.time', 'home.reminders.tax_declarations', 'home.reminders.tax_proofs', 'home.reminders.tax_regime', 'home.reminders.review', 'home.reminders.survey', 'home.reminders.sent_back']);
     const reg = { 'notify.email.enabled': def(['on', 'off'], 'on'), 'notify.digest.time': def(['06:00', '07:00', '18:00'], '07:00') };
     const page = timeSettingsPage(pageOf('5.4'), data(reg), new Set(['ntf.templates']));
     const keys = allSettings(page).map((d) => d.key);
