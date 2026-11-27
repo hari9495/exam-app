@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import type { ScopeUser } from '../access/scope';
-import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskAssigneesDto, TaskDto, TaskStageDto, VersionDto, HoursRangeQueryDto } from './dto';
+import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, ProjectOwnSettingsDto, TaskAssigneesDto, TaskDto, TaskStageDto, VersionDto, HoursRangeQueryDto } from './dto';
 import { ProjectsService } from './projects.service';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420). Signed-in company people; the service checks the Projects keys
@@ -71,6 +71,12 @@ export class ProjectsController {
   @Put(':id')
   update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProjectUpdateDto) {
     return this.projects.update(ctx, this.user(req), id, dto);
+  }
+
+  /** T2-D 58 and 59 (2869, 2870): the project's own settings, by its manager (or Projects manage). */
+  @Put(':id/settings')
+  saveOwnSettings(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProjectOwnSettingsDto) {
+    return this.projects.saveOwnSettings(ctx, this.user(req), id, dto);
   }
 
   @Post(':id/status')

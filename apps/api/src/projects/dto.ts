@@ -320,3 +320,28 @@ export class TaskAssigneesDto {
   @Min(1)
   version!: number;
 }
+
+/** T2-D 58 and 59 (answers 2869, 2870): a project's own settings ('company' follows the company rule). */
+export class ProjectOwnSettingsDto {
+  @IsIn(['company', 'allocated', 'named'])
+  bookingRule!: 'company' | 'allocated' | 'named';
+
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  bookingEmployeeIds!: string[];
+
+  @IsIn(['company', 'on', 'off'])
+  notesRequired!: 'company' | 'on' | 'off';
+
+  @IsIn(['company', 'on', 'off'])
+  billableDefault!: 'company' | 'on' | 'off';
+
+  @IsOptional()
+  @IsUUID()
+  secondApproverUserId?: string | null;
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}

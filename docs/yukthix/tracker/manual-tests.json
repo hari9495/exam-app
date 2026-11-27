@@ -29638,5 +29638,26 @@
                               "Screens/Projects/PRJ-01 · Projects and project workspace (Live · actions pending and who is away (PM), who is away only (a team member), nothing pending, no one away)"
                     ],
                     "note": "Positive and negative (projects-t2d2 e2e 57: approvals 1, not sent 1 with the name, requests 1, billing 0 on an internal project, away with the day and no leave type, Projects manage and a viewer get neither, a member without a key 404, other company 404; kit prj-t2d2 3). Route GET projects/:id/glance. A team member without a Projects key still cannot open the project page (unchanged), so they see Away only if they hold Projects view (question 2900)."
+          },
+          {
+                    "id": "MT-T2D-58-59-PROJECT-SETTINGS",
+                    "area": "T2-D 58 and 59 (answers 2869, 2870): a project's own settings and the second approval level",
+                    "screen": "Projects › a project › Settings; Me › My timesheet; Projects › Timesheet approvals",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "The project's manager; two team members; a delivery head (any active person, no Projects key needed); a Projects view holder who is not the manager; another company's admin.",
+                    "steps": [
+                              "As the project manager open the project › Settings. Choose Named people and save with nobody ticked. Then tick one member, set Daily comments to Required and New timesheet rows to Billable; save.",
+                              "As the member who is not named, add hours to the project on My timesheet and save. As the named member, add a new row for the project and look at Billable; send the week without comments.",
+                              "As the project manager turn on A second approval after the project manager, save without choosing anyone, then choose the delivery head and save. Set everything else back to Company rule.",
+                              "As a member send a week with two rows on the project. As the project manager approve one row and reduce the other with a reason.",
+                              "As the member open the week and try to recall it. As the delivery head open Projects › Timesheet approvals; reduce a row to more than the manager approved; then approve both.",
+                              "Allocate the delivery head to the project and send their own week; the project manager approves it.",
+                              "As the Projects view holder open the project; as another company's admin open it."
+                    ],
+                    "expected": "Step 1: 'Name at least one person who may book time.' and nothing saved; then toast 'Project settings saved'. Step 2: 'Line 1: only the people <code> names book time to it. Ask the project manager.'; the named member's new row starts Billable; the week is refused until each day has its comment. Step 3: 'Choose the second approver.'; then saved. Step 4: the week stays waiting. Step 5: the week can no longer be recalled; the head sees the lines with 'Second approval: The project manager approved <h> h of the <h> h booked.'; the larger reduction is refused; after both are approved the week is approved and the reduced row keeps the manager's hours and reason. Step 6: the head's own week is approved by the manager alone (nobody approves their own hours). Step 7: no Settings tab for the viewer; not found for the other company. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-01 · Projects and project workspace (Live · project settings, named people and a second approver; all on the company rule; timesheet lines waiting for the second approver)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 58: settings for the PM only, viewer 403, other company 404, named with none or off the team 400, PM as second approver 400, stale 409, named refuses the peer, billable default, comments required on the project, audited; 59: level 2 waits for the head, the PM gets 403 at level 2, a reduction above the PM's refused 400, recall 409, week approved after the head, the head's own lines stop at the PM; kit prj-t2d2 4). Migration 901 (booking_rule, booking_employee_ids, notes_required, billable_default, second_approver_user_id on timesheet_projects; level on timesheet_lines). Route PUT projects/:id/settings. The client step still comes last."
           }
 ]

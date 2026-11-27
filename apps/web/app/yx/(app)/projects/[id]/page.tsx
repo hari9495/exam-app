@@ -64,6 +64,8 @@ export default function YxProjectPage() {
         timesheets: ts.data ?? null,
         glance: glance.data ?? null,
         onOpenLink: (href) => router.push(href),
+        // T2-D 58 and 59 (answers 2869, 2870): the project's own settings and its second approver.
+        onSaveSettings: async (input, version) => void (await write('PUT', `${p}/settings`, { ...input, version })),
         billing: !mayBill || billing.isError ? undefined : (billing.data ?? null),
         onOpenInvoice: (iid) => router.push(`/yx/staffing/invoices/${encodeURIComponent(iid)}`),
         onTimesheetWeek: setWeek,

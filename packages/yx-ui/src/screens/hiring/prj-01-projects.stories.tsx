@@ -3,7 +3,8 @@ import { ProjectsListScreen, ProjectWorkspaceScreen, type ProjectExpense } from 
 import { TaskAssigneesDrawer } from './projects-drawers';
 import { ALLOCATIONS, MILESTONES, PD, PROJECTS, RATE_CARD_PRJ, TASKS, WIP_LINES } from './projects-data';
 import { TODAY } from '../_kit/data';
-import { LIVE_PROJECT_GLANCE } from './projects-live-fixtures';
+import { LIVE_LINE_APPROVALS, LIVE_PROJECT_GLANCE, LIVE_PROJECT_SETTINGS } from './projects-live-fixtures';
+import { TimesheetApprovalsScreen } from './projects';
 import { LIVE_FIXED_FEE_DETAIL, LIVE_PROJECT_CHOICES, LIVE_PROJECT_DETAIL, LIVE_PROJECT_ROWS, LIVE_PROJECT_ROWS_FINANCE } from './projects-live-fixtures';
 import type { LiveProjectWorkspace, LiveProjectsList } from './projects';
 import type { TimelineItem } from '../../components/timeline';
@@ -102,3 +103,10 @@ export const LiveAssignTask: S = { name: 'Live · assign a task drawer (T2-D 56)
 export const LiveGlancePm: S = { name: 'Live · actions pending and who is away (PM, T2-D 57)', render: () => <ProjectWorkspaceScreen live={liveWs({ glance: LIVE_PROJECT_GLANCE, onOpenLink: () => {} })} /> };
 export const LiveGlanceMember: S = { name: 'Live · who is away only (a team member, T2-D 57)', render: () => <ProjectWorkspaceScreen live={liveWs({ glance: { pending: null, away: LIVE_PROJECT_GLANCE.away } })} /> };
 export const LiveGlanceNothing: S = { name: 'Live · nothing pending, no one away (T2-D 57)', render: () => <ProjectWorkspaceScreen live={liveWs({ glance: { pending: [], away: { ...LIVE_PROJECT_GLANCE.away!, people: [] } } })} /> };
+
+// T2-D 58 and 59 (answers 2869, 2870): the project's Settings tab for its manager, and a line waiting for the second approver.
+const CHOICES_WITH_ANITA = { ...LIVE_PROJECT_CHOICES, managers: LIVE_PROJECT_CHOICES.managers };
+export const LiveProjectSettings: S = { name: 'Live · project settings, named people and a second approver (T2-D 58, 59)', render: () => <ProjectWorkspaceScreen defaultTab="settings" live={liveWs({ choices: CHOICES_WITH_ANITA, detail: { ...LIVE_PROJECT_DETAIL, settings: LIVE_PROJECT_SETTINGS }, onSaveSettings: ok })} /> };
+export const LiveProjectSettingsCompany: S = { name: 'Live · project settings, all on the company rule (T2-D 58)', render: () => <ProjectWorkspaceScreen defaultTab="settings" live={liveWs({ detail: { ...LIVE_PROJECT_DETAIL, settings: { ...LIVE_PROJECT_SETTINGS, bookingRule: 'company', bookingEmployeeIds: [], secondApproverUserId: null, secondApprover: null } }, onSaveSettings: ok })} /> };
+const SECOND_LEVEL = { ...LIVE_LINE_APPROVALS, groups: LIVE_LINE_APPROVALS.groups.slice(0, 1).map((g) => ({ ...g, items: g.items.slice(0, 1).map((i) => ({ ...i, bulk: false, second: { approvedHours: 36, bookedHours: 40 } })) })) };
+export const LiveSecondApproval: S = { name: 'Live · timesheet lines waiting for the second approver (T2-D 59)', render: () => <TimesheetApprovalsScreen live={{ state: 'ready', data: SECOND_LEVEL, onDecide: async () => {}, onBulk: async () => {} }} /> };

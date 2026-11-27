@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { ProjectWorkspaceScreen, type LiveProjectWorkspace } from './projects';
-import { LIVE_PROJECT_CHOICES, LIVE_PROJECT_DETAIL, LIVE_PROJECT_GLANCE } from './projects-live-fixtures';
+import { LIVE_LINE_APPROVALS, LIVE_PROJECT_CHOICES, LIVE_PROJECT_DETAIL, LIVE_PROJECT_GLANCE, LIVE_PROJECT_SETTINGS } from './projects-live-fixtures';
+import { TimesheetApprovalsScreen } from './projects';
 import { projectSettingsChanges, projectSettingsPage } from '../settings/projects-live';
 import { SETTINGS_GROUPS } from '../settings/settings-groups';
 
@@ -99,5 +100,41 @@ describe('T2-D 57 actions pending and who is away (2867, 2868)', () => {
     show(<ProjectWorkspaceScreen live={ws({ glance: { pending: [], away: { ...LIVE_PROJECT_GLANCE.away!, people: [] } } })} />);
     expect(screen.getByText('Nothing waiting for you.')).toBeInTheDocument();
     expect(screen.getByText('No one on the project is away.')).toBeInTheDocument();
+  });
+});
+
+describe('T2-D 58 and 59 the project settings tab and the second approval (2869, 2870)', () => {
+  const choices = { ...LIVE_PROJECT_CHOICES, managers: LIVE_PROJECT_CHOICES.managers };
+  it('the manager changes who may book, the comments rule and switches the second approval off; it saves with the version', async () => {
+    const onSaveSettings = vi.fn().mockResolvedValue(undefined);
+    show(<ProjectWorkspaceScreen defaultTab="settings" live={ws({ choices, detail: { ...LIVE_PROJECT_DETAIL, settings: LIVE_PROJECT_SETTINGS }, onSaveSettings })} />);
+    expect(screen.getByRole('checkbox', { name: 'Priya Nair' })).toBeChecked();
+    await ue.click(screen.getByRole('checkbox', { name: 'Rohit Bhat' }));
+    await ue.click(within(screen.getByRole('radiogroup', { name: 'Daily comments' })).getByRole('radio', { name: 'Not required' }));
+    await ue.click(screen.getByRole('switch', { name: /A second approval/ }));
+    await ue.click(screen.getByRole('button', { name: 'Save project settings' }));
+    expect(onSaveSettings).toHaveBeenCalledWith({ bookingRule: 'named', bookingEmployeeIds: ['e1', 'e2'], notesRequired: 'off', billableDefault: 'company', secondApproverUserId: null }, LIVE_PROJECT_DETAIL.project.version);
+  });
+
+  it('negative: named people with nobody ticked, or a second approval with no one chosen, save nothing', async () => {
+    const onSaveSettings = vi.fn().mockResolvedValue(undefined);
+    show(<ProjectWorkspaceScreen defaultTab="settings" live={ws({ choices, detail: { ...LIVE_PROJECT_DETAIL, settings: { ...LIVE_PROJECT_SETTINGS, secondApproverUserId: null, secondApprover: null } }, onSaveSettings })} />);
+    await ue.click(screen.getByRole('checkbox', { name: 'Priya Nair' }));
+    await ue.click(screen.getByRole('switch', { name: /A second approval/ }));
+    await ue.click(screen.getByRole('button', { name: 'Save project settings' }));
+    expect(screen.getByText('Name at least one person who may book time.')).toBeInTheDocument();
+    expect(screen.getByText('Choose the second approver.')).toBeInTheDocument();
+    expect(onSaveSettings).not.toHaveBeenCalled();
+  });
+
+  it('negative: without the right to run the project there is no Settings tab', () => {
+    show(<ProjectWorkspaceScreen live={ws({ detail: LIVE_PROJECT_DETAIL })} />);
+    expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
+  });
+
+  it('a line waiting for the second approver says what the project manager approved; others do not', () => {
+    const data = { ...LIVE_LINE_APPROVALS, groups: LIVE_LINE_APPROVALS.groups.map((g, k) => ({ ...g, items: g.items.map((i, j) => ({ ...i, second: k === 0 && j === 0 ? { approvedHours: 36, bookedHours: 40 } : null })) })) };
+    show(<TimesheetApprovalsScreen live={{ state: 'ready', data, onDecide: vi.fn(), onBulk: vi.fn() }} />);
+    expect(screen.getAllByText('The project manager approved 36 h of the 40 h booked. You decide after them.')).toHaveLength(1);
   });
 });

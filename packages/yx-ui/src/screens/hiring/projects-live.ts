@@ -88,7 +88,22 @@ export interface LiveProjectDetail {
   milestones: LiveMilestone[];
   /** T2-D 56 (2865): the board's stages in order (absent: an older API, no board). */
   stages?: { id: string; label: string }[];
+  /** T2-D 58 and 59 (2869, 2870): the project's own settings, for whoever may run it (absent: no Settings tab). */
+  settings?: ProjectOwnSettings;
 }
+
+/** T2-D 58 and 59: a project's own settings; 'company' follows the company rule shown in `company`. */
+export interface ProjectOwnSettings {
+  bookingRule: 'company' | 'allocated' | 'named';
+  bookingEmployeeIds: string[];
+  notesRequired: 'company' | 'on' | 'off';
+  billableDefault: 'company' | 'on' | 'off';
+  secondApproverUserId: string | null;
+  secondApprover: string | null;
+  /** The company rules: booking ('on' block, 'off' allow, 'approval' with the PM's approval), comments, the project's billing. */
+  company: { booking: string; notesRequired: boolean; billable: boolean };
+}
+export type ProjectOwnSettingsInput = Omit<ProjectOwnSettings, 'secondApprover' | 'company'>;
 
 export interface ProjectChoices {
   /** Answer 1444: the company's billing model for new projects. */

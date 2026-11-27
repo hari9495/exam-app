@@ -18,7 +18,7 @@ import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, Tab
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { useToast } from '../../components/notify';
-import { AllocationDrawer, MilestoneDrawer, ProjectDrawer, TaskAssigneesDrawer, TaskDrawer } from './projects-drawers';
+import { AllocationDrawer, MilestoneDrawer, ProjectDrawer, ProjectSettingsPanel, TaskAssigneesDrawer, TaskDrawer } from './projects-drawers';
 import { KanbanBoard } from '../../components/kanban';
 import { toAllocation, toMilestone, toProject, toTask, type AllocationInput, type LiveLoad, type LiveProjectDetail, type LiveProjectRow, type MilestoneInput, type ProjectChoices, type ProjectInput, type ProjectStatus, type TaskInput } from './projects-live';
 import { PhoneFrame } from '../_kit/frames';
@@ -221,6 +221,8 @@ export interface LiveProjectWorkspace {
   glance?: LiveProjectGlance | null;
   /** Opens a link of an action pending (an app path). */
   onOpenLink?: (href: string) => void;
+  /** T2-D 58 and 59 (2869, 2870): saves the project's own settings (with the project's version). */
+  onSaveSettings?: (input: import('./projects-live').ProjectOwnSettingsInput, version: number) => Promise<void>;
   /** Answer 1412: GET /projects/:id/cost (absent: no cost shown; finance or the manager with enough people only). */
   cost?: { finance: boolean; hiddenMonths: number; provisional: boolean; total: string; months: { month: string; cost: string; expenses: string; basis: 'provisional' | 'final'; restatedFrom: string | null }[] } | null;
   /** Answer 1419: GET /projects/:id/expenses (absent: no Expenses tab). */
@@ -338,7 +340,7 @@ export interface ProjectWorkspaceProps {
   expenses?: ProjectExpense[];
   activity?: TimelineItem[];
   today?: Date;
-  defaultTab?: 'overview' | 'team' | 'tasks' | 'timesheets' | 'billing' | 'expenses';
+  defaultTab?: 'overview' | 'team' | 'tasks' | 'timesheets' | 'billing' | 'expenses' | 'settings';
   live?: LiveProjectWorkspace;
 }
 
@@ -482,7 +484,23 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
                 Expenses
               </TabsTrigger>
             )}
+            {live && d!.settings && live.onSaveSettings && <TabsTrigger value="settings">Settings</TabsTrigger>}
           </TabsList>
+          {live && d!.settings && live.onSaveSettings && (
+            <TabsContent value="settings">
+              <ProjectSettingsPanel
+                key={d!.project.version}
+                settings={d!.settings}
+                team={d!.allocations}
+                people={live.choices?.managers ?? []}
+                readOnly={closed}
+                onSave={async (input) => {
+                  await live.onSaveSettings!(input, d!.project.version);
+                  toast({ tone: 'success', title: 'Project settings saved' });
+                }}
+              />
+            </TabsContent>
+          )}
           <TabsContent value="overview">
             <div className="yx-hire-stack">
               {live?.glance && <ProjectGlanceCards glance={live.glance} onOpenLink={live.onOpenLink} />}
@@ -941,7 +959,7 @@ export interface LiveApprovalsData {
     week: string;
     /** 1408: the client who approves this project's hours after the PM (null: none). */
     clientApproval: string | null;
-    items: { id: string; timesheetId: string; /** Batch D B1: the person (By person regroups these same lines). */ employeeId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; /** B1: hours Monday to Sunday. */ days?: number[]; version: number }[] }[];
+    items: { id: string; timesheetId: string; /** Batch D B1: the person (By person regroups these same lines). */ employeeId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; /** T2-D 59: waiting for me as the second approver. */ second?: { approvedHours: number; bookedHours: number } | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; /** B1: hours Monday to Sunday. */ days?: number[]; version: number }[] }[];
   }[];
 }
 export type LiveLineDecision = { lineId: string; status: 'approved' | 'reduced' | 'rejected'; hours?: number; reason?: string; version: number };
@@ -1179,6 +1197,11 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
                   {g.items.map((i) => (
                     <div key={i.id} className="yx-hire-stack">
                       {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
+                      {i.second && (
+                        <InlineAlert tone="info" title="Second approval">
+                          The project manager approved {i.second.approvedHours} h of the {i.second.bookedHours} h booked. You decide after them.
+                        </InlineAlert>
+                      )}
                       {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation{by === 'person' ? ` on ${i.code}` : ''}. Approve it on its own; it is never approved in bulk.</InlineAlert>}
                       <TimesheetApprovalCard
                         employee={{ name: i.employee, secondary: `${by === 'person' ? `${i.code} · ` : ''}${i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project'}` }}

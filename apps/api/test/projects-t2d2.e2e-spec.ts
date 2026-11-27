@@ -205,4 +205,70 @@ describe('Projects T2-D part 2', () => {
     await api('emp', 'get', `/projects/${ids.int}/glance`).expect(404); // a team member without a key cannot open the project page
     await api('adminB', 'get', `/projects/${ids.int}/glance`).expect(404);
   });
+  type Line = { id: string; version: number };
+  const linesOf = async (who: Who) => ((await api(who, 'get', '/time/line-approvals').expect(want(200))).body.groups as { projectId: string; items: { employeeId: string; second: { approvedHours: number } | null; lines: Line[] }[] }[]).filter((g) => g.projectId === ids.int).flatMap((g) => g.items);
+  const settings = (over: Record<string, unknown>, version: number) => ({ bookingRule: 'company', bookingEmployeeIds: [], notesRequired: 'company', billableDefault: 'company', secondApproverUserId: null, version, ...over });
+  const version = async () => (await api('pm', 'get', `/projects/${ids.int}`).expect(want(200))).body.project.version as number;
+
+  it('58: the project manager sets who may book, comments and billable by default; anything left follows the company', async () => {
+    const d = (await api('pm', 'get', `/projects/${ids.int}`).expect(want(200))).body;
+    expect(d.settings).toMatchObject({ bookingRule: 'company', notesRequired: 'company', billableDefault: 'company', secondApproverUserId: null, company: { booking: 'on', notesRequired: false } });
+    // Negative: only the manager (or Projects manage) changes them; named needs team members; the PM is never the second approver.
+    expect((await api('viewer', 'get', `/projects/${ids.int}`).expect(want(200))).body.settings).toBeUndefined();
+    await api('viewer', 'put', `/projects/${ids.int}/settings`).send(settings({}, d.project.version)).expect(403);
+    await api('adminB', 'put', `/projects/${ids.int}/settings`).send(settings({}, d.project.version)).expect(404);
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({ bookingRule: 'named' }, d.project.version)).expect(400);
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({ bookingRule: 'named', bookingEmployeeIds: [ids.outEmp] }, d.project.version)).expect(400);
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({ secondApproverUserId: users.pm }, d.project.version)).expect(400);
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({ bookingRule: 'named', bookingEmployeeIds: [ids.empEmp], notesRequired: 'on', billableDefault: 'on' }, d.project.version)).expect(want(200));
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({}, d.project.version)).expect(409); // stale version
+    // Named: the peer (allocated, not named) may no longer book; emp (named) may. New rows are billable by default.
+    const r = await api('peer', 'put', '/time/me/timesheet').send({ week, lines: [{ projectId: ids.int, activity: 'Docs', billable: false, minutes: seven(60) }] }).expect(400);
+    expect(r.body.message).toMatch(/only the people INT names/);
+    const mine = (await api('emp', 'get', `/time/me/timesheet?week=${week}`).expect(want(200))).body;
+    expect(mine.projects.find((x: { id: string }) => x.id === ids.int).billable).toBe(true);
+    // Comments required on this project although the company rule is off: a week without them is not sent.
+    await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [{ projectId: ids.int, activity: 'Docs', billable: false, minutes: seven(60) }] }).expect(want(200));
+    const no = await api('emp', 'post', '/time/me/timesheet/submit').send({ week }).expect(400);
+    expect(no.body.code).toBe('NOTE_TOO_SHORT');
+    const audits = await inA((tx) => tx.auditLog.count({ where: { entityType: 'timesheet_project', entityId: ids.int, action: 'projects.project.settings_changed' } }));
+    expect(audits).toBe(1);
+    // Back to the company rules.
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({}, await version())).expect(want(200));
+    expect((await api('emp', 'get', `/time/me/timesheet?week=${week}`).expect(want(200))).body.projects.find((x: { id: string }) => x.id === ids.int).billable).toBe(false);
+  });
+
+  it('59: a second approver decides each line after the project manager; nobody approves their own hours; withdraw is closed', async () => {
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({ secondApproverUserId: users.head }, await version())).expect(want(200));
+    // emp's last week (sent in 57) waits for pm at level 1; the head sees nothing yet.
+    expect(await linesOf('head')).toEqual([]);
+    const first = (await linesOf('pm')).find((x) => x.employeeId === ids.empEmp)!;
+    expect(first.second).toBeNull();
+    const [build, docs] = first.lines;
+    await api('pm', 'post', '/time/line-approvals/decide').send({ decisions: [{ lineId: build!.id, status: 'approved', version: build!.version }, { lineId: docs!.id, status: 'reduced', hours: 2, reason: 'Two hours is enough', version: docs!.version }] }).expect(want(200));
+    // The week still waits: each line now waits for the head, with what the PM approved.
+    const sheet = async () => inA((tx) => tx.timesheet.findFirstOrThrow({ where: { employeeId: ids.empEmp, weekStart: day(lastWeek) } }));
+    expect((await sheet()).status).toBe('pending');
+    expect(await linesOf('pm')).toEqual([]);
+    const at2 = (await linesOf('head')).find((x) => x.employeeId === ids.empEmp)!;
+    expect(at2.second).toMatchObject({ approvedHours: 7 }); // 5 h approved + 2 h of the reduced line
+    await api('emp', 'post', `/time/me/timesheet/${(await sheet()).id}/withdraw`).send({}).expect(409);
+    // Negative: the PM no longer decides them; at level 2 a reduction is below what the PM approved.
+    const [b2, d2] = at2.lines;
+    await api('pm', 'post', '/time/line-approvals/decide').send({ decisions: [{ lineId: b2!.id, status: 'approved', version: b2!.version }] }).expect(403);
+    await api('head', 'post', '/time/line-approvals/decide').send({ decisions: [{ lineId: d2!.id, status: 'reduced', hours: 3, reason: 'More than the PM', version: d2!.version }] }).expect(400);
+    await api('head', 'post', '/time/line-approvals/decide').send({ decisions: [{ lineId: b2!.id, status: 'approved', version: b2!.version }, { lineId: d2!.id, status: 'approved', version: d2!.version }] }).expect(want(200));
+    expect((await sheet()).status).toBe('approved');
+    const docsLine = await inA((tx) => tx.timesheetLine.findUniqueOrThrow({ where: { id: d2!.id } }));
+    expect(docsLine).toMatchObject({ status: 'reduced', level: 2, reason: 'Two hours is enough' });
+    expect(docsLine.approvedMinutes.reduce((a, b) => a + b, 0)).toBe(120);
+    // Nobody approves their own hours: the head's own lines on the project stop at the PM.
+    await api('pm', 'post', `/projects/${ids.int}/allocations`).send({ employeeId: ids.headEmp, fromOn: addDays(week, -28), percent: 20 }).expect(want(201));
+    await api('pm', 'put', `/projects/${ids.int}/settings`).send(settings({ secondApproverUserId: users.head }, await version())).expect(want(200));
+    await api('head', 'put', '/time/me/timesheet').send({ week: lastWeek, lines: [{ projectId: ids.int, activity: 'Docs', billable: false, minutes: seven(30) }] }).expect(want(200));
+    await api('head', 'post', '/time/me/timesheet/submit').send({ week: lastWeek }).expect(want(200));
+    const own = (await linesOf('pm')).find((x) => x.employeeId === ids.headEmp)!;
+    await api('pm', 'post', '/time/line-approvals/decide').send({ decisions: own.lines.map((l) => ({ lineId: l.id, status: 'approved', version: l.version })) }).expect(want(200));
+    expect((await inA((tx) => tx.timesheet.findFirstOrThrow({ where: { employeeId: ids.headEmp, weekStart: day(lastWeek) } }))).status).toBe('approved');
+  });
 });

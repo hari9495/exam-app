@@ -186,3 +186,14 @@ export const LIVE_PROJECT_GLANCE: import('./projects').LiveProjectGlance = {
   ],
   away: { from: '2026-11-30', to: '2026-12-13', people: [{ employeeId: 'e2', person: 'Rohit Bhat', days: ['2026-12-03', '2026-12-04'] }] },
 };
+
+/** T2-D 58 and 59: a project's own settings (named people book; a second approver after the PM). */
+export const LIVE_PROJECT_SETTINGS: import('./projects-live').ProjectOwnSettings = {
+  bookingRule: 'named',
+  bookingEmployeeIds: ['e1'],
+  notesRequired: 'company',
+  billableDefault: 'company',
+  secondApproverUserId: 'u2',
+  secondApprover: 'Anita Kurian',
+  company: { booking: 'on', notesRequired: true, billable: true },
+};

@@ -13,7 +13,7 @@ import { OrgSettingsService } from '../org-structure/org-settings.service';
 import { SETTINGS } from '../org-structure/settings-registry';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
-import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskAssigneesDto, TaskDto, TaskStageDto } from './dto';
+import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectOwnSettingsDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskAssigneesDto, TaskDto, TaskStageDto } from './dto';
 import { EXTRA_STAGES_KEY, parseExtraStages, stageOf, taskStages } from './task-stages';
 
 // Projects P-1 (founder answers 1401 to 1405, 1412, 1420). The project is Time's project grown up (one list, 1402):
@@ -257,6 +257,19 @@ export class ProjectsService {
       ]);
       const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set([...allocations.map((a) => a.employeeId), ...tasks.flatMap((t) => t.assigneeEmployeeIds)])] } }, select: { id: true, givenName: true, familyName: true } });
       const stages = taskStages(String(await settingFor(tx, c, EXTRA_STAGES_KEY, { legalEntityId: '' })));
+      // T2-D 58 (2869): the project's own settings, for whoever may run it, with the company rules they override.
+      const second = p.secondApproverUserId ? await tx.user.findFirst({ where: { organizationId: org, id: p.secondApproverUserId }, select: { name: true, email: true } }) : null;
+      const own = this.canRun(p, w)
+        ? {
+            bookingRule: p.bookingRule ?? 'company',
+            bookingEmployeeIds: p.bookingEmployeeIds,
+            notesRequired: p.notesRequired == null ? 'company' : p.notesRequired ? 'on' : 'off',
+            billableDefault: p.billableDefault == null ? 'company' : p.billableDefault ? 'on' : 'off',
+            secondApproverUserId: p.secondApproverUserId,
+            secondApprover: second ? second.name?.trim() || second.email : null,
+            company: { booking: String(await settingFor(tx, c, 'projects.booking.allocated_only', { legalEntityId: '' })), notesRequired: (await settingFor(tx, c, 'timesheet.note.required', { legalEntityId: '' })) === 'on', billable: p.billable },
+          }
+        : undefined;
       const name = (eid: string) => {
         const e = people.find((x) => x.id === eid);
         return e ? [e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
@@ -290,6 +303,7 @@ export class ProjectsService {
         })),
         // T2-D 56 (2865, 2866): the board's stages, each task's stage and who it is assigned to.
         stages,
+        settings: own,
         tasks: tasks.map((t) => ({ id: t.id, name: t.name, budgetHours: num(t.budgetHours), usedHours: hoursOf(booked.filter((b) => b.activity === t.name).reduce((s, b) => s + b.minutes, 0)), billable: t.billable, active: t.active, stage: stageOf(t.stage, stages), assignees: t.assigneeEmployeeIds.map((eid) => ({ employeeId: eid, name: name(eid) })), version: t.version })),
         milestones: milestones.map((m) => ({ id: m.id, name: m.name, pct: num(m.pct), dueOn: day(m.dueOn), status: m.status, version: m.version })),
       };
@@ -396,6 +410,38 @@ export class ProjectsService {
       await tx.timesheetProject.update({ where: { id }, data: { status: dto.status, active: dto.status === 'active', closedAt: dto.status === 'closed' ? new Date() : null, version: { increment: 1 }, updatedAt: new Date() } });
       await audit(tx, c, 'projects.project.status_changed', 'timesheet_project', id, { from: p.status, to: dto.status });
       return { id, status: dto.status, version: p.version + 1 };
+    });
+  }
+
+  /**
+   * T2-D 58 and 59 (answers 2869, 2870): the project's own settings, by its manager (or Projects manage). Anything left
+   * on 'company' follows the company rule. Named booking needs at least one person of the team. The second approver is
+   * an active person of the company other than the project manager; off when empty.
+   */
+  async saveOwnSettings(ctx: TenantContext, user: ScopeUser, id: string, dto: ProjectOwnSettingsDto) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, id, w);
+      this.needRun(p, w);
+      if (p.version !== dto.version) throw new ConflictException('Someone changed this project. Reload to see the latest.');
+      const named = dto.bookingRule === 'named' ? [...new Set(dto.bookingEmployeeIds)] : [];
+      if (dto.bookingRule === 'named') {
+        if (!named.length) throw new BadRequestException('Name at least one person who may book time to this project.');
+        const team = await tx.projectAllocation.findMany({ where: { organizationId: org, projectId: id, employeeId: { in: named } }, select: { employeeId: true } });
+        if (named.some((e) => !team.some((a) => a.employeeId === e))) throw new BadRequestException('Name people on the project team.');
+      }
+      const second = dto.secondApproverUserId ?? null;
+      if (second) {
+        if (second === p.managerUserId) throw new BadRequestException('The second approver is someone other than the project manager.');
+        if (!(await tx.user.findFirst({ where: { organizationId: org, id: second, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company as the second approver.');
+      }
+      const tri = (v: 'company' | 'on' | 'off') => (v === 'company' ? null : v === 'on');
+      const data = { bookingRule: dto.bookingRule === 'company' ? null : dto.bookingRule, bookingEmployeeIds: named, notesRequired: tri(dto.notesRequired), billableDefault: tri(dto.billableDefault), secondApproverUserId: second };
+      await tx.timesheetProject.update({ where: { id }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
+      await audit(tx, c, 'projects.project.settings_changed', 'timesheet_project', id, { from: { bookingRule: p.bookingRule, bookingEmployeeIds: p.bookingEmployeeIds, notesRequired: p.notesRequired, billableDefault: p.billableDefault, secondApproverUserId: p.secondApproverUserId }, to: data });
+      return { id, version: p.version + 1 };
     });
   }
 

@@ -6701,6 +6701,13 @@ model TimesheetProject {
   burnAlertedPct          Int       @default(0) @map("burn_alerted_pct") @db.SmallInt
   closedAt                DateTime? @map("closed_at") @db.Timestamptz(3)
   version                 Int       @default(1)
+  /// T2-D 58 (2869): the project's own rules, set by its manager; null follows the company rule.
+  bookingRule             String?   @map("booking_rule") @db.VarChar(10)
+  bookingEmployeeIds      String[]  @default([]) @map("booking_employee_ids") @db.Uuid
+  notesRequired           Boolean?  @map("notes_required")
+  billableDefault         Boolean?  @map("billable_default")
+  /// T2-D 59 (2870): approves each line after the project manager (off when null).
+  secondApproverUserId    String?   @map("second_approver_user_id") @db.Uuid
 
   @@map("timesheet_projects")
 }
@@ -6894,6 +6901,8 @@ model TimesheetLine {
   /// Projects P-2 (1406): null in a draft or a week decided as a whole; else pending, approved, reduced or rejected.
   status          String?   @db.VarChar(10)
   approverUserIds String[]  @default([]) @map("approver_user_ids") @db.Uuid
+  /// T2-D 59 (2870): the level a pending line waits at (1 the project manager, 2 the second approver).
+  level           Int       @default(1) @db.SmallInt
   approvedMinutes Int[]     @map("approved_minutes") @db.SmallInt
   reason          String?   @db.VarChar(300)
   decidedBy       String?   @map("decided_by") @db.Uuid
