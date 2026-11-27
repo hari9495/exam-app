@@ -30128,5 +30128,26 @@
                               "Screens/Settings/Group 1 (1.1 Company & branding › Our words)"
                     ],
                     "note": "Positive and negative (t2g e2e '84a renamed terms': saved and audited, read by everyone signed in, other company unchanged, markup / second line / 31 characters / entity scope refused 400, no settings key 403; API terms.spec (whole words, case, abbreviations, law's names, links); email.service.spec (subject and html text, never links); kit lib/terms.test (page and card titles, field labels, detail lists, table headers; none without a provider)). Route GET org/display (everyone signed in). Labels outside those shared parts (sentences inside a screen) keep YukthiX's words for now."
+          },
+          {
+                    "id": "MT-T2G-84B-HINDI",
+                    "area": "T2-G 84b (answer 2743): Hindi self-service screens (first part: the language set-up with next-intl, the self-service menu, Me › Language, notification emails), English everywhere else",
+                    "screen": "Me › Language; the menu (Home, Me, leave, attendance, payslips, help, approvals); notification emails; Settings › Company & branding (Show the self-service screens in Hindi)",
+                    "url": "http://localhost:3000/yx/me/language",
+                    "account": "An employee (Arjun); hr@demo-org.test (HR Admin - Lakshmi); a Hindi speaker to read every Hindi line.",
+                    "steps": [
+                              "As Arjun open Me › Language, choose हिन्दी (Hindi) and press Save.",
+                              "Look at the menu: Home, Approvals, Notifications, My leave, My attendance, Payslips, Help centre, Profile; open My leave and Payslips.",
+                              "Have a manager approve one of Arjun's requests (or send any approval or leave reminder); open the email in Mailpit (http://localhost:8025).",
+                              "As HR open Settings › Company & branding and turn off 'Show the self-service screens in Hindi'. Reload Arjun's page.",
+                              "Negative: as HR (language English) look at the same menu and the payroll set-up pages.",
+                              "Negative: as Arjun choose Tamil.",
+                              "A Hindi speaker reads every Hindi word on Me › Language, the menu and the email and notes anything unclear."
+                    ],
+                    "expected": "Step 1: Me › Language shows in Hindi (भाषा, सहेजें) after Save. Step 2: those menu links read मेरी छुट्टी, मेरी हाज़िरी, वेतन पर्चियाँ, सहायता केंद्र, अनुमोदन; the pages themselves are still English (later parts). Step 3: the email's subject and first line are Hindi (e.g. आपका अनुरोध मंज़ूर हो गया है) with the request's detail and a YukthiX में देखें link. Step 4: Arjun's menu and emails are English again. Step 5: HR sees English. Step 6: English screens (only Hindi is translated). Dates and numbers keep the Indian style (3 Dec 2026, 12,34,567). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Global (Me › Language)"
+                    ],
+                    "note": "Positive and negative (t2g e2e '84b Hindi screens': Hindi reader, others English, company switch off/on, settings key only, bad value 400, Tamil reads English; API notification-hindi.spec: Hindi template per kind, English when none, never looked up for kinds without one; kit i18n.test: every Hindi key in English, fallback, Indian formats, Me › Language in Hindi and English; web yx-i18n.test: Hindi keys exist in English, menu labels match, admin links stay English). Library: next-intl 4.14.10 (use-intl 4.15.1 in the kit). Left for the next parts: the Home, leave, attendance, payslip, helpdesk and approval pages' own words."
           }
 ]

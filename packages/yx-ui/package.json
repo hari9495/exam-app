@@ -30,6 +30,7 @@
     "./assessments": "./src/screens/proctoring/assessments-live.ts",
     "./frame": "./src/screens/_kit/live.ts",
     "./a11y": "./src/lib/accessibility-prefs.ts",
+    "./i18n": "./src/i18n/index.tsx",
     "./screens/*": "./src/screens/*.tsx",
     "./styles.css": "./src/styles/index.css"
   },
@@ -77,7 +78,8 @@
     "libphonenumber-js": "^1.13.14",
     "lucide-react": "^1.48.0",
     "pdfjs-dist": "6.4.299",
-    "react-day-picker": "^10.0.1"
+    "react-day-picker": "^10.0.1",
+    "use-intl": "4.15.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

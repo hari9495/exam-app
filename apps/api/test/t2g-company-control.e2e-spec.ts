@@ -264,6 +264,27 @@ describe('T2-G: company control', () => {
       expect((await api('plainA', 'get', '/org/display').expect(200)).body.terms.grade.one).toBe('Grade');
     });
   });
+  describe('84b Hindi screens', () => {
+    const locale = async (who: string) => (await api(who, 'get', '/org/display').expect(200)).body.locale as string;
+    it("a person who chooses Hindi reads Hindi screens while the company offers them (on by default); others English", async () => {
+      expect(await locale('emp1A')).toBe('en');
+      await api('emp1A', 'put', '/global/me/language').send({ language: 'hi' }).expect(200);
+      expect(await locale('emp1A')).toBe('hi');
+      expect(await locale('emp2A')).toBe('en');
+      expect(await locale('emp1B')).toBe('en');
+    });
+    it('negative: the company switches Hindi screens off (settings key only): English for everyone; bad values refused', async () => {
+      const set = (who: string, value: string) => api(who, 'put', '/org/settings').send({ key: 'people.language.hindi_screens', scopeType: 'tenant', value });
+      await set('plainA', 'off').expect(403);
+      await set('hrA', 'maybe').expect(400);
+      await set('hrA', 'off').expect(200);
+      expect(await locale('emp1A')).toBe('en');
+      await set('hrA', 'on').expect(200);
+      expect(await locale('emp1A')).toBe('hi');
+      await api('emp1A', 'put', '/global/me/language').send({ language: 'ta' }).expect(200);
+      expect(await locale('emp1A')).toBe('en');
+    });
+  });
   describe('44 a named owner per module', () => {
     type Owned = { id: string; owner: { id: string; name: string } | null };
     const owners = (who: string, o: Record<string, string | null>) => api(who, 'put', '/org/modules').send({ off: [], order: [], owners: o });

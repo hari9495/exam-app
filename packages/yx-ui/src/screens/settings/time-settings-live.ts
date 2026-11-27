@@ -221,6 +221,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     settings: [
       { section: 'Working week and language', key: 'work.normal_week_hours', synonyms: ['full-time week'] },
       { section: 'Working week and language', key: 'people.language', synonyms: ['language'] },
+      // T2-G 84b (answer 2743): Hindi self-service screens for people who choose Hindi (on by default).
+      { section: 'Working week and language', key: 'people.language.hindi_screens', synonyms: ['Hindi', 'translation', 'language'] },
       // T2-G 84a (answer 2743): the company's own words for department, grade and the rest.
       { section: 'Our words', key: 'terms.department.one', synonyms: ['rename', 'department'] },
       { section: 'Our words', key: 'terms.department.many' },
