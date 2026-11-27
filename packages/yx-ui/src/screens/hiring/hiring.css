@@ -6,6 +6,8 @@
 .yx-hire-plainlist { margin: 0; padding-left: var(--yx-space-5); }
 .yx-hire-steps { margin: 0; padding-left: var(--yx-space-5); display: flex; flex-direction: column; gap: var(--yx-space-1); }
 .yx-hire-actions { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+/* T2-D 60: the hours reports' filters, side by side where they fit. */
+.yx-hire-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--yx-space-3); }
 .yx-hire-num { font-variant-numeric: tabular-nums; }
 
 /* T6 board of columns (headcount plan, submissions, bench) */

@@ -1,11 +1,12 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import type { ScopeUser } from '../access/scope';
-import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, ProjectOwnSettingsDto, TaskAssigneesDto, TaskDto, TaskStageDto, VersionDto, HoursRangeQueryDto } from './dto';
+import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, ProjectOwnSettingsDto, HoursReportQueryDto, TaskAssigneesDto, TaskDto, TaskStageDto, VersionDto, HoursRangeQueryDto } from './dto';
 import { ProjectsService } from './projects.service';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420). Signed-in company people; the service checks the Projects keys
@@ -38,6 +39,19 @@ export class ProjectsController {
   @Get()
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.projects.list(ctx, this.user(req));
+  }
+
+  /** T2-D 60 (2871): hours by person or by task; format=csv downloads it. PMs: their projects; projects.reporting: all. */
+  @Get('reports/hours')
+  @Header('Cache-Control', 'no-store')
+  async hoursReport(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: HoursReportQueryDto, @Res({ passthrough: true }) res: Response) {
+    const out = await this.projects.hoursReport(ctx, this.user(req), q);
+    if ('csv' in out) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="hours-by-${q.kind}-${q.from}-to-${q.to}.csv"`);
+      return out.csv;
+    }
+    return out;
   }
 
   @Get('choices')

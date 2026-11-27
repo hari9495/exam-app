@@ -15,6 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectOwnSettingsDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskAssigneesDto, TaskDto, TaskStageDto } from './dto';
 import { EXTRA_STAGES_KEY, parseExtraStages, stageOf, taskStages } from './task-stages';
+import { byPerson, byTask, reportCsv, type HoursReportKind, type ReportLine } from './hours-reports';
 
 // Projects P-1 (founder answers 1401 to 1405, 1412, 1420). The project is Time's project grown up (one list, 1402):
 // a client from the staffing desk (1403), a billing model (1420), budgets, dates and a status; its team (allocations),
@@ -24,7 +25,7 @@ import { EXTRA_STAGES_KEY, parseExtraStages, stageOf, taskStages } from './task-
 // people book time when the company says so (1404, in TimesheetService). Burn alerts at the company's 80% and 100%
 // (1405), sent once per level to the manager and Projects finance. Everything is audited; forced RLS on every table.
 
-const KEYS = ['projects.view', 'projects.manage', 'projects.finance', 'projects.resource'] as const;
+const KEYS = ['projects.view', 'projects.manage', 'projects.finance', 'projects.resource', 'projects.reporting'] as const;
 const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 const asDate = (s: string) => new Date(`${s}T00:00:00Z`);
 const addDaysIso = (s: string, n: number) => new Date(Date.parse(`${s}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -43,7 +44,7 @@ export function burnLevel(usedHours: number, budgetHours: number | null, warn: n
   return pct >= over ? over : pct >= warn ? warn : 0;
 }
 
-type Who = { userId: string; finance: boolean; manage: boolean; resource: boolean; any: boolean };
+type Who = { userId: string; finance: boolean; manage: boolean; resource: boolean; reporting?: boolean; any: boolean };
 
 @Injectable()
 export class ProjectsService {
@@ -60,7 +61,8 @@ export class ProjectsService {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     const v = await buildViewer(this.prisma, this.tenantPrisma, user, KEYS);
     const keys = KEYS.filter((k) => has(v, k));
-    return { userId: user.userId!, finance: keys.includes('projects.finance'), manage: keys.includes('projects.manage'), resource: keys.includes('projects.resource'), any: keys.length > 0 };
+    // T2-D 60: the reporting key alone opens only the hours reports (it is not a key to the projects themselves).
+    return { userId: user.userId!, finance: keys.includes('projects.finance'), manage: keys.includes('projects.manage'), resource: keys.includes('projects.resource'), reporting: keys.includes('projects.reporting'), any: keys.some((k) => k !== 'projects.reporting') };
   }
 
   /** Answer 1401: the company switched Projects on. */
@@ -81,7 +83,9 @@ export class ProjectsService {
       const canOpen = Boolean(enabled && w && (w.any || (await tx.timesheetProject.count({ where: { organizationId: c.organizationId, managerUserId: w.userId } }))));
       // P-2 (1406): timesheet lines waiting for me (a reporting manager approves without any Projects key).
       const lineApprovals = enabled && w ? await tx.timesheetLine.count({ where: { organizationId: c.organizationId, status: 'pending', approverUserIds: { has: w.userId } } }) : 0;
-      return { enabled, canOpen, lineApprovals };
+      // T2-D 60: the hours reports, for project managers and the reporting key (which alone opens nothing else).
+      const reports = Boolean(enabled && w && (w.reporting || (await tx.timesheetProject.count({ where: { organizationId: c.organizationId, managerUserId: w.userId } }))));
+      return { enabled, canOpen, lineApprovals, reports };
     });
   }
 
@@ -809,6 +813,60 @@ export class ProjectsService {
         away = { from: today, to, people: [...by].map(([employeeId, days]) => ({ employeeId, person: nameOf(employeeId), days })).sort((a, b) => a.days[0]!.localeCompare(b.days[0]!) || a.person.localeCompare(b.person)) };
       }
       return { pending, away };
+    });
+  }
+
+  /**
+   * T2-D 60 (answer 2871): hours by person (week by week, billable and not, per project) or by task (budget, booked,
+   * approved), from sent and approved weeks, filtered by project, client and the weeks between two dates. Holders of
+   * projects.reporting see every project; a project's manager sees their own projects; anyone else is refused. The CSV
+   * download is audited. The payroll feed is unchanged.
+   */
+  async hoursReport(ctx: TenantContext, user: ScopeUser, q: { kind: HoursReportKind; from: string; to: string; projectId?: string; clientId?: string; format?: 'csv' }) {
+    const w = await this.who(user);
+    if (q.to < q.from) throw new BadRequestException('The end date is before the start date.');
+    if (Date.parse(q.to) - Date.parse(q.from) > 400 * 86_400_000) throw new BadRequestException('Choose at most about a year (400 days).');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const all = Boolean(w.reporting);
+      const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, ...(all ? {} : { managerUserId: w.userId }) }, orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, clientId: true } });
+      if (!all && !projects.length) throw new ForbiddenException('The hours reports are for project managers and holders of the projects reporting key.');
+      if (q.projectId && !projects.some((p) => p.id === q.projectId)) throw new NotFoundException('No such project.');
+      const chosen = projects.filter((p) => (!q.projectId || p.id === q.projectId) && (!q.clientId || p.clientId === q.clientId));
+      const ids = chosen.map((p) => p.id);
+      const raw = ids.length
+        ? await tx.$queryRaw<{ project_id: string; employee_id: string; week: string; activity: string | null; billable: boolean; minutes: number[]; status: string | null; approved_minutes: number[]; sheet: string }[]>`
+            SELECT l.project_id::text, t.employee_id::text, t.week_start::text AS week, l.activity, l.billable, l.minutes::int[] AS minutes, l.status, l.approved_minutes::int[] AS approved_minutes, t.status AS sheet
+            FROM timesheet_lines l JOIN timesheets t ON t.organization_id = l.organization_id AND t.id = l.timesheet_id
+            WHERE l.organization_id = ${org}::uuid AND l.project_id = ANY(${ids}::uuid[]) AND t.status IN ('pending', 'approved')
+              AND t.week_start BETWEEN ${q.from}::date - 6 AND ${q.to}::date`
+        : [];
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set(raw.map((r) => r.employee_id))] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const nameOf = (id: string) => {
+        const e = people.find((x) => x.id === id);
+        return e ? [e.preferredName ?? e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
+      };
+      const total = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+      const lines: ReportLine[] = raw.map((r) => ({
+        projectId: r.project_id,
+        code: chosen.find((p) => p.id === r.project_id)!.code,
+        employeeId: r.employee_id,
+        person: nameOf(r.employee_id),
+        week: r.week,
+        task: r.activity,
+        billable: r.billable,
+        booked: total(r.minutes),
+        // Approved: a decided line's approved minutes; a week approved as a whole (no line decisions) counts in full.
+        approved: r.status ? (['approved', 'reduced', 'corrected'].includes(r.status) ? total(lineApproved({ minutes: r.minutes, status: r.status, approvedMinutes: r.approved_minutes })) : 0) : r.sheet === 'approved' ? total(r.minutes) : 0,
+      }));
+      const rows = q.kind === 'person' ? byPerson(lines) : byTask(lines, (await tx.projectTask.findMany({ where: { organizationId: org, projectId: { in: ids } }, select: { projectId: true, name: true, budgetHours: true } })).map((t) => ({ ...t, budgetHours: num(t.budgetHours) })), new Map(chosen.map((p) => [p.id, p.code])));
+      if (q.format === 'csv') {
+        await audit(tx, c, 'projects.report.exported', q.projectId ? 'timesheet_project' : 'organization', q.projectId ?? org, { kind: q.kind, from: q.from, to: q.to, clientId: q.clientId ?? null, rows: rows.length, scope: all ? 'all' : 'mine' });
+        return { csv: reportCsv(q.kind, rows) };
+      }
+      const clients = await tx.staffingClient.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.clientId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+      return { kind: q.kind, scope: all ? 'all' : 'mine', rows, projects: projects.map((p) => ({ id: p.id, label: `${p.code} · ${p.name}` })), clients };
     });
   }
 

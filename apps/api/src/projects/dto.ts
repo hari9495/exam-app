@@ -345,3 +345,27 @@ export class ProjectOwnSettingsDto {
   @Min(1)
   version!: number;
 }
+
+/** T2-D 60 (2871): the hours reports' filters. */
+export class HoursReportQueryDto {
+  @IsIn(['person', 'task'])
+  kind!: 'person' | 'task';
+
+  @IsDateString({ strict: true })
+  from!: string;
+
+  @IsDateString({ strict: true })
+  to!: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  clientId?: string;
+
+  @IsOptional()
+  @IsIn(['csv'])
+  format?: 'csv';
+}

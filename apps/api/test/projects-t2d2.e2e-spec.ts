@@ -271,4 +271,40 @@ describe('Projects T2-D part 2', () => {
     await api('pm', 'post', '/time/line-approvals/decide').send({ decisions: own.lines.map((l) => ({ lineId: l.id, status: 'approved', version: l.version })) }).expect(want(200));
     expect((await inA((tx) => tx.timesheet.findFirstOrThrow({ where: { employeeId: ids.headEmp, weekStart: day(lastWeek) } }))).status).toBe('approved');
   });
+  it('60: hours by person and by task, filtered, with CSV; the PM sees their projects, the reporting key all, others none', async () => {
+    const from = addDays(week, -28);
+    const q = (kind: string, extra = '') => `/projects/reports/hours?kind=${kind}&from=${from}&to=${today}${extra}`;
+    type P = { person: string; project: string; week: string; billable: number; nonBillable: number; approved: number };
+    const byPerson = (await api('pm', 'get', q('person')).expect(want(200))).body as { scope: string; rows: P[]; projects: { id: string }[] };
+    expect(byPerson.scope).toBe('mine');
+    expect(byPerson.projects.map((x) => x.id)).toEqual([ids.int]);
+    // emp's last week on INT: Build 5 h approved, Docs 5 h booked of which 2 h approved (59), all non-billable.
+    expect(byPerson.rows.find((r) => r.person === `emp ${run}` && r.week === lastWeek)).toEqual({ person: `emp ${run}`, project: 'INT', week: lastWeek, billable: 0, nonBillable: 10, approved: 7 });
+    type T = { project: string; task: string; budget: number | null; booked: number; approved: number };
+    const byTask = (await api('pm', 'get', q('task')).expect(want(200))).body.rows as T[];
+    expect(byTask.find((r) => r.task === 'Docs')).toMatchObject({ project: 'INT', budget: 100 });
+    // emp's two lines (one reduced to 2 h in 59) and the head's 2.5 h of Docs approved by the PM.
+    expect(byTask.filter((r) => r.task === 'Build' || r.task === 'Docs').reduce((t, r) => t + r.approved, 0)).toBe(9.5);
+    // The reporting key sees every project (OTH too); a filter by project narrows it.
+    const all = (await api('reporter', 'get', q('person')).expect(want(200))).body as { scope: string; projects: { id: string }[] };
+    expect(all.scope).toBe('all');
+    expect(all.projects.map((x) => x.id)).toEqual(expect.arrayContaining([ids.int, ids.oth]));
+    expect(((await api('reporter', 'get', q('person', `&projectId=${ids.oth}`)).expect(want(200))).body.rows as P[]).every((r) => r.project === 'OTH')).toBe(true);
+    // CSV, audited.
+    const file = await api('pm', 'get', q('person', '&format=csv')).expect(want(200));
+    expect(file.headers['content-type']).toMatch(/text\/csv/);
+    expect(file.text.split('\r\n')[0]).toBe('Person,Project,Week of,Billable hours,Non-billable hours,Approved hours');
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'projects.report.exported' } }))).toBe(1);
+    // Negative: a viewer who manages nothing, a team member, another company; another PM's project; dates the wrong way.
+    await api('viewer', 'get', q('person')).expect(403);
+    await api('emp', 'get', q('person')).expect(403);
+    await api('adminB', 'get', q('person', `&projectId=${ids.int}`)).expect(404);
+    await api('pm', 'get', q('person', `&projectId=${ids.oth}`)).expect(404);
+    await api('pm', 'get', `/projects/reports/hours?kind=person&from=${today}&to=${from}`).expect(400);
+    await api('pm', 'get', `/projects/reports/hours?kind=salary&from=${from}&to=${today}`).expect(400);
+    // The menu: the PM and the reporting key get the reports; a viewer who manages nothing does not.
+    expect((await api('pm', 'get', '/projects/status').expect(want(200))).body.reports).toBe(true);
+    expect((await api('reporter', 'get', '/projects/status').expect(want(200))).body).toMatchObject({ reports: true, canOpen: false });
+    expect((await api('viewer', 'get', '/projects/status').expect(want(200))).body.reports).toBe(false);
+  });
 });

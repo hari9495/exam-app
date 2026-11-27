@@ -29659,5 +29659,24 @@
                               "Screens/Projects/PRJ-01 · Projects and project workspace (Live · project settings, named people and a second approver; all on the company rule; timesheet lines waiting for the second approver)"
                     ],
                     "note": "Positive and negative (projects-t2d2 e2e 58: settings for the PM only, viewer 403, other company 404, named with none or off the team 400, PM as second approver 400, stale 409, named refuses the peer, billable default, comments required on the project, audited; 59: level 2 waits for the head, the PM gets 403 at level 2, a reduction above the PM's refused 400, recall 409, week approved after the head, the head's own lines stop at the PM; kit prj-t2d2 4). Migration 901 (booking_rule, booking_employee_ids, notes_required, billable_default, second_approver_user_id on timesheet_projects; level on timesheet_lines). Route PUT projects/:id/settings. The client step still comes last."
+          },
+          {
+                    "id": "MT-T2D-60-HOURS-REPORTS",
+                    "area": "T2-D 60 (answer 2871): two hours reports with CSV export",
+                    "screen": "Projects › Hours reports (Hours by person, Hours by task)",
+                    "url": "http://localhost:3000/yx/projects/reports",
+                    "account": "A project manager (no Projects key); someone with only the Projects reporting key; a Projects view holder who manages no project; a team member; another company's admin.",
+                    "steps": [
+                              "As the project manager open Projects › Hours reports. Look at Hours by person for the last 12 weeks; then switch to Hours by task.",
+                              "Filter by one project, then by a client; change the dates. Press Download CSV and open the file.",
+                              "Choose Weeks to before Weeks from.",
+                              "As the reporting key holder open the menu and the report; filter by a project you do not manage.",
+                              "As the Projects view holder who manages nothing, and as a team member, open /yx/projects/reports. As another company's admin open it with ?projectId=<a project of this company>."
+                    ],
+                    "expected": "Step 1: 'The hours of the projects you manage...'; each person's weeks per project with billable, non-billable and approved hours; by task each task with its budget ('No budget' when none), booked and approved. Step 2: the rows follow the filters; the CSV has the same columns and rows (a name starting with = is written as text). Step 3: the date pickers do not allow it (the API refuses it, 400). Step 4: the menu shows only Hours reports; every project is in the list. Step 5: no access (no menu entry, the page says so); the other company gets not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-09 · Hours reports (by person, by task, own projects only, none, loading, error, no access)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 60: PM scope mine, rows with booked and approved hours (a line reduced at the second level counts the reduced hours), reporting key all with a project filter, CSV header and audit, viewer 403, member 403, other company 404, another PM's project 404, dates reversed 400, unknown kind 400, status.reports for the menu; hours-reports unit 3; kit prj-09 4; nav test). Migration 902 adds the projects.reporting key (System Admin holds it). Route GET projects/reports/hours (format=csv). The payroll feed is unchanged."
           }
 ]

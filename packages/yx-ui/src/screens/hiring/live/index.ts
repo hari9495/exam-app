@@ -123,3 +123,5 @@ export { LookupTableScreen } from '../../platform-b/rules-screens';
 export type { LiveLimits, LimitFamily } from '../../platform-b/limits-live';
 // Answer 2631: the pipeline editor on Settings › Hiring (6.1).
 export { PipelineSheet, type EditablePipeline, type EditableStage, type PipelineSheetProps, type StageKind, type StageRule, type StageSave } from '../pipeline-sheet';
+// T2-D 60 (answer 2871): PRJ-09 hours reports.
+export { HoursReportsScreen, type HoursReportData, type HoursReportFilters, type HoursReportKind, type LiveHoursReports } from '../projects-reports';
