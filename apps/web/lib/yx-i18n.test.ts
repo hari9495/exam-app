@@ -1,6 +1,7 @@
 import en from '../messages/en.json';
 import hi from '../messages/hi.json';
-import { messagesFor, navLabel } from './yx-i18n';
+import { bellText, messagesFor, navLabel } from './yx-i18n';
+import type { NotificationView } from './types';
 import { buildNav, type NavInput } from './yx-nav';
 
 // T2-G 84b (answer 2743): the web's Hindi words with next-intl. Guard: every Hindi key exists in English.
@@ -34,5 +35,18 @@ describe('web messages', () => {
     const m = messagesFor('hi') as { kit: { myLanguage: { title: string } }; nav: Record<string, string> };
     expect(m.kit.myLanguage.title).toBe('भाषा');
     expect(Object.keys(m.nav).sort()).toEqual(Object.keys((en as { nav: object }).nav).sort());
+  });
+});
+
+describe('the bell in the reader language', () => {
+  const n = (type: string, over: Partial<NotificationView> = {}): NotificationView => ({ id: 'n1', type, actorUserId: null, actorName: null, entityType: 'x', entityId: 'e', contextText: null, linkPath: '/x', readAt: null, createdAt: '2026-11-28T09:00:00Z', ...over }) as NotificationView;
+  it('approvals and self-service kinds read in Hindi for a Hindi reader', () => {
+    expect(bellText('hi')(n('approval.approved', { contextText: 'Leave 3 Dec' }))).toBe('आपका अनुरोध मंज़ूर हो गया: Leave 3 Dec');
+    expect(bellText('hi')(n('workflow.approval.needed'))).toBe('एक अनुरोध को आपकी मंज़ूरी चाहिए');
+    expect(bellText('hi')(n('leave.reminder', { contextText: '3 Dec' }))).toBe('आपकी छुट्टी के बारे में एक याद: 3 Dec');
+  });
+  it('negative: English readers and kinds not in Hindi keep the English line', () => {
+    expect(bellText('en')(n('approval.approved'))).toBe('Your submission was approved');
+    expect(bellText('hi')(n('helpdesk.backlog.alert', { contextText: 'IT desk' }))).toBe('IT desk');
   });
 });

@@ -1,5 +1,7 @@
 import { createTranslator } from 'next-intl';
 import { KIT_MESSAGES, overlay, type YxLocale } from '@yukthix/ui/i18n';
+import { notificationText } from './notification-text';
+import type { NotificationView } from './types';
 import en from '../messages/en.json';
 import hi from '../messages/hi.json';
 
@@ -20,4 +22,22 @@ export function navLabel(locale: YxLocale): (id: string, label: string) => strin
   const english = (en as { nav: Record<string, string> }).nav;
   // Only a link whose English label is the one translated (an id reused with other words keeps them).
   return (id, label) => (english[id] === label && t.has(id as never) ? t(id as never) : label);
+}
+
+const BELL: Record<string, string> = { mention: 'mention', assigned: 'assigned', 'approval.requested': 'approvalRequested', 'approval.approved': 'approvalApproved', 'approval.rejected': 'approvalRejected', 'approval.cancelled': 'approvalCancelled', 'approval.step_skipped': 'approvalSkipped', 'workflow.approval.needed': 'approvalNeeded', 'workflow.approval.reminder': 'approvalReminder' };
+
+/** A bell line in the reader's language: the English line as built, or in Hindi where the kind is written in Hindi. */
+export function bellText(locale: YxLocale): (n: NotificationView) => string {
+  if (locale === 'en') return notificationText;
+  type Say = ((k: string, v?: Record<string, string>) => string) & { has: (k: string) => boolean };
+  const t = createTranslator({ locale, messages: WEB_MESSAGES[locale], namespace: 'bell' }) as unknown as Say;
+  const kind = createTranslator({ locale, messages: WEB_MESSAGES[locale], namespace: 'bellKind' }) as unknown as Say;
+  return (n) => {
+    const on = n.contextText ? t('on', { what: n.contextText }) : '';
+    const key = BELL[n.type];
+    if (key) return t(key, { who: n.actorName ?? t('teammate'), on });
+    const k = n.type.replace(/\./g, '_');
+    if (kind.has(k) && (hi as { bellKind?: Record<string, string> }).bellKind?.[k]) return n.contextText ? t('kind', { kind: kind(k), what: n.contextText }) : kind(k);
+    return notificationText(n);
+  };
 }

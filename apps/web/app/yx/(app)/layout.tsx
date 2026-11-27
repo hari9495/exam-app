@@ -36,7 +36,7 @@ import { inCompanyOrder, moduleOfHref, pageOff, type CompanyModule } from '../..
 import { lastAreaKey, readLastArea, writeLastArea, type LastArea } from '../../../lib/yx-recent';
 import { NextIntlClientProvider } from 'next-intl';
 import { YxI18nProvider, type YxLocale } from '@yukthix/ui/i18n';
-import { messagesFor, navLabel } from '../../../lib/yx-i18n';
+import { bellText, messagesFor, navLabel } from '../../../lib/yx-i18n';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/engage', 'engage'], ['/yx/learning', 'learning'], ['/yx/analytics', 'analytics'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
@@ -108,7 +108,17 @@ function Frame({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const bell = useBellItems(!actingSuperAdmin);
+  // T2-G 84a (answer 2743): the company's own words for department, grade and the rest, on every screen and in the menu.
+  // T2-G 84b: and the reader's screen language (Hindi or English; English for every word not yet in Hindi).
+  const display = useOrg<{ terms: Terms; locale?: YxLocale }>('/display');
+  const terms = display.data?.terms;
+  const locale: YxLocale = display.data?.locale === 'hi' ? 'hi' : 'en';
+  const messages = useMemo(() => messagesFor(locale), [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+  const bellLine = useMemo(() => bellText(locale), [locale]);
+  const bell = useBellItems(!actingSuperAdmin, bellLine);
   const contained = useQuery<{ contained: boolean }>({ queryKey: ['yx', 'containment'], queryFn: () => apiFetch('/help/containment', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, staleTime: 60_000 });
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
@@ -136,15 +146,6 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Answer 992: a dot on Help while What's new has unread entries (null when the company turned What's new off).
   const news = useWhatsNew(!support);
   const employee = Boolean(team.data?.managerId);
-  // T2-G 84a (answer 2743): the company's own words for department, grade and the rest, on every screen and in the menu.
-  // T2-G 84b: and the reader's screen language (Hindi or English; English for every word not yet in Hindi).
-  const display = useOrg<{ terms: Terms; locale?: YxLocale }>('/display');
-  const terms = display.data?.terms;
-  const locale: YxLocale = display.data?.locale === 'hi' ? 'hi' : 'en';
-  const messages = useMemo(() => messagesFor(locale), [locale]);
-  useEffect(() => {
-    document.documentElement.lang = locale;
-  }, [locale]);
   const nav = useMemo(
     () =>
       termedNav(terms, locale, buildNav({

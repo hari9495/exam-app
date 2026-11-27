@@ -36,5 +36,33 @@
     "my-learning": "My learning",
     "my-skills": "My skills",
     "my-tasks": "My checklist tasks"
+  },
+  "bell": {
+    "mention": "{who} mentioned you{on}",
+    "assigned": "{who} assigned you{on}",
+    "approvalRequested": "{who} needs your approval{on}",
+    "approvalApproved": "Your submission was approved{on}",
+    "approvalRejected": "Your submission was rejected{on}",
+    "approvalCancelled": "An approval you were on was withdrawn{on}",
+    "approvalSkipped": "An approval step was skipped{on}",
+    "approvalNeeded": "A request needs your approval{on}",
+    "approvalReminder": "A request is still waiting for your approval{on}",
+    "on": " on {what}",
+    "teammate": "A teammate",
+    "kind": "{kind}: {what}",
+    "sent": "{who} sent you a notification"
+  },
+  "bellKind": {
+    "leave_reminder": "Leave reminder",
+    "leave_holiday_added": "A holiday was added",
+    "leave_holiday_removed": "A holiday was removed",
+    "leave_block": "Leave blocked on some days",
+    "leave_colleague_away": "A colleague will be away",
+    "time_roster_published": "Your shifts were published",
+    "time_open_shift": "An open shift is available",
+    "time_timesheet_line": "Your timesheet hours were decided",
+    "document_requested": "HR asked for a document",
+    "helpdesk_request_stage": "Your request moved on",
+    "helpdesk_policy_to_acknowledge": "A policy to acknowledge"
   }
 }
