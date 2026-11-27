@@ -1042,3 +1042,10 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2927: T2-H MobileCheckInSheet as the phone check-in page (`/yx/time/attendance?view=today`). Suggested answer: yes, reusing the live clock card's punch logic (location, WFH, on duty), in the next phone part.
 - 2928: T2-H first-run steps on a phone (language, notifications, add to Home Screen). Suggested answer: yes, shown once after the first phone sign-in; skip the code sign-in and phone-linking steps (phone linking waits on the native-app decision).
 - 2929: T2-H "Sign out of all devices" on a phone signs out the other devices only; this phone stays signed in. Suggested answer: keep it that way.
+- 2906: 2903 who sees a person's tags. Suggested answer: HR who may open the record only; not the person or their manager.
+- 2907: 84b email kinds without a Hindi template (mainly hiring and admin). Suggested answer: they stay English; add templates as more Hindi screens arrive.
+- 2908: 84b a Hindi email uses the kind's Hindi line plus the details and link, not a translation of the English email's own wording. Suggested answer: keep it.
+- 2909: 84b people who choose Tamil or Telugu see English screens. Suggested answer: yes, until those languages are written.
+- 2910: 84a renamed terms in sentences inside screens, not only labels. Suggested answer: no, labels only, to avoid odd grammar.
+- 2911: 84b dialogs and drawers opened from the translated self-service pages (Apply leave, request details, regularise, raise ticket, payslip query). Suggested answer: yes, next, Apply leave and the request details first.
+- 2912: 84b bell kinds without a Hindi line show their English text. Suggested answer: keep it; add each kind's Hindi line as its page is translated.
