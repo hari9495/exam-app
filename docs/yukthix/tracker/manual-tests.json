@@ -29858,5 +29858,25 @@
                               "Shell/… · Top bar · with + New"
                     ],
                     "note": "Positive and negative (kit inbox 'PLT-05 + New' 2 and shell 24: only allowed types, grouped, pick closes and opens, search, nothing to raise, New only with a handler; web palette 'newRequestTypes' 2: employee list and hrefs, none without a record, job only with ats.requisition.raise; requisitions ?new=1 opens the sheet only with the key (2); layout + New opens the picker and the pick navigates (1)). No API change: each form keeps its own checks."
+          },
+          {
+                    "id": "MT-T2G-STATE-PAGES",
+                    "area": "T2-G part 2 item 1: the app's 404, 403 and maintenance pages are the designed 6.3 / 6.5 states",
+                    "screen": "Any /yx address that does not exist; Staffing desk › Clients › a client you may not open; any page during a planned maintenance window when the API stops answering",
+                    "url": "http://localhost:3000/yx/no-such-page",
+                    "account": "HR Admin (demo company); an employee with no staffing key; YukthiX staff for the maintenance window.",
+                    "steps": [
+                              "Signed in as HR Admin open /yx/no-such-page, then /yx/people/no-such-thing.",
+                              "Press Go to Home.",
+                              "Signed out, open /yx/no-such-page.",
+                              "As the employee with no staffing key open /yx/staffing/clients/<a client id>.",
+                              "Staff schedule a maintenance window starting now; on a signed-in page wait one minute, then stop the API; wait one more minute.",
+                              "Start the API again and reload; also stop the API with no maintenance window."
+                    ],
+                    "expected": "Step 1: inside the app frame (menu, top bar) the page shows 'Not found', the sentence about the link, a primary Go to Home button and 'Reference NF-…'. Step 2: Home opens. Step 3: the sign-in page opens; after sign-in the Not found page shows. Step 4: 'You don't have access to this client', 'Ask the Staffing account manager to give you access.' and Request access when the company takes access requests. Step 5: the maintenance banner, then in place of the page 'YukthiX is down for maintenance', 'Back by <end time>. Your saved work is safe.', no buttons. Step 6: the page is back; with no window a stopped API shows each page's own error, never the maintenance page. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/6 Help (6.3 Not found; 6.3 Access denied · with Request access; 6.5 Availability · down for maintenance)"
+                    ],
+                    "note": "Positive and negative (web: not found with and without reference; downForMaintenance during, outside, without window, API answering; kit: live access denied without sample request, not found without reference, maintenance without button). The /yx catch-all moved into the app group so the 404 sits in the frame; public pages that call notFound() keep the public YukthiX 404."
           }
 ]

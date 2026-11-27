@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ClientSheet, ClientWorkspaceScreen, ContactSheet, type ClientView, type ContactView } from '@yukthix/ui/hiring';
-import { ErrorState, NoAccessState, Skeleton } from '@yukthix/ui';
+import { ErrorState, Skeleton } from '@yukthix/ui';
+import { AccessDeniedState } from '@yukthix/ui/frame';
 import { deskState, useStaffing, useStaffingWrite } from '../../../../../../lib/yx-staffing';
 import { useAuth } from '../../../../../../lib/auth-context';
 
@@ -24,7 +25,7 @@ export default function YxStaffingClientPage() {
   if (state !== 'ready' || !one.data) {
     if (state === 'loading') return <Skeleton height={320} />;
     if (state === 'error') return <ErrorState title="The client could not be loaded." onRetry={() => void one.refetch()} />;
-    return <NoAccessState grantedBy="your admin (Staffing account manager)" what="this client" />;
+    return <AccessDeniedState live recordType="client" ownerRole="Staffing account manager" />;
   }
   const d = one.data;
   const c = d.client;

@@ -21,6 +21,7 @@ import YxSetupMfaPage from './setup-mfa/page';
 import YxApprovalsPage from './(app)/approvals/page';
 import YxHomePage from './(app)/home/page';
 import YxNotFound from './not-found';
+import YxAppNotFound from './(app)/not-found';
 import YxError from './error';
 import { ToastProvider } from '@yukthix/ui';
 
@@ -1115,5 +1116,18 @@ describe('/yx not found and error screens', () => {
     expect(document.body.textContent).not.toMatch(/Prudent Hire/);
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(retry).toHaveBeenCalled();
+  });
+  it('inside the app: the designed Not found with its reference and a way Home (T2-G)', async () => {
+    (apiFetch as jest.Mock).mockImplementation(async (path: string) => (path === '/help/not-found' ? { reference: 'NF-7KQ2MP' } : null));
+    render(<YxAppNotFound />);
+    expect(screen.getByRole('heading', { name: 'Not found' })).toBeInTheDocument();
+    expect(await screen.findByText('Reference NF-7KQ2MP')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', '/yx/home');
+  });
+  it('inside the app: no reference when the look-up fails', async () => {
+    (apiFetch as jest.Mock).mockRejectedValue(new Error('down'));
+    render(<YxAppNotFound />);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(screen.queryByText(/Reference/)).toBeNull();
   });
 });

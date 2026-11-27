@@ -8,7 +8,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CalendarClock, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
 import { AccessibilityMenu, Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
-import { DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import { AvailabilityState, DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import { downForMaintenance } from '../../../lib/yx-availability';
 import { ContainedBanner } from '@yukthix/ui/console';
 import type { LegalEntity } from '@yukthix/ui/org';
 import type { TeamMember } from '@yukthix/ui/workforce';
@@ -95,7 +96,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
-  const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: 15 * 60_000 });
+  const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: (q) => (q.state.data?.maintenance?.phase === 'now' ? 60_000 : 15 * 60_000) });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -380,7 +381,12 @@ function Frame({ children }: { children: React.ReactNode }) {
       {/* Answer 1050: while YukthiX has the company contained, every page says so. */}
       {contained.data?.contained && <ContainedBanner />}
       <YxPageHelp pathname={pathname} requests={!support && !impersonating}>
-        <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{children}</YxNavContext.Provider>
+        {/* T2-G (6.5): during a planned window, once the API stops answering, the designed maintenance page. */}
+        {downForMaintenance(availability.data?.maintenance, availability.isError) ? (
+          <AvailabilityState kind="maintenance" feature="YukthiX" until={new Date(availability.data!.maintenance!.endsAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} action={null} />
+        ) : (
+          <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{children}</YxNavContext.Provider>
+        )}
       </YxPageHelp>
     </DesktopFrame>
   );
