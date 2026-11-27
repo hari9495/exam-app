@@ -8,6 +8,9 @@ import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
 import { loadState } from './yx-org';
 import { saveBlob } from './yx-pay';
+import { useYxNav } from './yx-shell';
+import { liveRelated, screenHref } from './yx-screen-pages';
+import { useRouter } from 'next/navigation';
 
 /** Settings group 8 pages served here (S-9, answers 1328 and 1332), by address. */
 export const ACCOUNT_PAGES: Record<string, string> = {
@@ -34,6 +37,10 @@ export function AccountSettingsPage({ id }: { id: string }) {
   const scheduled = useQuery<ScheduledExport>({ queryKey: ['yx', 'account', 'export-destination'], queryFn: () => apiFetch('/account/export-destination', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && id === '8.5', retry: false });
   const [closing, setClosing] = useState(false);
   const [storage, setStorage] = useState(false);
+  // T2-G 83: Related lists only the work pages this person can open.
+  const router = useRouter();
+  const { nav } = useYxNav();
+  const mine = useMemo(() => new Set(nav.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href)))), [nav]);
   const canAct = role === 'org_admin' && !impersonating && !actingSuperAdmin;
   const query = id === '8.5' ? data : billing;
   const page = useMemo(() => {
@@ -59,6 +66,8 @@ export function AccountSettingsPage({ id }: { id: string }) {
     if (screenId === 'ACC-STORAGE') return canAct ? setStorage(true) : void toast({ tone: 'default', title: 'Only a System Admin can connect storage.' });
     if (screenId === 'ACC-STORAGE-SEND')
       return void post('/account/export-destination/send').then((r: { ok?: boolean; error?: string | null } | null) => (r?.ok ? toast({ tone: 'success', title: 'Export sent to your storage' }) : toast({ tone: 'error', title: r?.error ?? 'The export was not sent.' })), fail);
+    const work = screenHref(screenId);
+    if (work) return router.push(work);
     if (screenId === 'ACC-WITHDRAW') return void post('/account/closure/withdraw').then(() => toast({ tone: 'success', title: 'Closure request withdrawn' }), fail);
   };
   return (
@@ -66,7 +75,7 @@ export function AccountSettingsPage({ id }: { id: string }) {
       <SettingsPageScreen
         groups={SETTINGS_GROUPS}
         pageId={id}
-        live={{ page, canEdit: false, lastChange: null, state: stateOf(loadState(query)), onRetry: () => void query.refetch(), onSave: async () => undefined, onOpenScreen: open }}
+        live={{ page: liveRelated(page, (href) => mine.has(href)), canEdit: false, lastChange: null, state: stateOf(loadState(query)), onRetry: () => void query.refetch(), onSave: async () => undefined, onOpenScreen: open }}
       />
       {storage && scheduled.data && (
         <StorageDrawer

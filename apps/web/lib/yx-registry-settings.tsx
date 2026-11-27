@@ -8,6 +8,7 @@ import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
 import { AUDIT_LOG, ME_SECURITY } from './yx-nav';
 import { PAGE_SETTING_KEYS, useSettingsHistory } from './yx-settings-history';
+import { liveRelated, screenHref } from './yx-screen-pages';
 
 // Settings S-2 and S-3 (answers 1323 to 1325): a drawn settings page with the company's settings from the registry
 // (GET /org/settings), each marked Starter default until changed, with the legal limits from the country's rule set.
@@ -93,7 +94,8 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
   const history = useSettingsHistory(keys);
   if (!design) return <SettingsPageScreen groups={SETTINGS_GROUPS} pageId={pageIds[0]!} state="no-access" />;
   const built = data ? timeSettingsPage(design, data, shown) : design;
-  const page = decorate && data ? decorate(built) : built;
+  // T2-G 83: Related lists only the work pages this person can open (each with its live page).
+  const page = liveRelated(decorate && data ? decorate(built) : built, (href) => mine.has(href), screens);
   const linkOf = (screenId: string) => Object.entries(links).find(([k]) => design.sections.some((s) => s.settings.some((d) => d.key === k && d.linkScreenId === screenId)))?.[1];
   const waiting = secondPerson && settings.data ? pendingOnPage(page, settings.data.pending ?? []) : [];
   const past = history.data ? historyOnPage(page, history.data) : { lastChange: null, history: [] };
@@ -133,7 +135,7 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
         onUploadImage,
         listEditors,
         onOpenScreen: (screenId) => {
-          const href = linkOf(screenId) ?? screens?.[screenId];
+          const href = linkOf(screenId) ?? screenHref(screenId, screens);
           if (href) router.push(href);
         },
       }}
