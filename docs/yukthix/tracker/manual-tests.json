@@ -29656,5 +29656,24 @@
                               "Screens/Settings/Help (6.3 Moved page, 6.3 Moved page · phone)"
                     ],
                     "note": "Positive and negative (web lib/yx-moved 4: last stub day vs the day after, no double hop, 4.9 s not yet / 5 s opens, Open now, after 6 months straight through; org pages S-7 and performance reviews through the stub; next.config: no /yx redirects left; kit settings 36). The two /yx redirects in next.config (/yx/me/letters, /yx/hiring/scorecards) became stub pages; the list with the move dates is apps/web/lib/yx-moved.ts."
+          },
+          {
+                    "id": "MT-T2F-80",
+                    "area": "Platform (T2-F item 80, answer 2885): the rail's \"last used\" slot",
+                    "screen": "Every YukthiX page: the left rail (Shell › Side rail · last used slot)",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee (demo org) whose rail has no Projects or Hire area; a second person on the same browser.",
+                    "steps": [
+                              "Sign in as the employee and look at the rail on Home.",
+                              "Open a page in an area that is not on your rail from a link (e.g. a project page from a notification, /yx/projects/<id>), then go back to Home.",
+                              "Press the new slot under the areas; use the arrow keys through the rail.",
+                              "Open a page in an area that is on your rail (Time › Leave); look at the slot.",
+                              "Sign out, sign in as the second person on the same browser."
+                    ],
+                    "expected": "Step 1: no slot (nothing shown until one is used). Step 2: under the areas, set off by a line and above Settings, one slot with the area's icon and name; its screen-reader name is 'Last used: Projects'. Step 3: it opens the page last opened there; arrow keys reach it between the areas and Settings. Step 4: the slot stays as it was (areas on the rail never fill it). Step 5: no slot for the second person (kept per person and company in this browser, cleared on sign-out like Ctrl K Recent).",
+                    "stories": [
+                              "Shell/… · Side rail · employee with the \"last used\" slot"
+                    ],
+                    "note": "Positive and negative (kit shell 23: the slot's place, link and keyboard order, nothing until used, never a copy of a rail area; web access pages 17: an off-rail page fills it and it stays on the next page, nothing on first use, a tampered stored link outside the app never shows). Kept under yx-recent:last-area:<user>:<company> in localStorage; no server change."
           }
 ]

@@ -31,6 +31,7 @@ import { ScopeProvider, YxNavContext, recentMonths, useScope, useWorkspaceCounts
 import { DeskHelp } from './desk-help';
 import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
+import { lastAreaKey, readLastArea, writeLastArea, type LastArea } from '../../../lib/yx-recent';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/engage', 'engage'], ['/yx/learning', 'learning'], ['/yx/analytics', 'analytics'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
@@ -185,6 +186,20 @@ function Frame({ children }: { children: React.ReactNode }) {
   const [mfaHidden, setMfaHidden] = useState(false);
   useEffect(() => setMfaHidden(Boolean(userId) && hiddenToday(localStore(), 'mfa', userId!, todayIst())), [userId]);
 
+  // T2-F 80 (answer 2885): the rail's "last used" slot: opening a page in an area that is not on this person's rail
+  // keeps it (and the page) in this browser; nothing shows until one is used. Only once the menu (grants) is known.
+  const lastKey = userId && perms.data ? lastAreaKey(userId, me.data?.organizationId) : null;
+  const pathArea: AreaId = pageLink(nav, pathname)?.area.id ?? AREA_BY_PATH.find(([p]) => pathname.startsWith(p))?.[1] ?? 'home';
+  const [lastArea, setLastArea] = useState<LastArea | null>(null);
+  useEffect(() => {
+    if (!lastKey) return;
+    if (!nav.some((a) => a.id === pathArea) && SCREEN_RAIL.some((r) => r.id === pathArea)) {
+      const here = { area: pathArea, href: pathname };
+      writeLastArea(lastKey, here);
+      setLastArea(here);
+    } else setLastArea(readLastArea(lastKey, SCREEN_RAIL.map((r) => r.id)));
+  }, [lastKey, pathname, pathArea, nav]);
+
   useEffect(() => {
     // A lapsed session comes back here after sign-in; a deliberate sign-out does not (the next person is someone else).
     if (!isLoading && !accessToken && !signedOut) router.replace(withNextHere('/yx/sign-in'));
@@ -290,6 +305,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       railItems={rail}
       live={{
         onNavigate: go,
+        lastUsed: lastArea && !rail.some((r) => r.id === lastArea.area) ? { ...SCREEN_RAIL.find((r) => r.id === lastArea.area)!, href: lastArea.href } : null,
         onSearch: () => setPaletteOpen(true),
         onHelp: support ? undefined : () => setHelpOpen(true),
         helpUnread: !support && (news?.unread ?? 0) > 0,

@@ -89,6 +89,28 @@ describe('SideRail', () => {
   });
 });
 
+describe('SideRail last used (T2-F 80)', () => {
+  const items = RAIL_ITEMS.filter((i) => ['home', 'time', 'settings'].includes(i.id));
+  it('one slot under the areas, before the pinned Settings, opening the last page used there', async () => {
+    const u = userEvent.setup();
+    render(<SideRail items={items} activeId="time" lastUsed={{ ...RAIL_ITEMS.find((i) => i.id === 'hire')!, href: '/yx/hiring/internal-jobs' }} />);
+    const slot = screen.getByRole('link', { name: 'Last used: Hire' });
+    expect(slot).toHaveAttribute('href', '/yx/hiring/internal-jobs');
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Home', 'Time', 'Hire', 'Settings']);
+    screen.getByRole('button', { name: 'Time' }).focus();
+    await u.keyboard('{ArrowDown}');
+    expect(slot).toHaveFocus();
+  });
+  it('nothing until one is used, and never a copy of an area already on the rail', () => {
+    const { unmount } = render(<SideRail items={items} activeId="time" />);
+    expect(screen.queryByRole('link', { name: /^Last used/ })).toBeNull();
+    unmount();
+    render(<SideRail items={items} activeId="time" lastUsed={RAIL_ITEMS.find((i) => i.id === 'time')} />);
+    expect(screen.queryByRole('button', { name: /^Last used/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Time' })).toHaveLength(1);
+  });
+});
+
 const GROUPS: PaletteGroup[] = [
   { heading: 'Recent', recent: true, items: [{ id: 'r1', label: 'Divya Raghunathan', secondary: 'Viewed today' }] },
   {

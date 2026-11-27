@@ -14,6 +14,7 @@ import {
   PanelLink,
   ProfileMenu,
   RAIL_ITEMS,
+  type RailItem,
   SidePanel,
   SideRail,
   TopBar,
@@ -120,6 +121,8 @@ export interface LiveFrame {
   tabs?: Partial<Record<'home' | 'time' | 'requests' | 'pay' | 'me', string>>;
   /** Dialogs and drawers the frame opens: the search palette, help. */
   overlays?: ReactNode;
+  /** T2-F 80: the rail's "last used" slot (an area not on the person's rail, with the page last opened there). */
+  lastUsed?: RailItem | null;
 }
 
 /** Set inside a live frame: a designed screen's own <DesktopFrame> then renders just its content (design audit step 0). */
@@ -194,7 +197,7 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
       }}
     >
       <AppShell
-        rail={<SideRail items={railItems} activeId={area} logo={<Monogram size="sm" />} />}
+        rail={<SideRail items={railItems} activeId={area} logo={<Monogram size="sm" />} lastUsed={live.lastUsed} />}
         panel={
           <SidePanel title={panelTitle}>
             {panel.map((sec, i) => (

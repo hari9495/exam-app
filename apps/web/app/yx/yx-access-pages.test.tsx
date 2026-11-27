@@ -423,3 +423,45 @@ describe('/yx layout: access and privacy links follow the grants', () => {
     expect(screen.queryByRole('link', { name: 'My data' })).toBeNull();
   });
 });
+
+describe('/yx layout: the rail last-used slot (T2-F 80, answer 2885)', () => {
+  const base = {
+    'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' },
+    [`GET ${PERMS_PATH}`]: [],
+    'GET /people/team': { managerId: null, members: [] },
+    'GET /users/me': { id: 'u-emp', email: 'emp@demo-org.test', name: 'Emp', role: 'panel', organizationId: 'org-1' },
+  };
+  const KEY = 'yx-recent:last-area:u-emp:org-1';
+  const open = async (path: string) => {
+    const { usePathname } = jest.requireMock('next/navigation') as { usePathname: jest.Mock };
+    usePathname.mockReturnValue(path);
+    const { default: YxAppLayout } = await import('./(app)/layout');
+    route(base);
+    return wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+  };
+  beforeEach(() => window.localStorage.clear());
+
+  it('a page in an area not on the rail fills the slot (kept in this browser); it stays on the next page', async () => {
+    const view = await open('/yx/projects/p-1');
+    const rail = await screen.findByRole('navigation', { name: 'Areas' });
+    await waitFor(() => expect(within(rail).getByRole('link', { name: 'Last used: Projects' })).toHaveAttribute('href', '/yx/projects/p-1'));
+    expect(JSON.parse(window.localStorage.getItem(KEY)!)).toEqual({ area: 'projects', href: '/yx/projects/p-1' });
+    view.unmount();
+    await open('/yx/home');
+    const again = await screen.findByRole('navigation', { name: 'Areas' });
+    await waitFor(() => expect(within(again).getByRole('link', { name: 'Last used: Projects' })).toBeInTheDocument());
+  });
+
+  it('nothing until one is used; a tampered stored link is never shown', async () => {
+    const view = await open('/yx/home');
+    const rail = await screen.findByRole('navigation', { name: 'Areas' });
+    await waitFor(() => expect(within(rail).getByRole('link', { name: 'Home' })).toBeInTheDocument());
+    expect(within(rail).queryByRole('link', { name: /^Last used/ })).toBeNull();
+    view.unmount();
+    window.localStorage.setItem(KEY, JSON.stringify({ area: 'projects', href: 'https://evil.test/x' }));
+    await open('/yx/home');
+    const again = await screen.findByRole('navigation', { name: 'Areas' });
+    await waitFor(() => expect(within(again).getByRole('link', { name: 'Home' })).toBeInTheDocument());
+    expect(within(again).queryByRole('link', { name: /^Last used/ })).toBeNull();
+  });
+});
