@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { YxI18nProvider } from '../../i18n';
 import { LeaveCardScreen, LeaveHomeScreen, TeamLeaveCalendarScreen, type LiveLeaveCard, type LiveLeaveHome, type LiveTeamLeave } from './leave';
 import type { HrBalances, LeavePlan, MyLeave, TeamCalendar } from './live/types';
 
@@ -313,5 +314,20 @@ describe('answer 2760: peers away (live)', () => {
     second.unmount();
     render(<LeaveHomeScreen live={home()} />);
     expect(screen.queryByText('Peers away')).not.toBeInTheDocument();
+  });
+});
+
+// T2-G 84b (answer 2743): My leave in Hindi for a Hindi reader; English otherwise.
+describe('T2-G 84b: My leave in Hindi', () => {
+  it('a Hindi reader sees the page words and statuses in Hindi', () => {
+    render(<YxI18nProvider locale="hi"><LeaveHomeScreen live={home()} /></YxI18nProvider>);
+    expect(screen.getByRole('heading', { name: 'मेरी छुट्टी', level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /छुट्टी के लिए आवेदन करें/ }).length).toBeGreaterThan(0);
+    expect(screen.getByText('आने वाली छुट्टियाँ')).toBeInTheDocument();
+  });
+  it('negative: English without the provider', () => {
+    render(<LeaveHomeScreen live={home()} />);
+    expect(screen.getByRole('heading', { name: 'My leave', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('Upcoming holidays')).toBeInTheDocument();
   });
 });
