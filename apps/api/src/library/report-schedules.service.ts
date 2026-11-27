@@ -177,6 +177,8 @@ export const EXPORT_ACTIONS: Record<string, { what: string; sensitivity: 'Intern
   'expense.journal.exported': { what: 'Expense journal', sensitivity: 'Internal' },
   'expense.payout.downloaded': { what: 'Expense payout file', sensitivity: 'Confidential' },
   'people.directory.exported': { what: 'People directory', sensitivity: 'Internal' },
+  // T2-G 47: headcount and attrition.
+  'people.attrition.exported': { what: 'Headcount and attrition', sensitivity: 'Internal' },
   'employee.data.exported': { what: 'Employee data', sensitivity: 'Confidential' },
   'learning.report.exported': { what: 'Training compliance', sensitivity: 'Internal' },
   'learning.budgets.exported': { what: 'Training budgets', sensitivity: 'Internal' },

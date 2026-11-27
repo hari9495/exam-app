@@ -133,7 +133,6 @@
     "proctoring: IdReviewQueueScreen",
     "proctoring: InvigilatorAppScreen",
     "proctoring: MetricCatalogueScreen",
-    "proctoring: MetricExplorerScreen",
     "proctoring: ProctorPlannerScreen",
     "proctoring: ProctoringSettingsScreen",
     "proctoring: ReportBuilderScreen",

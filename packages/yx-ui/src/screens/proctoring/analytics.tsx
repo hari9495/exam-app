@@ -23,6 +23,7 @@ import { HiringDashboardScreen, LiveSchedulesScreen, type LiveHiringDashboard, t
 import { deliveryMode, inheritedSensitivity, suppress, type Sensitivity } from './proctoring-logic';
 import { EXPORTS, METRICS, MONTHS, REPORTS, SCHEDULES, d, type MetricRow, type ReportRow, type ScheduleRow } from './proctoring-data';
 import { LiveReportLibraryScreen, type LiveReportLibrary } from './report-library-live';
+import { LiveAttritionScreen, type LiveAttrition } from './attrition-live';
 import { LiveReportSchedulesScreen, type LiveReportSchedules } from './report-schedules-live';
 
 const DEPTS = ['Engineering', 'Operations', 'Finance', 'People', 'Sales', 'Quality'];
@@ -374,7 +375,11 @@ export function DashboardBuilderScreen({ wizard = true, step = 'chart', share = 
 /* ANL-04 · Metric explorer                                            */
 /* ================================================================== */
 
-export function MetricExplorerScreen({ view = 'breakdown', dimension = 'Department', suppressed = false, loading = false }: { view?: 'trend' | 'breakdown' | 'table'; dimension?: string; suppressed?: boolean; loading?: boolean }) {
+export function MetricExplorerScreen(props: { view?: 'trend' | 'breakdown' | 'table'; dimension?: string; suppressed?: boolean; loading?: boolean; /** T2-G 47 (answer 2747): live, for headcount and attrition. */ live?: LiveAttrition }) {
+  return props.live ? <LiveAttritionScreen live={props.live} /> : <MetricExplorerDesign {...props} />;
+}
+
+function MetricExplorerDesign({ view = 'breakdown', dimension = 'Department', suppressed = false, loading = false }: { view?: 'trend' | 'breakdown' | 'table'; dimension?: string; suppressed?: boolean; loading?: boolean }) {
   // ANL-04
   const [v, setV] = useState(view);
   const [metric, setMetric] = useState<string | null>(suppressed ? 'payroll.cost' : 'workforce.attrition_rate');

@@ -147,6 +147,8 @@ export { TeamSkillsMatrixScreen, TrainingNeedsScreen } from '../growth/learn-adm
 export type { LiveNeedRow, LiveSkillProfileData, LiveSkillSuggestions, LiveSkillsProfile, LiveTeamSkills, LiveTeamSkillsData, LiveTrainingNeeds, NeedInput, PoshCounts } from '../growth/learn-skills-live';
 // G4: the report library (ANL-06) and company documents (PPL-51).
 export { ReportLibraryScreen } from '../proctoring/analytics';
+export { MetricExplorerScreen } from '../proctoring/analytics';
+export { type AttritionSplit, type AttritionView, type LiveAttrition } from '../proctoring/attrition-live';
 export type { LiveReportLibrary, LiveReportRow } from '../proctoring/report-library-live';
 export { CompanyDocumentsScreen } from '../people/company-docs';
 export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } from '../people/company-docs';

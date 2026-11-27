@@ -1,3 +1,5 @@
+import { AttritionController } from './attrition.controller';
+import { AttritionService } from './attrition.service';
 import { DocumentsModule } from '../documents/documents.module';
 import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 import { Module } from '@nestjs/common';
@@ -37,8 +39,8 @@ import { OrgStructureModule } from '../org-structure/org-structure.module';
 // P02 §4.4–4.5). Exports PeopleService for the daily probation sweep.
 @Module({
   imports: [EmployeeHistoryModule, CryptoModule, EmailModule, DocumentsModule, CustomFieldsModule, NotificationsModule, WorkflowModule, OrgStructureModule],
-  providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, EmployeeImportDraftsService, RestructureService, IdentityChecksService, WorkAuthService, DisabilityService, SamePersonService, ErasureService, BfsiService, PreclearanceService, PayAccessService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
-  controllers: [PeopleController, WorkforceController, EmployeeImportController, RestructureController, PersonPanelsController, BfsiController, PayAccessController],
+  providers: [AttritionService, PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, EmployeeImportDraftsService, RestructureService, IdentityChecksService, WorkAuthService, DisabilityService, SamePersonService, ErasureService, BfsiService, PreclearanceService, PayAccessService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
+  controllers: [AttritionController, PeopleController, WorkforceController, EmployeeImportController, RestructureController, PersonPanelsController, BfsiController, PayAccessController],
   exports: [PeopleService, ProfileService, EmployeeImportDraftsService, ErasureService],
 })
 export class PeopleModule {}

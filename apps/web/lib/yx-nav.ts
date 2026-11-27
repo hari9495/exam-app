@@ -270,7 +270,7 @@ export function buildNav(n: NavInput): NavArea[] {
   // Managers without HR keys get the designed "For my team" group instead of Onboarding / Changes / Exits.
   const team = !hr;
   const peopleWork: NavSection[] = [
-    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(has('org.position.manage'), L('positions', 'Positions', '/yx/people/positions')), ...when(manager, L('team', 'My team', '/yx/people/team')), ...when(!support && (employee || has('company.documents.manage')), L('company-docs', 'Company documents', '/yx/people/company-documents'))]),
+    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(has('org.position.manage'), L('positions', 'Positions', '/yx/people/positions')), ...when(manager, L('team', 'My team', '/yx/people/team')), ...when(!support && (employee || has('company.documents.manage')), L('company-docs', 'Company documents', '/yx/people/company-documents')), ...when(!support && has('people.analytics.view'), L('attrition', 'Headcount and attrition', '/yx/people/attrition'))]),
     ...sec(team ? 'For my team' : 'Onboarding', [
       ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
       ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),

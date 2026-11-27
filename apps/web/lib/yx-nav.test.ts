@@ -693,3 +693,11 @@ describe('buildNav: modules on / off and order (T2-G 41, answer 2746)', () => {
     expect(labels(nav(['org.structure.view']), 'settings')).not.toContain('Modules');
   });
 });
+
+describe('buildNav: headcount and attrition (T2-G 47)', () => {
+  it('People › Headcount and attrition for the people analytics key only, never on a support session', () => {
+    expect(labels(nav(['people.analytics.view', 'employee.profile.view']), 'people')).toContain('Headcount and attrition');
+    expect(labels(nav(['employee.profile.view']), 'people')).not.toContain('Headcount and attrition');
+    expect(labels(nav(['people.analytics.view', 'employee.profile.view'], { support: true }), 'people')).not.toContain('Headcount and attrition');
+  });
+});
