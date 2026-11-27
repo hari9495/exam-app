@@ -153,6 +153,8 @@ describe('notification catalog', () => {
       'learning.training_check',
       'learning.skill_added',
       'account.export.failed',
+      'time.timesheet.lines',
+      'time.timesheet.line',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

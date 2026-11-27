@@ -29897,5 +29897,66 @@
                               "Screens/Analytics/ANL-08 · Schedules and export log (Live · import log; Live · auditor: export and import logs only)"
                     ],
                     "note": "Positive and negative (library-g4 e2e: employee and HR 403, bad date 400, ok / failed counts, unreadable metadata shown as System 0/0, a per-row goal audit not listed, other company empty; kit test: tab only when given). Goals and competencies imports now write one 'imported' line per file. Same key as the export log (exports.log.view); no CSV download for the import log yet."
+          },
+          {
+                    "id": "MT-T2G-45-SCHEDULED-EXPORT",
+                    "area": "T2-G part 2 item 45 (answer 2744): the company's scheduled data export to its own storage",
+                    "screen": "Settings › Data export & closure › Scheduled export to your storage (Connect / Change drawer, Send now)",
+                    "url": "http://localhost:3000/yx/settings/account/data-export-and-closure",
+                    "account": "System Admin (demo company); a second System Admin; someone with the billing key who is not a System Admin; another company's System Admin. A test S3 bucket (or Azure container / shared Drive folder) with a key that may only write there.",
+                    "steps": [
+                              "As the System Admin open the page: look at Scheduled export to your storage.",
+                              "Press Connect storage, choose Azure Blob, press Save with nothing filled; then type two different zip passwords.",
+                              "Choose Amazon S3, fill the bucket, region, folder, access key ID and secret, a 12+ character zip password twice, Weekly; Save (confirm it's you).",
+                              "Press Send now; open the file in the bucket with 7-Zip using the zip password, then with a wrong password.",
+                              "Change the secret to a wrong one and press Send now; look at the bell of both System Admins and Analytics › Schedules and exports › Export log.",
+                              "As the billing-key person and as another company's System Admin open the page and call PUT /api/v1/account/export-destination.",
+                              "Set How often to Off; next night check nothing is sent. Disconnect."
+                    ],
+                    "expected": "Step 1: 'Your storage: Not connected', 'How often: Weekly'. Step 2: 'Enter the storage account.' etc. and 'The two passwords are not the same.'; nothing saved. Step 3: toast 'Amazon S3 connected'; the page shows 'Amazon S3 · s3://<bucket>/<folder>', who connected it and when; the keys are never shown again. Step 4: toast 'Export sent to your storage'; yukthix-data-<date>.zip holds manifest.json and one CSV per table of this company only; the wrong password opens nothing. Step 5: a toast 'Amazon S3 did not take the file: …', Last export 'Not sent' with the reason, a bell note to every System Admin, and both runs in the export log. Step 6: no Connect / Send now; the API answers 403 for the billing person; the other company sees its own (empty) storage only. Step 7: nothing sent while Off; after Disconnect 'Not connected'. No page scroll at 1278 x 635 except the drawer's own.",
+                    "stories": [
+                              "Screens/Settings/Group 8 · Billing & Account (8.5 · scheduled export, sent / not sent / not connected; 8.5 · Connect your storage; 8.5 · Change your storage (Disconnect))"
+                    ],
+                    "note": "Positive and negative (settings-s9 e2e: 403 for HR and a non-admin billing key, 400 for a bad kind, short password and bad bucket, secret and password stored encrypted and absent from answers and audit, AES zip readable only with the password and holding company A only, failed upload recorded + audited + both System Admins told, other company 404, the daily sweep due / not due / off, remove; unit: due rules, CSV, field checks; kit: section and drawer). Migration 942 company_export_destinations (RLS). New dependency @zip.js/zip.js 2.24.0 (BSD-3, AES zip); google-auth-library and @azure/storage-blob made direct (already installed). Daily sweep 02:00 IST."
+          },
+          {
+                    "id": "MT-T2G-83-SETTINGS-CROSS-LINKS",
+                    "area": "T2-G part 2 item 83 (Admin A4): settings pages link to the work pages they affect, and back",
+                    "screen": "Any Settings page's Related line (for example Settings › Time › Attendance, Settings › People › Approvals, Settings › Data export & closure); the work pages' existing links back to Settings (a job's Stage targets, Field force, Locations & geofences)",
+                    "url": "http://localhost:3000/yx/settings/time",
+                    "account": "HR Admin (demo company); an employee with Settings access to one page only (or a manager); System Admin for 8.5.",
+                    "steps": [
+                              "As HR Admin open Settings › Time pages and read the Related line at the bottom; press each link.",
+                              "Open Settings › People › Approvals and press Approvals inbox.",
+                              "As System Admin open Settings › Data export & closure and press Audit log in Related.",
+                              "On a work page that links back (a job › Stage targets › Change in Settings; Time › Field force with tracking off › Open settings; Time › Locations & geofences with no locations), press the link.",
+                              "As someone whose menu lacks a related work page, open the same settings page."
+                    ],
+                    "expected": "Steps 1 to 3: every link shown opens its live work page (Muster, Roster, Exceptions, Approvals inbox, Audit log and so on); drawn links with no live page yet (for example Rule builder, Kiosk) are not shown. Step 4: each opens the matching Settings page. Step 5: links to pages that person cannot open are not shown; no link is dead.",
+                    "stories": [
+                              "Screens/Settings (each page's Related line)"
+                    ],
+                    "note": "Positive and negative (web: the s9 test opens Related links only when the menu has them). One map of design screen ids to live pages (apps/web/lib/yx-screen-pages.ts, 100 screens) used by every registry settings page and the account pages. Back links: the work-page designs that draw a Settings link were already live; none added."
+          },
+          {
+                    "id": "MT-T2G-FOLLOWUPS-2900-2921",
+                    "area": "T2-G part 2 follow-ups: 2900 who is away on My projects, 2901 timesheet-line notification kinds, 2921 Recruiter can personalise Home, 2920 demo company Edit home",
+                    "screen": "Me › My timesheet › My projects; Me › Notifications; Settings › Home page (2.2); Home",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "An employee on a project with no Projects key (demo company), a teammate with approved leave in the next 14 days; the project manager; HR Admin; a recruiter.",
+                    "steps": [
+                              "As the employee open My timesheet › My projects.",
+                              "As the teammate (whose own leave is the only one) open the same tab; look at a past project too.",
+                              "As the project manager and the employee open Me › Notifications: find the two timesheet kinds with Email and Push.",
+                              "Send a week with hours; as the manager approve one line and reduce another.",
+                              "As HR Admin open Settings › Home page: Roles that may personalise their own home.",
+                              "In the demo company sign in as an employee and as a manager and open Home; then as HR turn Recruiter on and sign in as a recruiter."
+                    ],
+                    "expected": "Step 1: the current project's 'Who is away (14 days)' shows the teammate with the days only, never the leave type. Step 2: 'No one' (never yourself); a past project shows '—'. Step 3: 'Timesheet hours are waiting for your approval' and 'Hours in your timesheet were approved, reduced or sent back', Push on by default. Step 4: the pushes and bell items carry those titles, not the generic one. Step 5: options Employee, Manager, HR, Finance, Recruiter; demo company: Employee and Manager on. Step 6: Edit home shows for the employee and the manager in the demo company; for the recruiter only after Recruiter is turned on.",
+                    "stories": [
+                              "Screens/Time/TIM-15 timesheet (My projects tab)",
+                              "Screens/Settings/Group 2 (2.2 Home page)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e: the member sees the peer away, the peer sees no one, no leave type; small-features e2e: recruiter accepted; push-rules and notification-types unit; kit My projects test). The demo seed sets home.personalise_roles = employee,manager for the demo company only (real companies stay off)."
           }
 ]
