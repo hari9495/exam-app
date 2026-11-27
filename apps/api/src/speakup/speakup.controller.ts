@@ -1,7 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -11,7 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { AnnualReportStepDto, AnonymousReportDto, AwarenessSessionDto, CodeDto, EditMemberDto, ReplyDto, ReportDto, TeamMemberDto, TeamReplyDto } from './dto';
+import { AnnualReportPdfQueryDto, AnnualReportStepDto, AnonymousReportDto, AwarenessSessionDto, CodeDto, EditMemberDto, ReplyDto, ReportDto, TeamMemberDto, TeamReplyDto } from './dto';
 import { SpeakupService } from './speakup.service';
 
 // HLP-06 speak-up (rules: docs/yukthix/helpdesk-design-map.md section 4e). Keys (P02 YX-SEC-01):
@@ -93,6 +93,16 @@ export class SpeakupController {
   annualReportStep(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AnnualReportStepDto) {
     assertOwnSession(req);
     return this.speakup.annualReportStep(ctx, dto);
+  }
+
+  // Answer 2621: the annual report as a PDF (members of that committee only).
+  @Get('ic/report/pdf')
+  async annualReportPdf(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: AnnualReportPdfQueryDto) {
+    assertOwnSession(req);
+    const out = await this.speakup.annualReportPdf(ctx, q.committeeId ?? null, q.year);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${out.name}"`);
+    return new StreamableFile(out.pdf);
   }
 
   @Get('setup')

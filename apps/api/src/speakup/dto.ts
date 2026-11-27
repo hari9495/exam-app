@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // HLP-06 speak-up inputs. Whitelisted by the global ValidationPipe (unknown fields are refused).
@@ -188,4 +188,17 @@ export class TeamMemberDto {
   @IsOptional()
   @IsUUID()
   locationId?: string;
+}
+
+/** Answer 2621: which committee's annual report (none: the whole company's) and the year. */
+export class AnnualReportPdfQueryDto {
+  @IsOptional()
+  @IsUUID()
+  committeeId?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2013)
+  @Max(2100)
+  year!: number;
 }

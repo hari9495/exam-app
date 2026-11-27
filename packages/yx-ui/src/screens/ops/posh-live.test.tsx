@@ -131,6 +131,22 @@ describe('CMP-11 Internal Committee console (live)', () => {
     expect((await screen.findAllByText('Report marked reviewed.')).length).toBeGreaterThan(0);
   });
 
+  // Answer 2621: the report as a PDF for every member; a refusal says why.
+  it('answer 2621: Download PDF asks for that committee and year; a refusal shows why', async () => {
+    const onPdf = vi.fn().mockRejectedValueOnce(new Error('Choose this year or an earlier one.')).mockResolvedValue(undefined);
+    show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ onPdf, reports: liveIcConsole().reports!.map((r) => ({ ...r, presiding: false })), start: { tab: 'report' } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Download PDF' }));
+    expect((await screen.findAllByText('Choose this year or an earlier one.')).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Download PDF' }));
+    expect(onPdf).toHaveBeenLastCalledWith(null, 2026);
+    expect((await screen.findAllByText('Annual report downloaded.')).length).toBeGreaterThan(0);
+  });
+
+  it('answer 2621: no PDF button without the download', () => {
+    show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ start: { tab: 'report' } })} />);
+    expect(screen.queryByRole('button', { name: 'Download PDF' })).toBeNull();
+  });
+
   it('answer 2593: a member who does not preside cannot move the report on', () => {
     show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ reports: liveIcConsole().reports!.map((r) => ({ ...r, presiding: false })), start: { tab: 'report' } })} />);
     expect(screen.queryByRole('button', { name: 'Mark reviewed' })).toBeNull();

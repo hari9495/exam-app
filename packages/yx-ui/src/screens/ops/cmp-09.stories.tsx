@@ -24,6 +24,8 @@ export const MemberRulesBroken: S = { name: 'Committee member · presiding not a
 export const MemberTwoCommittees: S = { name: 'Committee member · company and workplace committees', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ members: IC_TWO_COMMITTEES })} /> };
 // Answer 2593: the annual report and the awareness log from the committee's own records.
 export const MemberAnnualReport: S = { name: 'Committee member · annual report (presiding)', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ start: { tab: 'report' } })} /> };
+// Answer 2621: the annual report as a PDF (the design's Preview report).
+export const MemberReportPdf: S = { name: 'Committee member · annual report with Download PDF (2621)', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ onPdf: () => new Promise((r) => setTimeout(r, 400)), start: { tab: 'report' } })} /> };
 export const MemberReportReview: S = { name: 'Committee member · mark the report reviewed', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ start: { tab: 'report', dialog: 'review' } })} /> };
 export const MemberReportNotPresiding: S = { name: 'Committee member · annual report (not presiding)', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ reports: liveIcConsole().reports!.map((r) => ({ ...r, presiding: false, stage: 'employer' as const, actionTaken: '1 transfer' })), start: { tab: 'report' } })} /> };
 export const MemberAwareness: S = { name: 'Committee member · awareness log', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ start: { tab: 'awareness' } })} /> };

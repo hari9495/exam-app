@@ -1,7 +1,7 @@
 // POSH screens (M08 YX-POSH, restricted to Internal Committee members): CMP-09 IC console, CMP-10 complaint filing,
 // CMP-11 POSH case workspace with the statutory clock and Confidential watermark.
 import { useState } from 'react';
-import { ArrowLeft, Send, Users } from 'lucide-react';
+import { ArrowLeft, Download, Send, Users } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -65,6 +65,8 @@ export interface LiveIcConsole {
   reports?: IcAnnualReport[];
   onLog?: (input: IcAwarenessInput) => Promise<unknown>;
   onReportStep?: (input: { committeeId: string | null; year: number; step: 'reviewed' | 'employer' | 'district'; actionTaken?: string }) => Promise<unknown>;
+  /** Answer 2621: the annual report as a PDF (the design's "Preview report"), for every member of the committee. */
+  onPdf?: (committeeId: string | null, year: number) => Promise<unknown>;
   /** Stories and tests only. */
   start?: { tab?: 'committee' | 'cases' | 'report' | 'awareness'; dialog?: 'log' | 'review' };
 }
@@ -116,6 +118,7 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
   const [audience, setAudience] = useState('');
   const [actionTaken, setActionTaken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const logEarly = useTooEarly([
     ...(title.trim().length < 3 ? [{ fieldId: 'ic-title', message: 'Name the session (at least 3 letters).' }] : []),
@@ -155,6 +158,18 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
     if (r.stage === 'draft') return setDialog({ review: r });
     const next = NEXT_STEP[r.stage as 'reviewed' | 'employer'];
     void run(() => live.onReportStep!({ committeeId: r.committeeId, year: r.year, step: next.step }), next.step === 'employer' ? 'Marked as sent to the employer.' : 'Marked as sent to the District Officer.');
+  };
+  // Answer 2621: the report as a PDF; a refusal says why (the toast), a download needs no other message.
+  const pdf = async (r: IcAnnualReport) => {
+    setPdfBusy(r.committeeId ?? 'company');
+    try {
+      await live.onPdf!(r.committeeId, r.year);
+      toast({ tone: 'success', title: 'Annual report downloaded.' });
+    } catch (e) {
+      toast({ tone: 'error', title: errorText(e) });
+    } finally {
+      setPdfBusy(null);
+    }
   };
   const saveReview = (r: IcAnnualReport) => {
     if (reviewEarly.stop()) return;
@@ -253,6 +268,13 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
                           ]}
                         />
                         <StatusTrail steps={[{ label: 'Draft' }, { label: 'Reviewed by presiding officer' }, { label: 'Submitted to employer' }, { label: 'Submitted to District Officer' }]} current={REPORT_STEPS.indexOf(r.stage)} />
+                        {live.onPdf && (
+                          <Actions>
+                            <Button icon={Download} loading={pdfBusy === (r.committeeId ?? 'company')} onClick={() => void pdf(r)}>
+                              Download PDF
+                            </Button>
+                          </Actions>
+                        )}
                         {r.stage !== 'district' &&
                           (r.presiding && live.onReportStep ? (
                             <Actions>

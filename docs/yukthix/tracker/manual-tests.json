@@ -29879,5 +29879,90 @@
                               "Screens/Platform/Modules (on, off and order; read-only; live; loading; error)"
                     ],
                     "note": "Positive and negative: API e2e t2g-company-control (5 tests: read by all, 403 without key, 400 for bad ids and People/Payroll/Compliance, MODULE_OFF 403 only in that company and back when on, order saved); unit modules.spec (4); kit modules.test (7); web yx-modules.test (3) and yx-nav (4). One global interceptor (ModuleGateInterceptor) maps API paths to modules; Helpdesk off keeps speak-up/IC, cases, ethics, accidents and policies."
+          },
+          {
+                    "id": "MT-T2G-RULE-GROUPS",
+                    "area": "T2-G 42 Rule-based groups (answer 2745)",
+                    "screen": "Settings › Roles & access › Groups; Engage › New announcement and New survey (Audience); Learning › Assignment rules; Settings › Approval policies (group approver)",
+                    "url": "http://localhost:3000/yx/settings/access?view=groups",
+                    "account": "System Admin (admin-tester@demo-org.test); HR (hr-tester@demo-org.test, engage and learning keys); an employee; another company's admin.",
+                    "steps": [
+                              "As the System Admin open Roles & access › Groups and press New group. Name it 'Hosur shop floor', choose 'Worked out from rules', press Make group without a rule.",
+                              "Choose Location Hosur plant and Department Operations; press Make group. Read the Members column. Look for a Members button on its row.",
+                              "Edit the group: add Grade or Employment type; save. Then open a hand-picked group's Members.",
+                              "As HR open Engage › New announcement: in Audience choose 'Group: Hosur shop floor'; read the number of people; publish.",
+                              "Open Engage › New survey and Learning › Assignment rules › Add rule: pick the group in the audience / as a Group condition; preview.",
+                              "Open Settings › Approval policies and add a step approved by a group: the new group is in the list, marked (from rules).",
+                              "Change an employee's location to Hosur plant (job change); next day (or after the nightly sweep) the group's count changes.",
+                              "As another company's admin open Groups; as the employee open /yx/settings/access?view=groups."
+                    ],
+                    "expected": "Step 1: 'Add at least one rule.' and nothing saved. Step 2: toast 'Group \"Hosur shop floor\" made.'; Members shows 'N people today · from rules: Hosur plant · Operations'; no Members button (members come from the rules). Step 3: saved and the count is worked out again; the hand-picked group still has Members. Step 4: the audience count is the group's members; only they get it. Step 5: the group is offered; preview counts only its members. Step 6: listed with '(from rules)'. Step 7: the member joins without anyone editing the group (audit 'user_group.members_worked_out'). Step 8: the other company does not see it; the employee has no access. Rule groups never appear in hiring's group lists. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Access › Roles & access · groups from rules (T2-G 42)"
+                    ],
+                    "note": "Positive and negative: API e2e t2g-company-control (6 group tests: worked out on save, 400 for no rules / another company's records / hand-picked members / unknown fields, rules changed, grade rule, nightly sweep, not in hiring directory, options 403 without a key, other company 404, announcement reach and other company's group 400); user-groups unit specs; kit access.test (rule group). Migration 904 (user_groups.rules, group_ids on eng_posts, eng_surveys, learning_rules; key people.group.manage for System Admin and the HR Admin template). Tags are not a rule yet (question 2903)."
+          },
+          {
+                    "id": "MT-T2G-MODULE-OWNERS",
+                    "area": "T2-G 44 A named owner per module (answer 2745)",
+                    "screen": "Settings › Modules (owner per module); Home (Who to ask); Settings › Set-up hub (owner); Helpdesk › Desk set-up › Categories (answered by the module's owner)",
+                    "url": "http://localhost:3000/yx/settings/modules",
+                    "account": "System Admin (admin-tester@demo-org.test); an employee (panel@demo-org.test); the named owner; another company's admin.",
+                    "steps": [
+                              "As the System Admin open Settings › Modules and choose an owner for People and for Payroll; then clear the Payroll owner and choose it again.",
+                              "Open Settings › Set-up hub: read the People and Payroll cards' Owner.",
+                              "As the employee open Home: find 'Who to ask'.",
+                              "As the System Admin open Helpdesk › Desk set-up › Categories: add a category, choose Who answers 'The module's owner' without a module; then choose Payroll and add it. Try with Sensitive ticked.",
+                              "As the employee raise a ticket in that category; as the owner open My cases.",
+                              "As the owner raise a ticket in that category themselves; then clear the Payroll owner and raise one as the employee.",
+                              "As the employee open Settings › Modules (no key)."
+                    ],
+                    "expected": "Step 1: toast '<name> owns People', '<Module> has no owner now'; each change in the audit log. Step 2: the cards show the named people. Step 3: 'Who to ask' lists the people, People's as 'Your HR contact'. Step 4: 'Choose the module.'; the helper says who answers; Sensitive makes it the desk. Step 5: the ticket goes to the owner (My cases); the owner is told without details. Step 6: the desk answers both. Step 7: no Modules in the menu; no access. Owners are not a permission: the owner gets no extra access.",
+                    "stories": [
+                              "Screens/Platform/Modules (owners)",
+                              "Screens/Platform/Shell & home › PLT-02 employee, live, who to ask (T2-G 44)",
+                              "Screens/Desk › Desk set-up · Categories · answered by the module owner (T2-G 44)"
+                    ],
+                    "note": "Positive and negative: API e2e t2g-company-control (owners: 403 without key, 404 another company's person, 400 unknown module, set-up hub shows the owner; helpdesk: 400 without module / sensitive / bad module, routed to the owner, desk when the owner raises it or none is named); kit modules.test (2 owner tests), shell-home.test (who to ask). Settings org.module_owner.<module>; migration 905 (sd_categories.module, answered_by 'owner')."
+          },
+          {
+                    "id": "MT-T2G-ATTRITION",
+                    "area": "T2-G 47 Headcount and attrition (answer 2747)",
+                    "screen": "People › Headcount and attrition (ANL-04 Metric explorer, live); Analytics › Report library entry",
+                    "url": "http://localhost:3000/yx/people/attrition",
+                    "account": "System Admin (admin-tester@demo-org.test, people.analytics.view); HR Admin with the template key; an employee; a manager without the key; another company's admin.",
+                    "steps": [
+                              "As the System Admin open People › Headcount and attrition. Read the four numbers, then Trend, Breakdown and Table.",
+                              "Change Split by to Location, Grade and Legal entity; change Period to Last 6 months and This year so far.",
+                              "Find a group with fewer than 5 people in the table.",
+                              "Press Download CSV and open the file in Excel.",
+                              "Open Analytics › Report library: find Headcount and attrition and open it.",
+                              "As the employee and as the manager open /yx/people/attrition and look for the menu entry.",
+                              "As another company's admin open the page: compare the numbers."
+                    ],
+                    "expected": "Step 1: average headcount, exits, attrition % and voluntary attrition %; Trend shows the headcount on the last day of each month; Breakdown voluntary and other exits by department; the Definition card says how it is counted. Step 2: the figures follow the split and period. Step 3: the row shows 'Fewer than 5 people' and no numbers (not in the chart either). Step 4: toast 'Headcount and attrition downloaded'; the CSV has the whole company, each group (small groups without numbers) and the month-end headcounts; the export is in Settings › Audit log / Schedules and exports. Step 5: listed under People. Step 6: no menu entry; the page says no access (403). Step 7: only that company's people. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Analytics/ANL-04 · Metric explorer (Live · headcount and attrition, loading, no access)"
+                    ],
+                    "note": "Positive and negative: API e2e t2g-company-control (3 tests: 403 without the key or with HR's legal-entity-only use, 400 for bad periods/splits, month-end headcount per company, small groups hidden, an exit leaves the headcount and counts as not recorded, CSV and its audit); unit attrition.spec (4); kit attrition-live.test (3); web yx-attrition.test and yx-nav. Key people.analytics.view (migration 906; System Admin and the HR Admin template); voluntary = the exit case was started by the employee (resignation, VRS)."
+          },
+          {
+                    "id": "MT-T2G-IC-REPORT-PDF",
+                    "area": "2621 The Internal Committee (POSH) annual report as a PDF",
+                    "screen": "Helpdesk › Internal Committee › Annual report: Download PDF",
+                    "url": "http://localhost:3000/yx/desk/ic",
+                    "account": "IC presiding officer (plant-hr@demo-org.test); an IC member who does not preside; HR (hr-tester@demo-org.test, not on the committee); another company's admin.",
+                    "steps": [
+                              "As the presiding officer open the Annual report tab and press Download PDF; open the file.",
+                              "Mark the report reviewed with the action taken, then download again.",
+                              "As a member who does not preside, press Download PDF.",
+                              "As HR, and as another company's admin, open /api/v1/desk/speakup/ic/report/pdf?year=2026 (or the page).",
+                              "Ask for next year's report (year=2027) and for year=2012."
+                    ],
+                    "expected": "Step 1: toast 'Annual report downloaded.'; the PDF has the employer, the workplace, the year, (a) received, (b) disposed of, (c) pending over 90 days, (d) workshops and POSH course completions, (e) action taken ('Not written yet' while a draft), the members with roles, the status, and a signature line; no names of complainants or respondents. Step 2: the action taken and 'Reviewed by the presiding officer' are in it. Step 3: the member downloads it too. Step 4: not found (404). Step 5: 400 with a plain reason. Each download is audited (posh.annual_report_downloaded).",
+                    "stories": [
+                              "Screens/Compliance/CMP-09 › Committee member · annual report with Download PDF (2621)"
+                    ],
+                    "note": "Positive and negative: API e2e service-desk-hlp06 (404 for five outsiders, 400 for years, PDF text and audit); unit posh-report-pdf.spec (2); kit posh-live.test (2). PDFKit with writeText as the other printable PDFs. The format is the Act's Rule 14 list; a state-specific form is question 2904."
           }
 ]
