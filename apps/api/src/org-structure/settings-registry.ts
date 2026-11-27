@@ -346,6 +346,13 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Answer 1826: what new people start with (each changes their own on Me › Notifications); applied when the account is made.
   'notify.email.default_cadence': { label: 'Notifications: new people get', scopes: ['tenant'], dated: false, values: ['immediate', 'daily'], labels: { immediate: 'An email per notice', daily: 'One daily digest' }, default: 'immediate' },
   'notify.digest.time': { label: 'Notifications: the daily digest email goes out at (India time)', scopes: ['tenant'], dated: false, values: ['06:00', '07:00', '08:00', '09:00', '10:00', '18:00'], default: '07:00' },
+  // T2-E 51 (answer 2874): the Home cards for a window that is closing, each kind a company switch (on by default).
+  'home.reminders.tax_declarations': { label: 'Home reminders: tax declarations closing (7 days before)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'home.reminders.tax_proofs': { label: 'Home reminders: tax proofs due (7 days before)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'home.reminders.tax_regime': { label: 'Home reminders: the tax regime choice closing (7 days before)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'home.reminders.review': { label: 'Home reminders: a self-review or manager review due (3 days before)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'home.reminders.survey': { label: 'Home reminders: a survey closing (2 days before)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'home.reminders.sent_back': { label: 'Home reminders: a request of mine sent back to me', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
   // change any option for one rehire with a reason.

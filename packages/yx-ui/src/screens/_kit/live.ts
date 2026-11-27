@@ -152,3 +152,5 @@ export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } fro
 // G4 (2690-2692): scheduled report emails and the export log (ANL-08).
 export { SchedulesScreen } from '../proctoring/analytics';
 export type { LiveExportRow, LiveReportSchedules, LiveScheduleRow, ScheduleFrequency } from '../proctoring/report-schedules-live';
+// T2-E 51 (answer 2874): Home cards for a window that is closing.
+export { HomeReminderCards, dismissedToday, dismissForToday, type HomeReminder } from '../platform-a/home-reminders';

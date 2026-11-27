@@ -137,4 +137,29 @@ describe('Approvals T2-E 49 and 50', () => {
     const team = (await api('mgr', 'get', '/workflow/approvals/team-history').expect(want(200))).body as { requestId: string; requesterTeam: string | null }[];
     expect(team.find((x) => x.requestId === ids.r1)?.requesterTeam).toBe('direct');
   });
+  it('51: Home cards for a request sent back to me and a survey closing in 2 days; each kind a company switch; only my own', async () => {
+    const api2 = (who: Who, method: 'get' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    const plus = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86_400_000);
+    const sentBack = (await submit('emp')).id;
+    await inA((tx) => tx.wfRequest.update({ where: { id: sentBack }, data: { status: 'sent_back', decidedAt: new Date() } }));
+    await inA(async (tx) => {
+      const mk = (name: string, closes: Date) => tx.engSurvey.create({ data: { organizationId: org.id, name, type: 'pulse', opensOn: plus(-3), closesOn: closes, launchedAt: new Date(), createdBy: users.admin! } });
+      const soon = await mk('Pulse soon', plus(1));
+      const later = await mk('Pulse later', plus(5));
+      for (const s of [soon, later]) await tx.engSurveyInvite.create({ data: { organizationId: org.id, surveyId: s.id, userId: users.emp! } });
+      ids.soon = soon.id;
+    });
+    type Card = { kind: string; id: string; href: string };
+    const cards = async (who: Who) => (await api2(who, 'get', '/notifications/home-reminders').expect(want(200))).body.cards as Card[];
+    const mine = await cards('emp');
+    expect(mine.map((c) => c.kind)).toEqual(['sent_back', 'survey']);
+    expect(mine[1]).toMatchObject({ id: `survey:${ids.soon}`, href: `/yx/engage/surveys/${ids.soon}/take` });
+    // Negative: someone else has none of these; the survey closing in 5 days never shows.
+    expect(await cards('other')).toEqual([]);
+    expect(JSON.stringify(mine)).not.toContain('Pulse later');
+    // The company switches surveys off: only the sent-back card stays.
+    await api2('admin', 'put', '/org/settings').send({ key: 'home.reminders.survey', scopeType: 'tenant', value: 'off' }).expect(want(200));
+    expect((await cards('emp')).map((c) => c.kind)).toEqual(['sent_back']);
+  });
 });

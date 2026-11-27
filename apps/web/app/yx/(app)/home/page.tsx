@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
-import { RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
+import { HomeReminderCards, RoleHomeScreen, dismissForToday, dismissedToday, type HomeReminder, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
 import { NudgeCard } from '@yukthix/ui/console';
 import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
 import { Button } from '@yukthix/ui';
@@ -64,6 +64,11 @@ export default function YxHomePage() {
   // Batch D A14 (answer 2536): today has no hours yet (the API applies the company time, working day and allocation).
   const tsNudge = useQuery<{ show: boolean }>({ queryKey: ['time', '/me/timesheet/nudge'], queryFn: () => apiFetch('/time/me/timesheet/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   const [tsHidden, setTsHidden] = useState(false);
+  // T2-E 51 (answer 2874): at most 2 cards for a window that is closing; "Not today" hides one for the day (this browser).
+  const reminders = useQuery<{ cards: HomeReminder[] }>({ queryKey: ['yx', 'home-reminders'], queryFn: () => apiFetch('/notifications/home-reminders', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
+  const todayKey = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  const [hiddenReminders, setHiddenReminders] = useState<string[]>(() => (typeof window === 'undefined' ? [] : dismissedToday(todayKey)));
+  const shownReminders = (reminders.data?.cards ?? []).filter((c) => !hiddenReminders.includes(c.id));
   // Answer 1210: Talk to us on the card asks YukthiX to call (the sales-assist queue).
   const [talking, setTalking] = useState(false);
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
@@ -148,8 +153,9 @@ export default function YxHomePage() {
       void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     },
     onReview: () => router.push('/yx/approvals'),
-    nudge: n || (tsNudge.data?.show && !tsHidden) ? (
+    nudge: n || (tsNudge.data?.show && !tsHidden) || shownReminders.length ? (
       <>
+      <HomeReminderCards cards={shownReminders} onDismiss={(id) => setHiddenReminders(dismissForToday(todayKey, id))} />
       {tsNudge.data?.show && !tsHidden && <TimesheetNudgeCard href="/yx/time/timesheet" onDismiss={() => setTsHidden(true)} />}
       {n && <NudgeCard
         heading={n.heading}
