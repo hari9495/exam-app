@@ -1,3 +1,4 @@
+import { poshAnnualReportPdf } from './posh-report-pdf';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
@@ -571,6 +572,50 @@ export class SpeakupService {
       await audit(tx, c, 'posh.annual_report_step', 'posh_annual_report', row.id, { committeeId: cid, year: dto.year, step: dto.step });
       return { stage: dto.step };
     });
+  }
+
+  /**
+   * Answer 2621: the committee's annual report for a year as a PDF (members of that committee only; others "not found").
+   * The same counts as the console: complaints received, disposed of, pending over 90 days, awareness sessions, POSH
+   * course completions and the action taken. Every download is audited.
+   */
+  async annualReportPdf(ctx: TenantContext, committeeId: string | null, year: number) {
+    const data = await this.tx(ctx, async (tx, c) => {
+      if (!(await this.onCommittee(tx, c, committeeId))) throw new NotFoundException('Not found');
+      const today = todayIst();
+      if (year > Number(today.slice(0, 4))) throw new BadRequestException('Choose this year or an earlier one.');
+      const org = c.organizationId;
+      const range = { gte: new Date(`${year}-01-01T00:00:00+05:30`), lt: new Date(`${year + 1}-01-01T00:00:00+05:30`) };
+      const cases = await tx.speakupCase.findMany({ where: { organizationId: org, kind: 'posh', icLocationId: committeeId, filedAt: range }, select: { status: true, filedAt: true } });
+      const sessions = await tx.poshAwarenessSession.count({ where: { organizationId: org, committeeLocationId: committeeId, heldOn: { gte: new Date(`${year}-01-01T00:00:00Z`), lte: new Date(`${year}-12-31T00:00:00Z`) } } });
+      const row = await tx.poshAnnualReport.findFirst({ where: { organizationId: org, year, committeeLocationId: committeeId } });
+      const members = await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null, locationId: committeeId }, orderBy: { addedAt: 'asc' } });
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: members.map((m) => m.userId) } }, select: { id: true, name: true, email: true } });
+      const place = committeeId ? await tx.location.findFirst({ where: { organizationId: org, id: committeeId }, select: { name: true } }) : null;
+      const company = (await tx.organization.findFirst({ where: { id: org }, select: { name: true } }))?.name ?? '';
+      // The end of the year (or today) decides what is pending over 90 days.
+      const asOf = `${year}-12-31` < today ? `${year}-12-31` : today;
+      await audit(tx, c, 'posh.annual_report_downloaded', 'posh_annual_report', row?.id ?? org, { committeeId, year });
+      return {
+        company,
+        committee: committeeId ? (place?.name ?? 'A workplace') : 'Whole company',
+        year,
+        received: cases.length,
+        disposed: cases.filter((x) => x.status === 'closed').length,
+        pendingOver90: cases.filter((x) => x.status !== 'closed' && addDays(isoDay(x.filedAt)!, 90) < asOf).length,
+        sessions,
+        trainings: await this.poshTrainings(tx, c, year, committeeId),
+        actionTaken: row?.actionTaken ?? null,
+        stage: (row?.stage ?? 'draft') as 'draft' | 'reviewed' | 'employer' | 'district',
+        members: members.map((m) => {
+          const u = users.find((x) => x.id === m.userId);
+          return { name: u?.name ?? u?.email ?? 'Former user', role: m.role as 'presiding' | 'member' | 'external', woman: Boolean(m.woman) };
+        }),
+        preparedOn: today,
+      };
+    });
+    const label = data.committee.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return { pdf: await poshAnnualReportPdf(data), name: `ic-annual-report-${year}-${label || 'company'}.pdf` };
   }
 
   private async onCommittee(tx: Tx, c: CompanyContext, cid: string | null) {

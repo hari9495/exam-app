@@ -1,3 +1,4 @@
+import { inCompanyOrder, pageOff } from './yx-modules';
 import type { AreaId } from '@yukthix/ui/frame';
 
 // The YukthiX menu by product area (design audit step 1, founder decisions 15 Oct 2026): the designed rail areas,
@@ -63,6 +64,9 @@ export interface NavInput {
   lineApprovals?: number;
   /** T2-D 60: the hours reports (a project's manager, or the projects reporting key). */
   projectReports?: boolean;
+  /** T2-G 41 (answer 2746): the company's switched-off modules (their links go) and its module order (the rail). */
+  modulesOff?: readonly string[];
+  moduleOrder?: readonly string[];
   /** Runs learning sessions as an internal trainer. */
   trainer?: boolean;
 }
@@ -148,7 +152,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '1.3': ['/yx/settings/locations', '/yx/time/setup/locations'],
   '1.4': ['/yx/settings/structure'],
   '1.5': [...morePage('1.5'), '/yx/settings/custom-fields'],
-  '1.6': ['/yx/settings/setup-hub', ...morePage('1.6')],
+  '1.6': ['/yx/settings/setup-hub', ...morePage('1.6'), `${SETTINGS_HOME}/modules`],
   '2.1': ['/yx/settings/access', ...peoplePage('2.1')],
   '2.2': peoplePage('2.2'),
   '2.3': ['/yx/settings/security', ...peoplePage('2.3'), '/yx/settings/identity-providers', '/yx/settings/support-access'],
@@ -266,7 +270,7 @@ export function buildNav(n: NavInput): NavArea[] {
   // Managers without HR keys get the designed "For my team" group instead of Onboarding / Changes / Exits.
   const team = !hr;
   const peopleWork: NavSection[] = [
-    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(has('org.position.manage'), L('positions', 'Positions', '/yx/people/positions')), ...when(manager, L('team', 'My team', '/yx/people/team')), ...when(!support && (employee || has('company.documents.manage')), L('company-docs', 'Company documents', '/yx/people/company-documents'))]),
+    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(has('org.position.manage'), L('positions', 'Positions', '/yx/people/positions')), ...when(manager, L('team', 'My team', '/yx/people/team')), ...when(!support && (employee || has('company.documents.manage')), L('company-docs', 'Company documents', '/yx/people/company-documents')), ...when(!support && has('people.analytics.view'), L('attrition', 'Headcount and attrition', '/yx/people/attrition'))]),
     ...sec(team ? 'For my team' : 'Onboarding', [
       ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
       ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
@@ -647,6 +651,8 @@ export function buildNav(n: NavInput): NavArea[] {
     sections: [
       ...sec('Organisation', [
         ...when(settingsAdmin, L('setup-hub', 'Set-up hub', '/yx/settings/setup-hub')),
+        // T2-G 41 (answer 2746): modules on / off and the rail order (HR's settings key changes them; settings readers see them).
+        ...when(settingsView, L('modules', 'Modules', `${SETTINGS_HOME}/modules`)),
         ...when(orgPages, L('entities', 'Legal entities', '/yx/settings/legal-entities'), L('locations', 'Locations', '/yx/settings/locations'), L('structure', 'Structure', '/yx/settings/structure')),
         ...when(settingsAdmin, L('countries', 'Countries', '/yx/settings/countries'), L('translations', 'Translations', '/yx/settings/translations')),
         // S-7 (answer 1321): the Organisation, Documents and Account settings pages (Company rules retired).
@@ -740,7 +746,10 @@ export function buildNav(n: NavInput): NavArea[] {
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
   const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
   if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });
-  return areas.filter((a) => a.sections.some((s) => s.items.length));
+  // T2-G 41: a switched-off module's pages leave the menu (its legal duties under Helpdesk stay); the rest follow the company's order.
+  const off = n.modulesOff ?? [];
+  const kept = off.length ? areas.map((a) => ({ ...a, sections: a.sections.map((s) => ({ ...s, items: s.items.filter((l) => !pageOff(l.href, off)) })) })) : areas;
+  return inCompanyOrder(kept, n.moduleOrder).filter((a) => a.sections.some((s) => s.items.length));
 }
 
 /** The area and link a path belongs to: the longest link that is the path or a parent of it. A page linked from two

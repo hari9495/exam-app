@@ -1,3 +1,4 @@
+import { ownerKey } from '../org-structure/modules';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Request } from 'express';
@@ -190,7 +191,7 @@ export class RequesterService {
         appId: dto.appId,
       });
     });
-    const routed = await this.toManager(r, t);
+    const routed = (await this.toManager(r, t)) ?? (await this.toOwner(r, t));
     return { id: t.id, number: t.number, ...(routed ? { answeredBy: routed } : {}) };
   }
 
@@ -223,6 +224,35 @@ export class RequesterService {
     if (out?.kind === 'manager')
       await this.notifications
         .notifySystem(r.ctx as TenantContext, [out.userId!], 'desk.ticket.asked_manager', { entityType: 'sd_ticket', entityId: t.id, contextText: `A question from your team: ${t.number} · ${t.subject}`, linkPath: `/yx/desk/my-cases?asked=${t.id}` }, { subject: 'You have a question from your team in YukthiX', html: '<p>You have a question from your team in YukthiX. Open My cases in YukthiX to read and answer it.</p>' }) // answer 2596: no details in the email
+        .catch(() => undefined);
+    return out?.kind ?? null;
+  }
+
+  /**
+   * T2-G 44 (answer 2745): a ticket whose category is "answered by the module's owner" goes to the person the company named
+   * as that module's owner (Settings › Modules), an active login other than the person raising it; otherwise the desk.
+   */
+  private async toOwner(r: Requester, t: Ticket): Promise<'owner' | 'desk' | null> {
+    if (!t.categoryId) return null;
+    const out = await this.tx(r, async (tx) => {
+      const org = r.ctx.organizationId;
+      const cat = await tx.sdCategory.findFirst({ where: { organizationId: org, id: t.categoryId! }, select: { answeredBy: true, module: true, sensitive: true, privateByDefault: true } });
+      if (cat?.answeredBy !== 'owner' || !cat.module || cat.sensitive || cat.privateByDefault || t.sensitive || t.private) return null;
+      const named = await tx.setting.findFirst({ where: { organizationId: org, key: ownerKey(cat.module), scopeType: 'tenant' }, select: { value: true } });
+      const id = String(named?.value ?? '');
+      const user = /^[0-9a-f-]{36}$/i.test(id) ? await tx.user.findFirst({ where: { organizationId: org, id, status: 'active' }, select: { id: true } }) : null;
+      if (!user || user.id === r.userId) {
+        await this.tickets.event(tx, t, 'routed_to_desk', null, null, { by: r.userId, reason: 'No module owner to answer it, so the desk answers', requesterVisible: false });
+        return { kind: 'desk' as const, userId: null };
+      }
+      await tx.sdTicket.update({ where: { id: t.id }, data: { answerUserId: user.id } });
+      await this.tickets.event(tx, t, 'routed_to_owner', null, user.id, { by: r.userId, reason: 'Answered by the module owner', requesterVisible: false });
+      await audit(tx, { ctx: r.ctx, userId: r.userId } as unknown as DeskActor, 'desk.ticket.routed_to_owner', 'sd_ticket', t.id, { number: t.number, module: cat.module });
+      return { kind: 'owner' as const, userId: user.id };
+    });
+    if (out?.kind === 'owner')
+      await this.notifications
+        .notifySystem(r.ctx as TenantContext, [out.userId!], 'desk.ticket.asked_owner', { entityType: 'sd_ticket', entityId: t.id, contextText: `A question for you as the module owner: ${t.number} · ${t.subject}`, linkPath: `/yx/desk/my-cases?asked=${t.id}` }, { subject: 'You have a question in YukthiX', html: '<p>You have a question in YukthiX as a module owner. Open My cases in YukthiX to read and answer it.</p>' })
         .catch(() => undefined);
     return out?.kind ?? null;
   }

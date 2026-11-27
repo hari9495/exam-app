@@ -6,6 +6,7 @@ import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { MultiSelect, Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { useToast } from '../../components/notify';
 import { Card } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -125,10 +126,25 @@ export function HiringFieldAccess({ config, fields, roles, onSave }: HiringField
   );
 }
 
+/** T2-G 42 (answer 2745): what a rule group's members are worked out from; each a list (any of them), all must match. */
+export const GROUP_RULE_KINDS = [
+  ['legalEntityIds', 'Legal entities'],
+  ['locationIds', 'Locations'],
+  ['departmentIds', 'Departments (with their sub-departments)'],
+  ['gradeIds', 'Grades'],
+  ['employmentTypeIds', 'Employment types'],
+] as const;
+export type GroupRuleKind = (typeof GROUP_RULE_KINDS)[number][0];
+export type GroupRules = Record<GroupRuleKind, string[]>;
+export type GroupRuleChoices = Record<GroupRuleKind, { value: string; label: string }[]>;
+const NO_RULES: GroupRules = { legalEntityIds: [], locationIds: [], departmentIds: [], gradeIds: [], employmentTypeIds: [] };
+
 export interface UserGroup {
   id: string;
   name: string;
   description: string | null;
+  /** T2-G 42: null or absent for a hand-picked group. */
+  rules?: GroupRules | null;
   members: { userId: string; name: string | null; email: string }[];
 }
 
@@ -136,8 +152,10 @@ export interface UserGroupsPanelProps {
   groups: UserGroup[];
   /** Who can be a member: the company's staff. */
   people: { value: string; label: string }[];
-  onCreate: (input: { name: string; description?: string }) => Promise<unknown>;
-  onUpdate: (id: string, input: { name: string; description: string }) => Promise<unknown>;
+  onCreate: (input: { name: string; description?: string; rules?: GroupRules }) => Promise<unknown>;
+  onUpdate: (id: string, input: { name: string; description: string; rules?: GroupRules }) => Promise<unknown>;
+  /** T2-G 42: the choices for rule groups (absent: hand-picked groups only, as before). */
+  ruleChoices?: GroupRuleChoices;
   onMembers: (id: string, userIds: string[]) => Promise<unknown>;
   /** Answer 2439: the group goes to the recycle bin; work assigned to it is unassigned. */
   onDelete: (id: string) => Promise<unknown>;
@@ -146,17 +164,23 @@ export interface UserGroupsPanelProps {
 type GroupDialog = { kind: 'new' } | { kind: 'edit'; group: UserGroup } | { kind: 'members'; group: UserGroup } | { kind: 'delete'; group: UserGroup };
 
 /** Named staff groups (answer 2430): hiring work can be assigned to a group, and a group can follow a job. */
-export function UserGroupsPanel({ groups, people, onCreate, onUpdate, onMembers, onDelete }: UserGroupsPanelProps) {
+export function UserGroupsPanel({ groups, people, onCreate, onUpdate, onMembers, onDelete, ruleChoices }: UserGroupsPanelProps) {
   const [dialog, setDialog] = useState<GroupDialog | null>(null);
   const { toast } = useToast();
   const columns: TableColumn<UserGroup>[] = [
     { key: 'name', header: 'Group', value: (g) => g.name, render: (g) => <span className="yx-auth__item-main"><Text>{g.name}</Text>{g.description && <Text tone="secondary" size="sm">{g.description}</Text>}</span>, width: 280, hideable: false },
-    { key: 'members', header: 'Members', value: (g) => g.members.length, render: (g) => (g.members.length ? g.members.map((m) => m.name ?? m.email).join(', ') : 'No members yet'), width: 320 },
+    {
+      key: 'members',
+      header: 'Members',
+      value: (g) => g.members.length,
+      render: (g) => (g.rules ? `${g.members.length} ${g.members.length === 1 ? 'person' : 'people'} today · from rules: ${ruleWords(g.rules, ruleChoices)}` : g.members.length ? g.members.map((m) => m.name ?? m.email).join(', ') : 'No members yet'),
+      width: 320,
+    },
   ];
   return (
     <div className="yx-auth__stack">
       <div className="yx-ppl2__row">
-        <Text tone="secondary">Hiring work can go to a group instead of one person; everyone in it sees it.</Text>
+        <Text tone="secondary">{ruleChoices ? 'Groups choose who gets announcements, surveys, learning and approvals. A group from rules updates itself every night. Hiring work goes to hand-picked groups only.' : 'Hiring work can go to a group instead of one person; everyone in it sees it.'}</Text>
         <Button onClick={() => setDialog({ kind: 'new' })}>New group</Button>
       </div>
       <DataTable
@@ -169,9 +193,11 @@ export function UserGroupsPanel({ groups, people, onCreate, onUpdate, onMembers,
         empty={<EmptyState compact title="No groups yet." description="Make one for a team that shares hiring work, for example Plant recruiters." action={<Button onClick={() => setDialog({ kind: 'new' })}>New group</Button>} />}
         rowButtons={(g) => (
           <>
-            <Button size="sm" onClick={() => setDialog({ kind: 'members', group: g })}>
-              Members
-            </Button>
+            {!g.rules && (
+              <Button size="sm" onClick={() => setDialog({ kind: 'members', group: g })}>
+                Members
+              </Button>
+            )}
             <Button size="sm" onClick={() => setDialog({ kind: 'edit', group: g })}>
               Edit
             </Button>
@@ -185,10 +211,11 @@ export function UserGroupsPanel({ groups, people, onCreate, onUpdate, onMembers,
         <GroupDetailsDialog
           group={dialog.kind === 'edit' ? dialog.group : null}
           taken={groups.filter((g) => dialog.kind === 'new' || g.id !== dialog.group.id).map((g) => g.name.toLowerCase())}
+          ruleChoices={ruleChoices}
           onClose={() => setDialog(null)}
-          onSave={async (name, description) => {
-            if (dialog.kind === 'new') await onCreate({ name, ...(description ? { description } : {}) });
-            else await onUpdate(dialog.group.id, { name, description });
+          onSave={async (name, description, rules) => {
+            if (dialog.kind === 'new') await onCreate({ name, ...(description ? { description } : {}), ...(rules ? { rules } : {}) });
+            else await onUpdate(dialog.group.id, { name, description, ...(rules ? { rules } : {}) });
             toast({ tone: 'success', title: dialog.kind === 'new' ? `Group "${name}" made.` : 'Group saved.' });
           }}
         />
@@ -223,12 +250,23 @@ export function UserGroupsPanel({ groups, people, onCreate, onUpdate, onMembers,
   );
 }
 
-function GroupDetailsDialog({ group, taken, onClose, onSave }: { group: UserGroup | null; taken: string[]; onClose: () => void; onSave: (name: string, description: string) => Promise<void> }) {
+/** "Hosur plant, Chennai office · Grade M1" (the rule lists in words, by the choices' names). */
+export function ruleWords(rules: GroupRules, choices?: GroupRuleChoices): string {
+  const parts = GROUP_RULE_KINDS.filter(([k]) => rules[k]?.length).map(([k]) => rules[k].map((id) => choices?.[k].find((o) => o.value === id)?.label ?? 'Removed').join(', '));
+  return parts.join(' · ') || 'none';
+}
+
+function GroupDetailsDialog({ group, taken, ruleChoices, onClose, onSave }: { group: UserGroup | null; taken: string[]; ruleChoices?: GroupRuleChoices; onClose: () => void; onSave: (name: string, description: string, rules?: GroupRules) => Promise<void> }) {
   const [name, setName] = useState(group?.name ?? '');
   const [description, setDescription] = useState(group?.description ?? '');
+  // T2-G 42: a new group is hand-picked or worked out from rules; an existing group keeps how its members come.
+  const [how, setHow] = useState<'hand' | 'rules'>(group?.rules ? 'rules' : 'hand');
+  const [rules, setRules] = useState<GroupRules>({ ...NO_RULES, ...(group?.rules ?? {}) });
   const [tried, setTried] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const nameError = !name.trim() ? 'Enter a name.' : taken.includes(name.trim().toLowerCase()) ? 'Another group has this name.' : null;
+  const fromRules = how === 'rules' && Boolean(ruleChoices);
+  const rulesError = fromRules && GROUP_RULE_KINDS.every(([k]) => !rules[k].length) ? 'Add at least one rule.' : null;
   return (
     <ConfirmDialog
       open
@@ -237,10 +275,10 @@ function GroupDetailsDialog({ group, taken, onClose, onSave }: { group: UserGrou
       confirmLabel={group ? 'Save group' : 'Make group'}
       onConfirm={async () => {
         setTried(true);
-        if (nameError) return false;
+        if (nameError || rulesError) return false;
         setFailed(null);
         try {
-          await onSave(name.trim(), description.trim());
+          await onSave(name.trim(), description.trim(), fromRules ? rules : undefined);
         } catch (e) {
           setFailed(errorText(e));
           return false;
@@ -254,6 +292,24 @@ function GroupDetailsDialog({ group, taken, onClose, onSave }: { group: UserGrou
       <FormField id="ug-description" label="What it is for" optional>
         <TextArea value={description} onChange={setDescription} rows={2} maxLength={500} />
       </FormField>
+      {ruleChoices && !group && (
+        <FormField id="ug-how" label="Members">
+          <Segment label="Members" value={how} onChange={setHow} options={[{ value: 'hand', label: 'Picked by hand' }, { value: 'rules', label: 'Worked out from rules' }]} />
+        </FormField>
+      )}
+      {fromRules && (
+        <>
+          <Text tone="secondary" size="sm">
+            People whose job today matches every rule you fill in. Worked out on save and every night.
+          </Text>
+          {GROUP_RULE_KINDS.map(([k, label]) => (
+            <FormField key={k} id={`ug-${k}`} label={label} optional>
+              <MultiSelect aria-label={label} value={rules[k]} onChange={(v) => setRules({ ...rules, [k]: v })} options={ruleChoices![k]} searchable placeholder="Any" />
+            </FormField>
+          ))}
+          {tried && rulesError && <Text tone="danger">{rulesError}</Text>}
+        </>
+      )}
       {failed && <Text tone="danger">{failed}</Text>}
     </ConfirmDialog>
   );

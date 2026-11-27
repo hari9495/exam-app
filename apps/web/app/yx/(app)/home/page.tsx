@@ -16,7 +16,8 @@ import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useOrgBranding } from '../../../../lib/hooks/useBranding';
-import { useYxPermissions } from '../../../../lib/yx-org';
+import { useOrg, useYxPermissions } from '../../../../lib/yx-org';
+import type { CompanyModule } from '../../../../lib/yx-modules';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
 import { useScope } from '../../../../lib/yx-shell';
@@ -58,6 +59,8 @@ export default function YxHomePage() {
   const perms = useYxPermissions();
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   const employee = Boolean(team.data?.managerId) && !actingSuperAdmin;
+  // T2-G 44 (answer 2745): the people the company named per module (on modules that are on), shown as "Who to ask".
+  const companyModules = useOrg<{ modules: CompanyModule[] }>('/modules', employee);
   const isManager = Boolean(team.data?.members.length) && !actingSuperAdmin;
   // C-8 (YX-12): the one nudge for this person, if any (the API applies the switches, who can act and the weekly limit).
   const nudge = useQuery<{ nudge: { id: string; featureLabel: string; heading: string; body: string; switchHref: string | null } | null }>({ queryKey: ['yx', 'nudge'], queryFn: () => apiFetch('/help/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false, staleTime: Infinity });
@@ -223,6 +226,7 @@ export default function YxHomePage() {
     ...(asEmployee ? { pay: homePay(pay.data) } : {}),
     ...(asEmployee ? { tasks: myTasks({ checklist: checklist.data?.tasks, feedback: feedbackTasks.data, reviews: myReviews.data }) } : {}),
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),
+    ...(employee && companyModules.data?.modules ? { owners: companyModules.data.modules.filter((m) => m.on && m.owner).map((m) => ({ module: m.label, name: m.owner!.name })) } : {}),
     quickActions: employee
       ? [
           { label: 'Apply leave', href: '/yx/time/leave?apply=1', kind: 'leave' },

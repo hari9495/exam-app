@@ -27,10 +27,11 @@ export async function jobsToday(tx: Tx, c: CompanyContext, today: string, only?:
   const ids = only ? [...new Set(only)] : null;
   if (ids && !ids.length) return [];
   const rows = await tx.$queryRaw<
-    { employee_id: string; user_id: string | null; given_name: string; family_name: string | null; preferred_name: string | null; legal_entity_id: string; location_id: string; department_id: string; department: string; designation: string; manager_employee_id: string | null }[]
+    { employee_id: string; user_id: string | null; given_name: string; family_name: string | null; preferred_name: string | null; legal_entity_id: string; location_id: string; department_id: string; department: string; designation: string; manager_employee_id: string | null; group_ids: string[] }[]
   >`
     SELECT DISTINCT ON (a.employee_id) a.employee_id::text, e.user_id::text, e.given_name, e.family_name, e.preferred_name,
-      a.legal_entity_id::text, a.location_id::text, a.department_id::text, d.name AS department, g.name AS designation, a.manager_employee_id::text
+      a.legal_entity_id::text, a.location_id::text, a.department_id::text, d.name AS department, g.name AS designation, a.manager_employee_id::text,
+      ARRAY(SELECT gm.group_id::text FROM user_group_members gm WHERE gm.organization_id = a.organization_id AND gm.user_id = e.user_id) AS group_ids
     FROM employee_assignments a
     JOIN employments m ON m.organization_id = a.organization_id AND m.id = a.employment_id
     JOIN employees e ON e.organization_id = a.organization_id AND e.id = a.employee_id
@@ -51,6 +52,7 @@ export async function jobsToday(tx: Tx, c: CompanyContext, today: string, only?:
     department: r.department,
     designation: r.designation,
     managerEmployeeId: r.manager_employee_id,
+    groups: r.group_ids ?? [],
   }));
 }
 

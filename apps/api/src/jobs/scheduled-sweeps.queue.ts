@@ -111,4 +111,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'asset-booking-alerts', cron: '5 2 * * *' },
   // T2-G 45 (answer 2744): companies' scheduled data exports to their own storage, when due (02:00 IST).
   { id: 'scheduled-company-exports', cron: '30 20 * * *' },
+  // T2-G 42: rule groups (after the day's job changes, 'employee-changes').
+  { id: 'rule-groups', cron: '20 2 * * *' },
 ];

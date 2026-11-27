@@ -47,6 +47,8 @@ export const REPORT_CATALOGUE: CatalogueEntry[] = [
   exp('over-limit', 'Spending over a limit'),
   exp('gst-input', 'GST input credit lines'),
   exp('approver-patterns', 'Approver patterns to review'),
+  // T2-G 47 (answer 2747): headcount on each month's last day and attrition (exits ÷ average headcount).
+  { id: 'people.attrition', name: 'Headcount and attrition', question: PEOPLE, area: 'People', href: '/yx/people/attrition', format: 'Table · CSV', sensitivity: 'Internal', keys: ['people.analytics.view'] },
   { id: 'time.attendance', name: 'Attendance reports', question: PEOPLE, area: 'Time', href: '/yx/time/reports', format: 'Table · CSV', sensitivity: 'Internal', keys: ['attendance.view'], manager: true },
   { id: 'time.registers', name: 'Attendance and leave registers', question: STAT, area: 'Time', href: '/yx/time/registers', format: 'PDF', sensitivity: 'Internal', keys: ['attendance.view'] },
   perf('completion', 'Review completion'),

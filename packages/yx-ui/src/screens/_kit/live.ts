@@ -94,6 +94,7 @@ export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData,
 export { AboutMeDialog, ClearAboutMeDialog, AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
 export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from '../people/exits';
 export { SetupHubScreen, type LiveSetupHub, type ModuleCard, type SetupHubProps } from '../platform-a/setup-admin';
+export { ModulesScreen, type LiveModules, type ModuleRow, type ModulesChange, type ModulesScreenProps } from '../platform-a/modules';
 // Learning (the core): My learning and catalogue, the player, courses and the builder, assignment rules, compliance, the team.
 export { MyLearningScreen, CoursePlayerScreen, type Course as LearningCourse } from '../growth/learn-me';
 export { CourseBuilderScreen, AssignmentRulesScreen, ComplianceDashboardScreen, SessionsScreen, TrainerQrScreen } from '../growth/learn-admin';
@@ -146,6 +147,8 @@ export { TeamSkillsMatrixScreen, TrainingNeedsScreen } from '../growth/learn-adm
 export type { LiveNeedRow, LiveSkillProfileData, LiveSkillSuggestions, LiveSkillsProfile, LiveTeamSkills, LiveTeamSkillsData, LiveTrainingNeeds, NeedInput, PoshCounts } from '../growth/learn-skills-live';
 // G4: the report library (ANL-06) and company documents (PPL-51).
 export { ReportLibraryScreen } from '../proctoring/analytics';
+export { MetricExplorerScreen } from '../proctoring/analytics';
+export { type AttritionSplit, type AttritionView, type LiveAttrition } from '../proctoring/attrition-live';
 export type { LiveReportLibrary, LiveReportRow } from '../proctoring/report-library-live';
 export { CompanyDocumentsScreen } from '../people/company-docs';
 export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } from '../people/company-docs';

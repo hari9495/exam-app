@@ -59,6 +59,7 @@ describe('ScheduledSweepsWorkerService', () => {
       companyDocs: { remindExpiring: jest.fn().mockResolvedValue(0) },
       reportSchedules: { sendDue: jest.fn().mockResolvedValue(0) },
       assetAlerts: { warrantySweep: jest.fn().mockResolvedValue(0), contractSweep: jest.fn().mockResolvedValue(0), licenceSweep: jest.fn().mockResolvedValue(0), bookingSweep: jest.fn().mockResolvedValue(0) },
+      userGroups: { sweep: jest.fn().mockResolvedValue(0) },
       internalApplications: { releaseHandOver: jest.fn().mockResolvedValue(0) },
       scheduledExports: { sweep: jest.fn().mockResolvedValue(0) },
     };
@@ -107,6 +108,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.assetAlerts as never,
       services.internalApplications as never,
       services.scheduledExports as never,
+      services.userGroups as never,
     );
     return { service, queue, connection, services };
   };
@@ -173,6 +175,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'asset-contract-alerts': services.assetAlerts.contractSweep,
       'asset-licence-alerts': services.assetAlerts.licenceSweep,
       'asset-booking-alerts': services.assetAlerts.bookingSweep,
+      'rule-groups': services.userGroups.sweep,
       'internal-release-handover': services.internalApplications.releaseHandOver,
       'scheduled-company-exports': services.scheduledExports.sweep,
     };

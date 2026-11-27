@@ -6,19 +6,23 @@ export interface Job {
   locationId: string;
   departmentId: string;
   designation: string;
+  /** T2-G 42: the groups the person is in today. */
+  groups?: readonly string[];
 }
 export interface RuleScope {
   legalEntityIds: string[];
   locationIds: string[];
   departmentIds: string[];
   designation: string | null;
+  /** T2-G 42 (answer 2745): the person is in any of these groups (empty: any). */
+  groupIds?: readonly string[];
 }
 
 /** A rule covers a job when each listed set contains it (an empty set means any) and the designation has the words. */
 export function covers(rule: RuleScope, job: Job): boolean {
   const inSet = (set: string[], v: string) => set.length === 0 || set.includes(v);
   const words = rule.designation?.trim().toLowerCase();
-  return inSet(rule.legalEntityIds, job.legalEntityId) && inSet(rule.locationIds, job.locationId) && inSet(rule.departmentIds, job.departmentId) && (!words || job.designation.toLowerCase().includes(words));
+  return inSet(rule.legalEntityIds, job.legalEntityId) && inSet(rule.locationIds, job.locationId) && inSet(rule.departmentIds, job.departmentId) && (!words || job.designation.toLowerCase().includes(words)) && (!rule.groupIds?.length || rule.groupIds.some((g) => job.groups?.includes(g)));
 }
 
 export function addDays(day: string, n: number): string {

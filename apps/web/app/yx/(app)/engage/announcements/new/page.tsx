@@ -17,7 +17,7 @@ export default function YxNewAnnouncementPage() {
         state: engageState(options),
         onRetry: () => void options.refetch(),
         options: options.data ?? null,
-        reach: (locationIds, departmentIds) => write<{ count: number }>('POST', '/announcements/reach', { locationIds, departmentIds }).then((r) => r.count),
+        reach: (locationIds, departmentIds, groupIds) => write<{ count: number }>('POST', '/announcements/reach', { locationIds, departmentIds, groupIds: groupIds ?? [] }).then((r) => r.count),
         onPublish: (input) => write<{ id: string }>('POST', '/announcements', input),
         onDone: (id) => router.push(`/yx/engage/announcements/${encodeURIComponent(id)}`),
         today: new Date(),

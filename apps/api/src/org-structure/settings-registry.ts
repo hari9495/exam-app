@@ -1,3 +1,5 @@
+import { MODULES, MODULE_IDS, MODULES_OFF_KEY, MODULES_ORDER_KEY, SWITCHABLE_IDS, ownerKey } from './modules';
+
 // P01 §4.6 scoped settings. Every key is registered here with its allowed scopes, whether it is dated, its
 // values and its product default (a starter value, spec D17). Modules add their keys as they are built.
 
@@ -78,6 +80,13 @@ export const PAYROLL_APPROVAL_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
+  // T2-G 41 (answer 2746): modules switched off (People, Payroll and Compliance cannot be) and the rail's order (empty:
+  // the designed order). Changed on Settings › Modules (org.settings.manage); the module list is in modules.ts.
+  [MODULES_OFF_KEY]: { label: 'Modules switched off', scopes: ['tenant'], dated: false, values: SWITCHABLE_IDS, default: '', multi: true, labels: Object.fromEntries(MODULES.map((m) => [m.id, m.label])) },
+  // T2-G 44 (answer 2745): a named owner per module (Settings › Modules): shown on Home and the set-up hub, and who answers
+  // helpdesk questions in that module's categories. Not a permission.
+  ...Object.fromEntries(MODULES.map((m): [string, SettingDef] => [ownerKey(m.id), { label: `${m.label}: owner`, scopes: ['tenant'], dated: false, values: ['none'], default: 'none', labels: { none: 'Nobody named' }, oneOf: 'company_users' }])),
+  [MODULES_ORDER_KEY]: { label: 'Order of the modules', scopes: ['tenant'], dated: false, values: MODULE_IDS, default: '', multi: true, labels: Object.fromEntries(MODULES.map((m) => [m.id, m.label])) },
   // Batch B item 3 (answer 2368): how long the recycle bin keeps deleted items; shortening applies from the next nightly run.
   'recycle_bin.keep_days': { label: 'Keep deleted items in the recycle bin for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '180' },
   // Answer 1325: payroll setting changes wait for a second person (turning it off loosens a control: the access key too).

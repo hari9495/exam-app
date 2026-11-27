@@ -186,6 +186,8 @@ const LIVE_EMP = {
   due: undefined,
   moves: undefined,
 };
+// T2-G 44 (answer 2745): Who to ask, from the module owners named in Settings › Modules.
+export const PLT02EmployeeOwners: S = { name: 'PLT-02 · Role home · employee, live, who to ask (T2-G 44)', render: () => <RoleHomeScreen persona="employee" data={EMP} live={{ ...LIVE_EMP, owners: [{ module: 'People', name: 'Lakshmi Venkatesan' }, { module: 'Payroll', name: 'Suresh Pillai' }, { module: 'Time & Leave', name: 'Farhan Sheikh' }] }} /> };
 export const PLT02EmployeeLive: S = { name: 'PLT-02 · Role home · employee, live', render: () => <RoleHomeScreen persona="employee" data={EMP} live={LIVE_EMP} /> };
 export const PLT02EmployeeLivePay: S = {
   name: 'PLT-02 · Role home · employee, live, HR shows pay (hidden until asked)',

@@ -75,7 +75,7 @@ const IMPLICIT: Record<string, string[]> = {
     'workPhone', // employee.profile.edit in scope (checked by the service)
   ],
   EmployeeHistoryController: ['list', 'asOf', 'timeline', 'serviceDates'],
-  OrgStructureController: ['reference'], // public reference data (states, regions)
+  OrgStructureController: ['reference', 'modules'], // public reference data (states, regions); T2-G 41: the company's modules (the menu)
   AccessController: [],
   // PPL-34 on: the person record's panels, each with its class's key (the service checks scope per person).
   PersonPanelsController: ['myDisability', 'declareDisability', 'withdrawDisability'], // one's own disability declaration (PPL-38)
@@ -131,7 +131,7 @@ const IMPLICIT: Record<string, string[]> = {
   EmployeeImportController: [],
   PoliciesAdminController: [],
   // HLP-06: the form and one's own named report; cases: being routed to the case is the access (404 otherwise).
-  SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply', 'icCommittee', 'logAwareness', 'annualReportStep'], // IC routes: committee members only (404 otherwise); the report steps need the presiding officer (403)
+  SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply', 'icCommittee', 'logAwareness', 'annualReportStep', 'annualReportPdf'], // IC routes: committee members only (404 otherwise); the report steps need the presiding officer (403)
   // HLP-07/08/09: membership of the case is the access (404 otherwise); My cases is one's own part.
   CasesController: ['list', 'detail', 'message', 'notice', 'delay', 'moreTime', 'propose', 'approve', 'sendBack', 'icReport', 'vote', 'sign', 'relief', 'reliefDone', 'recuse', 'addMember', 'upload', 'file', 'letter'],
   EthicsController: ['reports', 'severity', 'route'],

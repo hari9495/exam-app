@@ -54,6 +54,16 @@ const GROUPS = {
 };
 export const RolesAccessHiringFields: S = { name: 'Roles & access · hiring field access (2426)', render: () => roles('u-admin', { initialView: 'fields', hiringFields: HIRING_FIELDS, groups: GROUPS }) };
 export const RolesAccessGroups: S = { name: 'Roles & access · staff groups (2430)', render: () => roles('u-admin', { initialView: 'groups', hiringFields: HIRING_FIELDS, groups: GROUPS }) };
+// T2-G 42 (answer 2745): a group worked out from rules beside the hand-picked ones.
+const RULE_CHOICES = {
+  legalEntityIds: [{ value: 'le1', label: 'Kaveri Foods Pvt Ltd' }],
+  locationIds: [{ value: 'l1', label: 'Hosur plant' }, { value: 'l2', label: 'Mysuru plant' }, { value: 'l3', label: 'Bengaluru office' }],
+  departmentIds: [{ value: 'd1', label: 'Operations' }, { value: 'd2', label: 'Quality' }],
+  gradeIds: [{ value: 'gr1', label: 'M1' }, { value: 'gr2', label: 'S2' }],
+  employmentTypeIds: [{ value: 'et1', label: 'Permanent' }, { value: 'et2', label: 'Fixed-term' }],
+};
+const RULE_GROUPS = { ...GROUPS, ruleChoices: RULE_CHOICES, groups: [...GROUPS.groups, { id: 'g3', name: 'Hosur shop floor', description: 'For safety notices', rules: { legalEntityIds: [], locationIds: ['l1'], departmentIds: ['d1', 'd2'], gradeIds: [], employmentTypeIds: [] }, members: [{ userId: 'u-other', name: 'Ramesh Iyer', email: 'admin@demo-org.test' }] }] };
+export const RolesAccessRuleGroups: S = { name: 'Roles & access · groups from rules (T2-G 42)', render: () => roles('u-admin', { initialView: 'groups', groups: RULE_GROUPS }) };
 export const RolesAccessGroupsEmpty: S = { name: 'Roles & access · staff groups, none yet', render: () => roles('u-admin', { initialView: 'groups', groups: { ...GROUPS, groups: [] } }) };
 export const RolesAccessDelete: S = { name: 'Roles & access · delete a role nobody holds', render: () => roles('u-admin', { initialView: 'roles', deletingRoleId: 'r-recep' }) };
 

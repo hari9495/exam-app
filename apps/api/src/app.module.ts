@@ -5,6 +5,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, HttpAdapterHost } from '@nestjs/core';
 import { SupportMaskInterceptor } from './hiring/support-mask.interceptor';
 import { ContainmentInterceptor } from './platform/containment';
+import { ModuleGateInterceptor } from './org-structure/modules';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -252,6 +253,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     { provide: APP_INTERCEPTOR, useClass: SupportMaskInterceptor },
     // Answer 1050: a contained company's exports, bank-detail changes and payouts are refused at the server.
     { provide: APP_INTERCEPTOR, useClass: ContainmentInterceptor },
+    // T2-G 41 (answer 2746): a switched-off module's routes answer 403; its data stays.
+    { provide: APP_INTERCEPTOR, useClass: ModuleGateInterceptor },
     {
       provide: SentryReporter,
       useFactory: () => {

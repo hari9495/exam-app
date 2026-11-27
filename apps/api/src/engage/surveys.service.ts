@@ -7,6 +7,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, buildViewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AnnouncementsService } from './announcements.service';
+import { ownGroupIds } from '../user-groups/group-rules';
 import { ActionPlanDto, AnswersDto, SurveyDto, type SurveyQuestionDto } from './dto';
 import { enpsOf, favourable, STARTER_QUESTIONS, type QuestionKind } from './engage-rules';
 import { addMonths } from '../learning/learning-rules';
@@ -65,6 +66,8 @@ export class SurveysService {
       minGroup: Number(await settingFor(tx, c, 'engage.survey.min_group', ANY_ENTITY)) || 5,
       locations: await tx.location.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       departments: await tx.department.findMany({ where: { organizationId: c.organizationId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+      // T2-G 42: the company's groups.
+      groups: await tx.userGroup.findMany({ where: { organizationId: c.organizationId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     }));
   }
 
@@ -76,7 +79,7 @@ export class SurveysService {
       for (const s of rows) {
         const invited = await tx.engSurveyInvite.count({ where: { surveyId: s.id } });
         const responded = await tx.engSurveyResponse.count({ where: { surveyId: s.id } });
-        out.push({ id: s.id, name: s.name, type: s.type, anonymous: s.anonymous, audience: s.locationIds.length + s.departmentIds.length ? `${s.locationIds.length} locations, ${s.departmentIds.length} departments` : 'Everyone', status: statusOf(s, today), invited, responded, opensOn: s.opensOn.toISOString().slice(0, 10), closesOn: s.closesOn.toISOString().slice(0, 10) });
+        out.push({ id: s.id, name: s.name, type: s.type, anonymous: s.anonymous, audience: s.locationIds.length + s.departmentIds.length + s.groupIds.length ? `${s.locationIds.length} locations, ${s.departmentIds.length} departments${s.groupIds.length ? `, ${s.groupIds.length} ${s.groupIds.length === 1 ? 'group' : 'groups'}` : ''}` : 'Everyone', status: statusOf(s, today), invited, responded, opensOn: s.opensOn.toISOString().slice(0, 10), closesOn: s.closesOn.toISOString().slice(0, 10) });
       }
       return out;
     });
@@ -85,7 +88,7 @@ export class SurveysService {
   detail(ctx: TenantContext, id: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const s = await this.survey(tx, c.organizationId, id);
-      return { id: s.id, name: s.name, type: s.type, anonymous: s.anonymous, minGroup: s.minGroup, questions: s.questions as Q[], locationIds: s.locationIds, departmentIds: s.departmentIds, opensOn: s.opensOn.toISOString().slice(0, 10), closesOn: s.closesOn.toISOString().slice(0, 10), remind: s.remind, repeat: s.repeat, autoInvite: s.autoInvite, autoAfterDays: s.autoAfterDays, status: statusOf(s, todayIst()) };
+      return { id: s.id, name: s.name, type: s.type, anonymous: s.anonymous, minGroup: s.minGroup, questions: s.questions as Q[], locationIds: s.locationIds, departmentIds: s.departmentIds, groupIds: s.groupIds, opensOn: s.opensOn.toISOString().slice(0, 10), closesOn: s.closesOn.toISOString().slice(0, 10), remind: s.remind, repeat: s.repeat, autoInvite: s.autoInvite, autoAfterDays: s.autoAfterDays, status: statusOf(s, todayIst()) };
     });
   }
 
@@ -115,10 +118,11 @@ export class SurveysService {
 
   private data(dto: SurveyDto) {
     const day = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00Z`);
-    return { name: dto.name, type: dto.type, anonymous: dto.anonymous, minGroup: dto.minGroup, questions: dto.questions as unknown as Prisma.InputJsonValue, locationIds: [...new Set(dto.locationIds)], departmentIds: [...new Set(dto.departmentIds)], opensOn: day(dto.opensOn), closesOn: day(dto.closesOn), remind: dto.remind, repeat: dto.repeat ?? 'none', autoInvite: Boolean(dto.autoInvite), autoAfterDays: dto.autoAfterDays ?? 30 };
+    return { name: dto.name, type: dto.type, anonymous: dto.anonymous, minGroup: dto.minGroup, questions: dto.questions as unknown as Prisma.InputJsonValue, locationIds: [...new Set(dto.locationIds)], departmentIds: [...new Set(dto.departmentIds)], groupIds: [...new Set(dto.groupIds ?? [])], opensOn: day(dto.opensOn), closesOn: day(dto.closesOn), remind: dto.remind, repeat: dto.repeat ?? 'none', autoInvite: Boolean(dto.autoInvite), autoAfterDays: dto.autoAfterDays ?? 30 };
   }
 
-  private async lists(tx: Tx, org: string, dto: { locationIds: string[]; departmentIds: string[] }) {
+  private async lists(tx: Tx, org: string, dto: { locationIds: string[]; departmentIds: string[]; groupIds?: string[] }) {
+    await ownGroupIds(tx, org, dto.groupIds);
     if (dto.locationIds.length && (await tx.location.count({ where: { organizationId: org, id: { in: dto.locationIds } } })) !== new Set(dto.locationIds).size) throw new BadRequestException('Choose the company’s own locations.');
     if (dto.departmentIds.length && (await tx.department.count({ where: { organizationId: org, id: { in: dto.departmentIds } } })) !== new Set(dto.departmentIds).size) throw new BadRequestException('Choose the company’s own departments.');
   }
@@ -132,7 +136,7 @@ export class SurveysService {
       if (!(s.questions as Q[]).length) throw new BadRequestException('Add at least one question.');
       if (s.closesOn.toISOString().slice(0, 10) < today) throw new BadRequestException('The closing day has passed. Choose a later one.');
       // Answer 2664: an automatic onboarding or exit survey invites people later, as they reach the event.
-      const people = s.autoInvite ? [] : await this.announcements.audience(tx, c.organizationId, s.locationIds, s.departmentIds);
+      const people = s.autoInvite ? [] : await this.announcements.audience(tx, c.organizationId, s.locationIds, s.departmentIds, undefined, s.groupIds);
       if (!people.length && !s.autoInvite) throw new BadRequestException('Nobody is in that audience today.');
       await tx.engSurveyInvite.createMany({ data: people.map((p) => ({ organizationId: c.organizationId, surveyId: s.id, userId: p.userId })), skipDuplicates: true });
       await tx.engSurvey.update({ where: { id }, data: { launchedAt: new Date() } });
@@ -169,8 +173,8 @@ export class SurveysService {
             if (!claimed.count) return null;
             const label = new Date(`${opens}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
             const base = s.name.replace(/ · [A-Z][a-z]{2} \d{4}$/, '');
-            const next = await tx.engSurvey.create({ data: { organizationId: s.organizationId, name: `${base} · ${label}`.slice(0, 150), type: s.type, anonymous: s.anonymous, minGroup: s.minGroup, questions: s.questions as Prisma.InputJsonValue, locationIds: s.locationIds, departmentIds: s.departmentIds, opensOn: new Date(`${opens}T00:00:00Z`), closesOn: new Date(`${closes}T00:00:00Z`), remind: s.remind, repeat: s.repeat, createdBy: s.createdBy, launchedAt: new Date() } });
-            const people = await this.announcements.audience(tx, s.organizationId, s.locationIds, s.departmentIds);
+            const next = await tx.engSurvey.create({ data: { organizationId: s.organizationId, name: `${base} · ${label}`.slice(0, 150), type: s.type, anonymous: s.anonymous, minGroup: s.minGroup, questions: s.questions as Prisma.InputJsonValue, locationIds: s.locationIds, departmentIds: s.departmentIds, groupIds: s.groupIds, opensOn: new Date(`${opens}T00:00:00Z`), closesOn: new Date(`${closes}T00:00:00Z`), remind: s.remind, repeat: s.repeat, createdBy: s.createdBy, launchedAt: new Date() } });
+            const people = await this.announcements.audience(tx, s.organizationId, s.locationIds, s.departmentIds, undefined, s.groupIds);
             await tx.engSurveyInvite.createMany({ data: people.map((p) => ({ organizationId: s.organizationId, surveyId: next.id, userId: p.userId })), skipDuplicates: true });
             await audit(tx, c, 'engage.survey.repeated', 'eng_survey', next.id, { from: s.id, invited: people.length });
             return { next, users: people.map((p) => p.userId) };
@@ -192,7 +196,7 @@ export class SurveysService {
               : await tx.$queryRaw<{ user_id: string }[]>`SELECT DISTINCT e.user_id::text FROM exit_cases x JOIN employees e ON e.organization_id = x.organization_id AND e.id = x.employee_id
                   WHERE x.organization_id = ${s.organizationId}::uuid AND e.user_id IS NOT NULL AND x.status IN ('accepted', 'cleared') AND x.accepted_at >= ${since}::timestamptz`;
           // Only people in the survey's audience (its locations and departments), each once.
-          const inAudience = new Set((await this.announcements.audience(tx, s.organizationId, s.locationIds, s.departmentIds)).map((p) => p.userId));
+          const inAudience = new Set((await this.announcements.audience(tx, s.organizationId, s.locationIds, s.departmentIds, undefined, s.groupIds)).map((p) => p.userId));
           const already = new Set((await tx.engSurveyInvite.findMany({ where: { surveyId: s.id }, select: { userId: true } })).map((i) => i.userId));
           const users = raw.map((r) => r.user_id).filter((u) => (s.type === 'exit' || inAudience.has(u)) && !already.has(u));
           if (!users.length) return [];

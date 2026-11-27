@@ -2585,6 +2585,9 @@ model UserGroup {
   organizationId String   @map("organization_id") @db.Uuid
   name           String   @db.VarChar(200)
   description    String?  @db.VarChar(1000)
+  /// T2-G 42 (answer 2745): null = picked by hand; else the rules members are worked out from (daily and on save).
+  rules          Json?
+  membersRefreshedAt DateTime? @map("members_refreshed_at") @db.Timestamptz(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([organizationId, name])
@@ -4228,6 +4231,8 @@ model SdCategory {
   skills           String[] @default([])
   /// Batch F item 33 (answer 2573): 'desk' or 'manager' (the requester's manager answers; never for confidential ones).
   answeredBy       String   @default("desk") @map("answered_by") @db.VarChar(8)
+  /// T2-G 44 (answer 2745): the module this category is about; with answered_by 'owner' its named owner answers.
+  module           String?  @db.VarChar(20)
   active           Boolean  @default(true)
   sortOrder        Int      @default(0) @map("sort_order")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -13640,6 +13645,9 @@ model EngPost {
   kudos         EngKudos?
 
   @@index([organizationId, kind, publishAt(sort: Desc)], map: "eng_posts_feed_idx")
+  /// T2-G 42: groups in the audience (any of them).
+  groupIds       String[] @default([]) @map("group_ids") @db.Uuid
+
   @@map("eng_posts")
 }
 
@@ -13686,6 +13694,9 @@ model EngSurvey {
   invites        EngSurveyInvite[]
   responses      EngSurveyResponse[]
   plans          EngActionPlan[]
+
+  /// T2-G 42: groups in the audience (any of them).
+  groupIds       String[] @default([]) @map("group_ids") @db.Uuid
 
   @@map("eng_surveys")
 }
@@ -15929,6 +15940,9 @@ model LearningRule {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
   version        Int      @default(1)
+
+  /// T2-G 42: groups in the audience (any of them).
+  groupIds       String[] @default([]) @map("group_ids") @db.Uuid
 
   @@map("learning_rules")
 }

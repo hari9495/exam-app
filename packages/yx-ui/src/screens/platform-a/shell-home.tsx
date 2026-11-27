@@ -698,6 +698,8 @@ export interface LiveHome {
   goals?: { text: string; href: string }[];
   /** Employee: "My tasks": checklist tasks, feedback asked of them and their own review, each linked. */
   tasks?: { text: string; href: string }[];
+  /** T2-G 44 (answer 2745): "Who to ask": each module's named owner (People's is "Your HR contact"). */
+  owners?: { module: string; name: string }[];
   /** "Coming up": birthdays and work anniversaries in the person's circle, and the next holidays. */
   coming?: { id: string; kind: 'person' | 'holiday'; name: string; text: string }[];
   quickActions?: { label: string; href: string; kind: 'leave' | 'wfh' | 'payslip' }[];
@@ -1097,6 +1099,23 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
                 x.kind === 'person' ? <PersonLabel name={x.name} secondary={x.text} /> : <span className="yx-plt-list__main">{x.name}<span className="yx-plt-muted">{x.text}</span></span>,
               )}
             />
+          ),
+        }]
+      : []),
+    // T2-G 44 (answer 2745): the person named for each module, drawn as the first-run "Your people" list (Your HR contact).
+    ...(live.owners?.length
+      ? [{
+          id: 'owners',
+          title: 'Who to ask',
+          size: 4 as const,
+          content: (
+            <ul className="yx-plt-list">
+              {live.owners.map((o) => (
+                <li key={o.module}>
+                  <span className="yx-plt-list__main"><PersonLabel name={o.name} secondary={o.module === 'People' ? 'Your HR contact' : `${o.module} contact`} /></span>
+                </li>
+              ))}
+            </ul>
           ),
         }]
       : []),

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CalendarClock, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
-import { AccessibilityMenu, Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
+import { AccessibilityMenu, Button, CommandPalette, EmptyState, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { AvailabilityState, DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import { downForMaintenance } from '../../../lib/yx-availability';
@@ -32,6 +32,7 @@ import { ScopeProvider, YxNavContext, recentMonths, useScope, useWorkspaceCounts
 import { DeskHelp } from './desk-help';
 import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
+import { inCompanyOrder, moduleOfHref, pageOff, type CompanyModule } from '../../../lib/yx-modules';
 import { lastAreaKey, readLastArea, writeLastArea, type LastArea } from '../../../lib/yx-recent';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
@@ -97,6 +98,10 @@ function Frame({ children }: { children: React.ReactNode }) {
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
   const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: (q) => (q.state.data?.maintenance?.phase === 'now' ? 60_000 : 15 * 60_000) });
+  // T2-G 41 (answer 2746): the company's modules; one that is off leaves the menu and its pages say so.
+  const companyModules = useOrg<{ modules: CompanyModule[] }>('/modules');
+  const modulesOff = useMemo(() => companyModules.data?.modules?.filter((m) => !m.on).map((m) => m.id) ?? [], [companyModules.data]);
+  const moduleOrder = useMemo(() => companyModules.data?.modules?.map((m) => m.id), [companyModules.data]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -153,10 +158,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         projectReports: Boolean(projectsOn.data?.reports),
         panellist: Boolean(myInterviews.data?.length),
         trainer: Boolean(learningRoles.data?.trainer),
+        modulesOff,
+        moduleOrder,
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data],
+    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data, modulesOff, moduleOrder],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support,
@@ -223,7 +230,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const areaId: AreaId = hit?.area.id ?? AREA_BY_PATH.find(([p]) => pathname.startsWith(p))?.[1] ?? 'home';
   const area: NavArea = nav.find((a) => a.id === areaId) ?? nav[0];
   const first = (a: NavArea) => a.sections[0].items[0];
-  const rail = SCREEN_RAIL.flatMap((r) => {
+  const rail = inCompanyOrder(SCREEN_RAIL, moduleOrder).flatMap((r) => {
     const a = nav.find((x) => x.id === r.id);
     return a ? [{ ...r, href: first(a).href }] : [];
   });
@@ -385,7 +392,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         {downForMaintenance(availability.data?.maintenance, availability.isError) ? (
           <AvailabilityState kind="maintenance" feature="YukthiX" until={new Date(availability.data!.maintenance!.endsAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} action={null} />
         ) : (
-          <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{children}</YxNavContext.Provider>
+          <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{pageOff(pathname, modulesOff) ? <EmptyState title={`${companyModules.data?.modules?.find((m) => m.id === moduleOfHref(pathname))?.label ?? 'This module'} is switched off`} description="Your company does not use it now. Its data is kept. Your System Admin can switch it on in Settings › Modules." /> : children}</YxNavContext.Provider>
         )}
       </YxPageHelp>
     </DesktopFrame>

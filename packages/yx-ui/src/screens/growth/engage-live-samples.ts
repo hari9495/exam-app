@@ -17,9 +17,11 @@ export const liveAnnouncements = (over: Partial<LiveAnnouncements> = {}): LiveAn
   options: {
     locations: [{ id: 'loc-hsr', name: 'Hosur plant' }, { id: 'loc-blr', name: 'Bengaluru head office' }],
     departments: [{ id: 'dep-ops', name: 'Operations' }, { id: 'dep-q', name: 'Quality' }],
+    // T2-G 42: the company's groups.
+    groups: [{ id: 'grp-floor', name: 'Hosur shop floor' }],
     everyone: 248,
   },
-  reach: async (l, d) => (l.length ? 96 : 0) + (d.length ? 17 : 0),
+  reach: async (l, d, g) => (l.length ? 96 : 0) + (d.length ? 17 : 0) + (g?.length ? 12 : 0),
   onPublish: async () => ({ id: 'a3' }),
   detail: {
     id: 'a1',

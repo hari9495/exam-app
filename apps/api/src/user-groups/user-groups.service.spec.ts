@@ -74,7 +74,7 @@ describe('UserGroupsService', () => {
 
       expect(tx.userGroup.create).toHaveBeenCalledWith({
         data: { organizationId: 'org-1', name: 'Interviewers', description: null },
-        select: { id: true, name: true, description: true },
+        select: { id: true, name: true, description: true, rules: true, membersRefreshedAt: true },
       });
       expect(tx.userGroupMember.createMany).toHaveBeenCalledWith({
         data: [
@@ -88,6 +88,8 @@ describe('UserGroupsService', () => {
         id: 'g1',
         name: 'Interviewers',
         description: null,
+        rules: null,
+        membersRefreshedAt: null,
         members: [
           { userId: 'u1', name: 'Alice', email: 'alice@x.com' },
           { userId: 'u2', name: 'Bob', email: 'bob@x.com' },
@@ -127,7 +129,7 @@ describe('UserGroupsService', () => {
       expect(tx.userGroup.update).toHaveBeenCalledWith({
         where: { id: 'g1' },
         data: { name: 'Renamed' },
-        select: { id: true, name: true, description: true },
+        select: { id: true, name: true, description: true, rules: true, membersRefreshedAt: true },
       });
       expect(audit.record).toHaveBeenCalledTimes(1);
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.updated', entityId: 'g1' }));
@@ -135,6 +137,8 @@ describe('UserGroupsService', () => {
         id: 'g1',
         name: 'Renamed',
         description: null,
+        rules: null,
+        membersRefreshedAt: null,
         members: [{ userId: 'u1', name: 'Alice', email: 'alice@x.com' }],
       });
     });
@@ -278,6 +282,8 @@ describe('UserGroupsService', () => {
   });
 
   describe('mine', () => {
+    // T2-G 42: only hand-picked groups count for hiring.
+    beforeEach(() => tx.userGroup.findMany.mockResolvedValue([{ id: 'g1' }, { id: 'g2' }]));
     it("returns the caller's groupIds and deduped co-member ids excluding the caller", async () => {
       tx.userGroupMember.findMany
         .mockResolvedValueOnce([{ groupId: 'g1' }, { groupId: 'g2' }]) // caller's memberships

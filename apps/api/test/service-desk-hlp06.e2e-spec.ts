@@ -1,4 +1,5 @@
 process.env.SD_SCANNER = 'dev-fake';
+import { pdfText } from './fixtures/pdf-text';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -337,6 +338,22 @@ describe('HLP-06 speak-up filing', () => {
     expect((await api('ic1', 'get', '/ic').expect(200)).body.reports[0]).toMatchObject({ stage: 'district', actionTaken: '1 transfer' });
     const logs = await inA((tx) => tx.auditLog.findMany({ where: { action: { in: ['posh.awareness_logged', 'posh.annual_report_step'] } }, select: { action: true } }));
     expect(logs.filter((l) => l.action === 'posh.annual_report_step')).toHaveLength(3);
+  });
+
+  // Answer 2621 (T2-G): the annual report as a PDF for the committee's own members; the same counts; audited.
+  it('answer 2621: the annual report PDF for committee members only, with the counts and the action taken', async () => {
+    const year = Number(today.slice(0, 4));
+    const pdf = (q: string, who: Who = 'ic1') => api(who, 'get', `/ic/report/pdf${q}`).buffer(true).parse((res, cb) => { const b: Buffer[] = []; res.on('data', (c: Buffer) => b.push(c)); res.on('end', () => cb(null, Buffer.concat(b))); });
+    for (const who of ['divya', 'hr', 'adminA', 'ethics1', 'adminB'] as const) await pdf(`?year=${year}`, who).expect(404);
+    await pdf('?year=2012').expect(400);
+    await pdf(`?year=${year + 1}`).expect(400);
+    await pdf('').expect(400);
+    const res = await pdf(`?year=${year}`).expect(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toContain(`ic-annual-report-${year}-whole-company.pdf`);
+    const text = pdfText(res.body as Buffer);
+    for (const s of ['Annual report of the Internal Committee', 'Whole company', '1 transfer', 'Sent to the District Officer', 'more than ninety days']) expect(text).toContain(s);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'posh.annual_report_downloaded' } }))).toBe(1);
   });
 
   it('check my report: wrong codes are counted; the right code shows the team reply; the reporter replies; files attach', async () => {

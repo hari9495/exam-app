@@ -67,6 +67,13 @@ export class SurveyDto {
   @IsUUID('all', { each: true })
   departmentIds!: string[];
 
+  /** T2-G 42: the company's groups (any of them). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  groupIds?: string[];
+
   @IsDateString({ strict: true })
   opensOn!: string;
 
@@ -276,6 +283,13 @@ export class AudienceDto {
   @ArrayMaxSize(200)
   @IsUUID('all', { each: true })
   departmentIds!: string[];
+
+  /** T2-G 42 (answer 2745): the company's groups (any of them), together with the location and department lists. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  groupIds?: string[];
 }
 
 export class AnnouncementDto extends AudienceDto {

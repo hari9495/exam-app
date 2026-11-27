@@ -266,6 +266,10 @@ export const YX_KEYS = [
   'pipelines:configure',
   // Answer 2430: staff groups on Settings › Roles & access.
   'users:manage_groups',
+  // T2-G 42 (answer 2745): HR's groups key.
+  'people.group.manage',
+  // T2-G 47 (answer 2747): headcount and attrition.
+  'people.analytics.view',
   'org.position.manage',
   'payroll.ledger.manage',
 ] as const;

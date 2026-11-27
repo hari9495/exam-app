@@ -910,6 +910,8 @@ export interface LiveRule {
   locationIds: string[];
   departmentIds: string[];
   designation: string | null;
+  /** T2-G 42: the company's groups (any of them). */
+  groupIds?: string[];
   population: string;
   dueDays: number;
   repeatMonths: number;
@@ -924,6 +926,7 @@ export interface RuleInput {
   locationIds: string[];
   departmentIds: string[];
   designation: string | null;
+  groupIds?: string[];
   dueDays: number;
   repeatMonths: 0 | 12 | 24;
   active: boolean;
@@ -936,26 +939,29 @@ export interface LiveRules {
   entities: SelectOption[];
   locations: SelectOption[];
   departments: SelectOption[];
+  /** T2-G 42 (answer 2745): the company's groups (hand-picked or from rules). */
+  groups?: SelectOption[];
   onPreview: (input: RuleInput) => Promise<{ matches: number; toEnrol: number }>;
   onSave: (input: RuleInput, rule: LiveRule | null) => Promise<void>;
 }
 
-const RULE_FIELDS = ['entity', 'location', 'department', 'designation'] as const;
+const RULE_FIELDS = ['entity', 'location', 'department', 'designation', 'group'] as const;
 
 /** The rule's people as the condition builder shows them: every condition must hold. */
-function toConditions(r: Pick<RuleInput, 'legalEntityIds' | 'locationIds' | 'departmentIds' | 'designation'>): Rule {
+function toConditions(r: Pick<RuleInput, 'legalEntityIds' | 'locationIds' | 'departmentIds' | 'designation' | 'groupIds'>): Rule {
   const items = [
     ...(r.legalEntityIds.length ? [{ id: 'c1', field: 'entity', operator: 'one_of' as const, value: r.legalEntityIds }] : []),
     ...(r.locationIds.length ? [{ id: 'c2', field: 'location', operator: 'one_of' as const, value: r.locationIds }] : []),
     ...(r.departmentIds.length ? [{ id: 'c3', field: 'department', operator: 'one_of' as const, value: r.departmentIds }] : []),
     ...(r.designation ? [{ id: 'c4', field: 'designation', operator: 'contains' as const, value: r.designation }] : []),
+    ...(r.groupIds?.length ? [{ id: 'c5', field: 'group', operator: 'one_of' as const, value: r.groupIds }] : []),
   ];
   return { trigger: null, conditions: { id: 'g1', join: 'and', items }, actions: [] };
 }
 
 /** Back from the builder: only "all of these" with "is one of" (and "contains" for the designation) are kept by rules. */
-export function fromConditions(rule: Rule): { ok: true; value: Pick<RuleInput, 'legalEntityIds' | 'locationIds' | 'departmentIds' | 'designation'> } | { ok: false; message: string } {
-  const out = { legalEntityIds: [] as string[], locationIds: [] as string[], departmentIds: [] as string[], designation: null as string | null };
+export function fromConditions(rule: Rule): { ok: true; value: Pick<RuleInput, 'legalEntityIds' | 'locationIds' | 'departmentIds' | 'designation' | 'groupIds'> } | { ok: false; message: string } {
+  const out = { legalEntityIds: [] as string[], locationIds: [] as string[], departmentIds: [] as string[], designation: null as string | null, groupIds: [] as string[] };
   const items = rule.conditions.items.filter((c) => isGroup(c) || c.field !== null);
   if (items.length > 1 && rule.conditions.join !== 'and') return { ok: false, message: 'Rules match people who meet all the conditions. Change "any" to "all".' };
   for (const c of items) {
@@ -966,12 +972,14 @@ export function fromConditions(rule: Rule): { ok: true; value: Pick<RuleInput, '
       if (c.operator !== 'contains' && c.operator !== 'is') return { ok: false, message: 'Use "contains" for the designation.' };
       out.designation = list[0]?.trim() || null;
     } else {
-      if (c.operator !== 'one_of' && c.operator !== 'is') return { ok: false, message: 'Use "is one of" for the legal entity, location and department.' };
-      const key = field === 'entity' ? 'legalEntityIds' : field === 'location' ? 'locationIds' : 'departmentIds';
+      if (c.operator !== 'one_of' && c.operator !== 'is') return { ok: false, message: 'Use "is one of" for the legal entity, location, department and group.' };
+      const key = field === 'entity' ? 'legalEntityIds' : field === 'location' ? 'locationIds' : field === 'group' ? 'groupIds' : 'departmentIds';
       out[key] = [...new Set([...out[key], ...list])];
     }
   }
-  return { ok: true, value: out };
+  // T2-G 42: groups only when chosen (a rule without them is as before).
+  const { groupIds, ...rest } = out;
+  return { ok: true, value: groupIds.length ? out : rest };
 }
 
 export function LiveAssignmentRulesScreen({ live }: { live: LiveRules }) {
@@ -984,10 +992,11 @@ export function LiveAssignmentRulesScreen({ live }: { live: LiveRules }) {
         { key: 'location', label: 'Location', type: 'choice', options: live.locations.map((o) => ({ value: o.value, label: o.label })) },
         { key: 'department', label: 'Department', type: 'choice', options: live.departments.map((o) => ({ value: o.value, label: o.label })) },
         { key: 'designation', label: 'Designation', type: 'text' },
+        ...(live.groups?.length ? [{ key: 'group', label: 'Group', type: 'choice' as const, options: live.groups.map((o) => ({ value: o.value, label: o.label })) }] : []),
       ],
       recipients: [],
     }),
-    [live.entities, live.locations, live.departments],
+    [live.entities, live.locations, live.departments, live.groups],
   );
   return (
     <GrowthFrame area="learning" active="Compliance" persona="ld">

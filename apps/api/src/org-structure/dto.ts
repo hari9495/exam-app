@@ -9,6 +9,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -22,6 +23,7 @@ import {
   validateSync,
 } from 'class-validator';
 import { SCOPE_ORDER } from './settings-registry';
+import { MODULE_IDS } from './modules';
 
 // Request bodies for P01 organisation records. Create and edit share one body (an edit sends the whole
 // record); `code` left out is generated on create and kept on edit (YX-ORG-05).
@@ -405,4 +407,22 @@ export class SettingsHistoryQueryDto {
   @Min(1)
   @Max(20)
   limit?: number;
+}
+
+/** T2-G 41: Settings › Modules: the modules switched off and the rail order (module ids). */
+export class ModulesDto {
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsIn(MODULE_IDS, { each: true })
+  off!: string[];
+
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsIn(MODULE_IDS, { each: true })
+  order!: string[];
+
+  /** T2-G 44: module id → the owner's user id, or null for nobody (only the ones that change need be sent). */
+  @IsOptional()
+  @IsObject()
+  owners?: Record<string, string | null>;
 }

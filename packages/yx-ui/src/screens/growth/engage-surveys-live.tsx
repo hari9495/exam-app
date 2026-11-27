@@ -116,6 +116,8 @@ export interface SurveyInput {
   questions: LiveQuestion[];
   locationIds: string[];
   departmentIds: string[];
+  /** T2-G 42: the company's groups in the audience. */
+  groupIds?: string[];
   opensOn: string;
   closesOn: string;
   remind: boolean;
@@ -125,7 +127,7 @@ export interface SurveyInput {
   autoAfterDays?: number;
 }
 export interface LiveSurveyBuilder {
-  options: { starters: Record<SurveyType, LiveQuestion[]>; minGroup: number; locations: { id: string; name: string }[]; departments: { id: string; name: string }[] } | null;
+  options: { starters: Record<SurveyType, LiveQuestion[]>; minGroup: number; locations: { id: string; name: string }[]; departments: { id: string; name: string }[]; groups?: { id: string; name: string }[] } | null;
   /** A draft being changed. */
   initial?: SurveyInput & { id: string };
   today: Date;
@@ -145,7 +147,7 @@ export function LiveSurveyBuilderScreen({ live }: { live: LiveSurveyBuilder }) {
   const [questions, setQuestions] = useState<LiveQuestion[]>(init?.questions ?? o?.starters.pulse ?? []);
   const [anon, setAnon] = useState(init ? init.anonymous : true);
   const [min, setMin] = useState<string>(String(init?.minGroup ?? o?.minGroup ?? 5));
-  const [audience, setAudience] = useState<string[]>(init ? [...init.locationIds.map((x) => `loc:${x}`), ...init.departmentIds.map((x) => `dep:${x}`)] : ['everyone']);
+  const [audience, setAudience] = useState<string[]>(init ? [...init.locationIds.map((x) => `loc:${x}`), ...init.departmentIds.map((x) => `dep:${x}`), ...(init.groupIds ?? []).map((x) => `grp:${x}`)] : ['everyone']);
   const [opens, setOpens] = useState<Date | null>(init ? day(init.opensOn) : live.today);
   const [closes, setCloses] = useState<Date | null>(init ? day(init.closesOn) : null);
   const [remind, setRemind] = useState(init?.remind ?? true);
@@ -195,7 +197,7 @@ export function LiveSurveyBuilderScreen({ live }: { live: LiveSurveyBuilder }) {
   const library = Object.values(o.starters).flat().filter((l, i, all) => all.findIndex((x) => x.id === l.id && x.text === l.text) === i && !questions.some((q) => q.text === l.text));
   const input = (): SurveyInput => {
     const everyone = audience.includes('everyone');
-    return { name: name.trim(), type, anonymous: namedOk ? anon : true, minGroup: Number(min), questions, locationIds: everyone ? [] : audience.filter((x) => x.startsWith('loc:')).map((x) => x.slice(4)), departmentIds: everyone ? [] : audience.filter((x) => x.startsWith('dep:')).map((x) => x.slice(4)), opensOn: iso(opens ?? live.today), closesOn: iso(closes!), remind, ...(lifecycle ? { repeat: 'none' as const, autoInvite: auto, autoAfterDays: Number(autoDays) || 0 } : { repeat, autoInvite: false }) };
+    return { name: name.trim(), type, anonymous: namedOk ? anon : true, minGroup: Number(min), questions, locationIds: everyone ? [] : audience.filter((x) => x.startsWith('loc:')).map((x) => x.slice(4)), departmentIds: everyone ? [] : audience.filter((x) => x.startsWith('dep:')).map((x) => x.slice(4)), groupIds: everyone ? [] : audience.filter((x) => x.startsWith('grp:')).map((x) => x.slice(4)), opensOn: iso(opens ?? live.today), closesOn: iso(closes!), remind, ...(lifecycle ? { repeat: 'none' as const, autoInvite: auto, autoAfterDays: Number(autoDays) || 0 } : { repeat, autoInvite: false }) };
   };
   const save = async (launch: boolean) => {
     if (early.stop()) return;
@@ -331,7 +333,7 @@ export function LiveSurveyBuilderScreen({ live }: { live: LiveSurveyBuilder }) {
                   <MultiSelect
                     value={audience}
                     onChange={(a) => setAudience(a.includes('everyone') && !audience.includes('everyone') ? ['everyone'] : a.filter((x) => x !== 'everyone' || a.length === 1))}
-                    options={[{ value: 'everyone', label: 'Everyone' }, ...o.locations.map((l) => ({ value: `loc:${l.id}`, label: `Location: ${l.name}` })), ...o.departments.map((d) => ({ value: `dep:${d.id}`, label: `Department: ${d.name}` }))]}
+                    options={[{ value: 'everyone', label: 'Everyone' }, ...o.locations.map((l) => ({ value: `loc:${l.id}`, label: `Location: ${l.name}` })), ...o.departments.map((d) => ({ value: `dep:${d.id}`, label: `Department: ${d.name}` })), ...(o.groups ?? []).map((g) => ({ value: `grp:${g.id}`, label: `Group: ${g.name}` }))]}
                   />
                 </FormField>
                 <FieldRow>
