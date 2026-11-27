@@ -189,7 +189,9 @@ describe('Staffing desk slice 2', () => {
     expect(again).toMatchObject({ emailed: false, rows: [expect.objectContaining({ result: 'already', submissionId: ids.subArun })] });
     const board = (await api('rec', 'get', '/staffing/submissions').expect(200)).body;
     expect(board.map((x: { person: string; source: string; stage: string; slaDays: number; emailed: boolean }) => [x.person, x.source, x.stage, x.slaDays, x.emailed]).sort()).toEqual([['Arun Kumar', 'Bench', 'submitted', 2, true], ['Deepa Nair', 'Pipeline', 'submitted', 2, true]]);
-    expect(JSON.stringify(board)).not.toMatch(/800/); // never a pay rate on the board
+    // Never a pay rate on the board (the bill rate is the client's): no pay or cost field, and not the number 800 as a
+    // word of its own, so a random id holding "800" never trips it (CI, 27 Nov 2026).
+    expect(JSON.stringify(board)).not.toMatch(/"(payRate|costRate|margin)"|\b800(\.00)?\b/);
     expect((await api('adminB', 'get', '/staffing/submissions').expect(200)).body).toEqual([]);
   });
 

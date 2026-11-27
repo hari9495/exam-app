@@ -205,17 +205,20 @@ describe('Time rosters: rules, staff view and licences', () => {
 
   describe('rule 5: a published day changes inside the notice only with a reason', () => {
     it('no reason → 400 NOTICE_REASON (nothing published); a short reason → 400; with a reason it is kept on the day', async () => {
+      // Sunday is the location's weekly off: rostering it would trip the weekly-off guard (409), so a Sunday tomorrow
+      // (CI at 01:15 IST on a Saturday) moves the test to Monday, still inside the 72 h notice.
+      const soon = new Date(`${d(1)}T00:00:00Z`).getUTCDay() === 0 ? d(2) : d(1);
       // Tomorrow is inside the 24 h notice for a morning shift; publish tomorrow first with the default (0 h) notice.
       await setSetting('roster.change_notice_hours', '0');
-      await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.peerEmp, on: d(1), value: ids.M }] }).expect(200);
-      await api('mgr', 'post', '/time/roster/publish').send({ week: d(1) }).expect(200);
+      await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.peerEmp, on: soon, value: ids.M }] }).expect(200);
+      await api('mgr', 'post', '/time/roster/publish').send({ week: soon }).expect(200);
       await setSetting('roster.change_notice_hours', '72');
-      await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.peerEmp, on: d(1), value: 'off' }] }).expect(200);
-      expect((await api('mgr', 'post', '/time/roster/publish').send({ week: d(1) }).expect(400)).body.code).toBe('NOTICE_REASON');
-      await api('mgr', 'post', '/time/roster/publish').send({ week: d(1), reason: 'x' }).expect(400);
-      expect(await inA((tx) => tx.rosterEntry.findFirst({ where: { organizationId: org.A.id, employeeId: ids.peerEmp, workOn: new Date(`${d(1)}T00:00:00Z`) } }))).toMatchObject({ isOff: false, draft: 'off' });
-      await api('mgr', 'post', '/time/roster/publish').send({ week: d(1), reason: 'Machine breakdown on line 2' }).expect(200);
-      expect(await inA((tx) => tx.rosterEntry.findFirst({ where: { organizationId: org.A.id, employeeId: ids.peerEmp, workOn: new Date(`${d(1)}T00:00:00Z`) } }))).toMatchObject({ isOff: true, published: true, changeReason: 'Machine breakdown on line 2' });
+      await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.peerEmp, on: soon, value: 'off' }] }).expect(200);
+      expect((await api('mgr', 'post', '/time/roster/publish').send({ week: soon }).expect(400)).body.code).toBe('NOTICE_REASON');
+      await api('mgr', 'post', '/time/roster/publish').send({ week: soon, reason: 'x' }).expect(400);
+      expect(await inA((tx) => tx.rosterEntry.findFirst({ where: { organizationId: org.A.id, employeeId: ids.peerEmp, workOn: new Date(`${soon}T00:00:00Z`) } }))).toMatchObject({ isOff: false, draft: 'off' });
+      await api('mgr', 'post', '/time/roster/publish').send({ week: soon, reason: 'Machine breakdown on line 2' }).expect(200);
+      expect(await inA((tx) => tx.rosterEntry.findFirst({ where: { organizationId: org.A.id, employeeId: ids.peerEmp, workOn: new Date(`${soon}T00:00:00Z`) } }))).toMatchObject({ isOff: true, published: true, changeReason: 'Machine breakdown on line 2' });
       await setSetting('roster.change_notice_hours', '24');
     });
   });
