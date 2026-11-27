@@ -1298,7 +1298,72 @@ function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm, n
 }
 
 // PRJ-02 (phone)
-export function TimesheetApprovalsPhone({ groups }: { groups: ApprovalGroup[] }) {
+export function TimesheetApprovalsPhone({ groups, live }: { groups: ApprovalGroup[]; /** T2-H: the lines waiting for me, with the desk page's decide call. */ live?: LiveTimesheetApprovals }) {
+  if (live) return <LiveTimesheetApprovalsPhone live={live} />;
+  return <DrawnTimesheetApprovalsPhone groups={groups} />;
+}
+
+/** One week at a time with the same decisions as the desk page (approve, reduce, reject per line; send back = reject all with the reason). */
+function LiveTimesheetApprovalsPhone({ live }: { live: LiveTimesheetApprovals }) {
+  const { toast } = useToast();
+  const [at, setAt] = useState(0);
+  const [failed, setFailed] = useState<string | null>(null);
+  const items = (live.data?.groups ?? []).flatMap((g) => g.items.map((i) => ({ ...i, code: g.project, week: g.week })));
+  const i = items[Math.min(at, Math.max(0, items.length - 1))];
+  const act = async (fn: () => Promise<void>, done: string) => {
+    setFailed(null);
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Nothing was changed.');
+    }
+  };
+  if (live.state !== 'ready')
+    return (
+      <PhoneFrame tab="requests" title="Timesheets to approve">
+        {live.state === 'loading' ? <Skeleton height={160} /> : live.state === 'no-access' ? <EmptyState compact title="You approve no timesheets." /> : <ErrorState title="We couldn't load the timesheets." description="Try again in a moment." onRetry={live.onRetry} />}
+      </PhoneFrame>
+    );
+  return (
+    <PhoneFrame tab="requests" title="Timesheets to approve">
+      {!i ? (
+        <EmptyState title="You're all caught up." />
+      ) : (
+        <>
+          <Text size="sm" tone="secondary" aria-live="polite">
+            {i.code} · {items.indexOf(i) + 1} of {items.length}
+          </Text>
+          {failed && <InlineAlert tone="danger">{failed}</InlineAlert>}
+          {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
+          <TimesheetApprovalCard
+            key={i.id}
+            employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
+            weekLabel={weekOf(i.week)}
+            lines={i.lines.map((l) => ({ id: l.id, project: i.code, task: l.task ?? undefined, hours: l.hours, billable: l.billable, comments: l.comments }))}
+            onApprove={(decisions) =>
+              void act(
+                () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),
+                `${i.employee}: decided`,
+              )
+            }
+            onSendBack={(reason) => void act(() => live.onDecide(i.lines.map((l) => ({ lineId: l.id, version: l.version, status: 'rejected', reason }))), `${i.employee}: sent back`)}
+          />
+          <div className="yx-hire-row">
+            <Button disabled={items.indexOf(i) === 0} onClick={() => setAt(items.indexOf(i) - 1)}>
+              Previous
+            </Button>
+            <Button disabled={items.indexOf(i) >= items.length - 1} onClick={() => setAt(items.indexOf(i) + 1)}>
+              Next
+            </Button>
+          </div>
+        </>
+      )}
+    </PhoneFrame>
+  );
+}
+
+function DrawnTimesheetApprovalsPhone({ groups }: { groups: ApprovalGroup[] }) {
   // One card at a time: keeps each card clear of the sticky header and tab bar (target size).
   const items = groups.flatMap((g) => g.items.map((i) => ({ ...i, project: g.project, week: g.week })));
   const [at, setAt] = useState(0);

@@ -21,3 +21,6 @@ df9ced4e98e574415baa8151732f16afd7e23479:packages/yx-ui/src/screens/settings/tim
 # Reviewed false positives (27 Nov 2026): a made-up kiosk set-up key in a kit test, and a sample webhook secret for a .test address in a design story.
 c098b9f9a5ce56c0020040fcd1dd31b00a63f313:packages/yx-ui/src/screens/time/devices-live.test.tsx:generic-api-key:58
 d75be5b050578c48b5931c0082db81ae2ddc1e5f:packages/yx-ui/src/screens/desk/esm-live.stories.tsx:generic-api-key:208
+
+# Reviewed false positive (27 Nov 2026): a made-up Azure account key (base64 of "fakekey...") in the scheduled-export test.
+c05733c619b6efe6f47c9889b7f5f6afb25e2c65:apps/api/src/account/scheduled-export.spec.ts:generic-api-key:35

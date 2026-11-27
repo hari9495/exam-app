@@ -93,10 +93,9 @@ export class AccountService {
     });
   }
 
-  /** Every table with the company's rows, read under its own RLS and filtered by its id as well. */
-  async startExport(ctx: TenantContext, user: AccountUser) {
-    this.systemAdmin(user);
-    const c = { ...ctx, organizationId: ctx.organizationId! } as CompanyContext;
+  /** The company's rows of every table it owns (T2-G 45 reuses it for the scheduled export); secrets left out. */
+  async readTables(ctx: TenantContext): Promise<{ tables: Record<string, Record<string, unknown>[]>; cut: string[]; rows: number }> {
+    const organizationId = ctx.organizationId!;
     const cols = await inCompany(this.tenantPrisma, ctx, (tx) =>
       tx.$queryRaw<{ table_name: string; column_name: string; data_type: string }[]>`
         SELECT c.table_name, c.column_name, c.data_type FROM information_schema.columns c
@@ -106,7 +105,7 @@ export class AccountService {
     );
     const byTable = new Map<string, string[]>();
     for (const r of cols) if (exportTable(r.table_name) && exportColumn(r.column_name, r.data_type)) byTable.set(r.table_name, [...(byTable.get(r.table_name) ?? []), r.column_name]);
-    const tables: Record<string, unknown[]> = {};
+    const tables: Record<string, Record<string, unknown>[]> = {};
     const cut: string[] = [];
     let rows = 0;
     // One read-only pass in one transaction (a table a time would be slow); only tables this connection may read.
@@ -115,13 +114,21 @@ export class AccountService {
       ctx,
       async (tx) => {
         for (const [table, columns] of byTable) {
-          const list = await tx.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT ${columns.map(ident).join(', ')} FROM ${ident(table)} WHERE organization_id::text = $1 LIMIT ${MAX_ROWS_PER_TABLE + 1}`, c.organizationId);
+          const list = await tx.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT ${columns.map(ident).join(', ')} FROM ${ident(table)} WHERE organization_id::text = $1 LIMIT ${MAX_ROWS_PER_TABLE + 1}`, organizationId);
           if (list.length > MAX_ROWS_PER_TABLE) (cut.push(table), list.pop());
           if (list.length) (tables[table] = list, (rows += list.length));
         }
       },
       { timeout: 120_000 },
     );
+    return { tables, cut, rows };
+  }
+
+  /** Every table with the company's rows, read under its own RLS and filtered by its id as well. */
+  async startExport(ctx: TenantContext, user: AccountUser) {
+    this.systemAdmin(user);
+    const c = { ...ctx, organizationId: ctx.organizationId! } as CompanyContext;
+    const { tables, cut, rows } = await this.readTables(ctx);
     const hours = await platformNumber(this.tenantPrisma, EXPORT_HOURS_KEY);
     const createdAt = new Date();
     const manifest = { organizationId: c.organizationId, createdAt: createdAt.toISOString(), tables: Object.keys(tables).length, rows, cutAt: cut.length ? { rowsPerTable: MAX_ROWS_PER_TABLE, tables: cut } : null, leftOut: 'Sign-in material, secrets, encrypted fields and file contents are not in the export.' };

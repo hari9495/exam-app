@@ -28,3 +28,7 @@ const LIB = {
 };
 export const LiveLibrary: S = { name: 'Live · schedules and export log', render: () => <SchedulesScreen library={LIB} /> };
 export const LiveExportOnly: S = { name: 'Live · auditor: export log only', render: () => <SchedulesScreen library={{ ...LIB, reports: [], schedules: [] }} /> };
+// T2-G 46: the import log next to the export log (same key holders): each file, rows in and rows not in.
+const IMPORTS = { rows: [{ id: 'i1', at: '2026-11-25T06:10:00.000Z', who: 'Lakshmi Venkatesan', what: 'Employees', detail: 'november-joiners.csv', ok: 38, failed: 2 }, { id: 'i2', at: '2026-11-24T09:40:00.000Z', who: 'Arjun Nair', what: 'Payroll inputs (checked)', detail: 'variable_pay', ok: 410, failed: 0 }] };
+export const LiveImportLog: S = { name: 'Live · import log', render: () => <SchedulesScreen library={{ ...LIB, importLog: IMPORTS }} /> };
+export const LiveLogsOnly: S = { name: 'Live · auditor: export and import logs only', render: () => <SchedulesScreen library={{ ...LIB, reports: [], schedules: [], importLog: { rows: [] } }} /> };

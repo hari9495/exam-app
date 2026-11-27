@@ -3,7 +3,8 @@
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Spinner, useToast } from '@yukthix/ui';
-import { AttendanceCalendarScreen, MyAttendanceTodayScreen, type DayCard, type LiveMyAttendance, type MyAttendance, type MyNightWork, type NightCodeSent, type PunchResult } from '@yukthix/ui/time';
+import { AttendanceCalendarPhone, AttendanceCalendarScreen, DayCardPhone, MyAttendanceTodayScreen, type DayCard, type LiveMyAttendance, type MyAttendance, type MyNightWork, type NightCodeSent, type PunchResult } from '@yukthix/ui/time';
+import { usePhone } from '../../../../../lib/yx-phone';
 import { browserLocation, timeState, todayIndia, useOtherWrite, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 
 // Me › Attendance: the designed attendance calendar (my month, day cards, fixes, work from home, night work) and, with
@@ -15,7 +16,10 @@ function YxMyAttendanceInner() {
   const params = useSearchParams();
   const request = params.get('request');
   const today = params.get('view') === 'today';
-  const [month, setMonth] = useState(todayIndia().slice(0, 7));
+  const phone = usePhone();
+  const dayParam = params.get('day');
+  const day = dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam) ? dayParam : null;
+  const [month, setMonth] = useState((day ?? todayIndia()).slice(0, 7));
   const att = useTime<MyAttendance>(`/me/attendance?month=${today ? todayIndia().slice(0, 7) : month}`);
   const night = useTime<MyNightWork>(today ? null : '/me/night-work');
   // Answer 2282: a late request may say which leave the day was (the person's own leave types).
@@ -58,6 +62,8 @@ function YxMyAttendanceInner() {
     todayHref: '/yx/time/attendance?view=today',
     monthHref: '/yx/time/attendance',
   };
+  // T2-H: on a phone, the designed phone calendar (?day= opens that day's card, DayCardPhone) with the same calls.
+  if (phone && !today) return day ? <DayCardPhone live={live} on={day} /> : <AttendanceCalendarPhone live={live} />;
   return today ? <MyAttendanceTodayScreen live={live} /> : <AttendanceCalendarScreen live={live} />;
 }
 

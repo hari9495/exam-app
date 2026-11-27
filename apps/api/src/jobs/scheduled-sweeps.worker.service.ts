@@ -5,6 +5,7 @@ import { SpeakupService } from '../speakup/speakup.service';
 import { CompanyDocsService } from '../library/company-docs.service';
 import { ReportSchedulesService } from '../library/report-schedules.service';
 import { AssetAlertsService } from '../lifecycle/asset-alerts.service';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -32,6 +33,7 @@ import { VisitorsService } from '../visitors/visitors.service';
 import { WalkInsService } from '../visitors/walkins.service';
 import { AccessRequestsService } from '../access/access-requests.service';
 import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
+import { ScheduledExportService } from '../account/scheduled-export.service';
 import { NotFoundRetentionService } from '../help/not-found-retention.service';
 import { AssistantService } from '../help/assistant/assistant.service';
 import { IncidentsService } from '../platform/incidents.service';
@@ -103,6 +105,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     reportSchedules: ReportSchedulesService,
     assetAlerts: AssetAlertsService,
     internalApplications: InternalApplicationsService,
+    scheduledExports: ScheduledExportService,
+    userGroups: UserGroupsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -168,6 +172,10 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'asset-booking-alerts': () => assetAlerts.bookingSweep(),
       // Answer 2761.
       'internal-release-handover': () => internalApplications.releaseHandOver(),
+      // T2-G 45 (answer 2744).
+      'scheduled-company-exports': () => scheduledExports.sweep(),
+      // T2-G 42 (answer 2745): rule groups' members worked out again every night.
+      'rule-groups': () => userGroups.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

@@ -334,6 +334,14 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
   ],
   "finance": [
     [
+      "asset.finance.view",
+      "asset.view",
+      "billing.view",
+      "org.structure.view",
+      "pay.range.view",
+      "payroll.equity.own"
+    ],
+    [
       "billing.view",
       "org.structure.view",
       "pay.range.view",

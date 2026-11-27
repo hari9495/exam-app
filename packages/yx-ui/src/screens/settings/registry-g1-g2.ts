@@ -46,6 +46,17 @@ export const GROUP_1: SettingsGroupDef = {
             { key: 'org.data_region', label: 'Data region', kind: 'select', value: 'India (IN)', options: ['India (IN)', 'UAE (ME-AE)', 'Saudi Arabia (ME-SA)', 'European Union (EU)', 'United States (US)', 'Singapore (SG)'], locked: 'Chosen at sign-up. All data, files and backups stay in this region.', lockedAction: { label: 'Request a region move', screenId: 'PLT-46' }, synonyms: ['data residency', 'hosting region', 'move region'] },
           ],
         },
+        // T2-G 84a (answer 2743): the company's own words for a fixed list of terms.
+        {
+          title: 'Our words',
+          description: "Your own word for these terms on every screen, notification and email. Keep YukthiX's word by leaving it as it is. The law's names, such as Employees' Provident Fund, never change.",
+          settings: [
+            { key: 'terms.department.one', label: 'Our word for "Department"', kind: 'text', value: 'Business unit', synonyms: ['rename', 'terminology', 'our words', 'label'] },
+            { key: 'terms.department.many', label: 'Our word for "Departments"', kind: 'text', value: 'Business units' },
+            { key: 'terms.employee.one', label: 'Our word for "Employee"', kind: 'text', value: 'Associate' },
+            { key: 'terms.employee.many', label: 'Our word for "Employees"', kind: 'text', value: 'Associates' },
+          ],
+        },
       ],
       lastChange: { by: 'Arjun Kulkarni', role: 'System Admin', at: '2026-08-12T15:40', what: 'Changed brand colour from #2E7D32 to #1F6F5C' },
       related: [
@@ -683,7 +694,7 @@ export const GROUP_2: SettingsGroupDef = {
           title: 'Home page',
           description: 'What each role sees on their home after signing in.',
           settings: [
-            { key: 'home.personalise_roles', label: 'Roles that may personalise their own home', kind: 'multiselect', value: [], options: ['Employee', 'Manager', 'HR', 'Finance'], helper: 'Off for everyone by default: people see the layout you set for their role. When allowed, a person can add, remove and reorder widgets on their own home only. "Needs your action" always stays first.', synonyms: ['edit home', 'customise home', 'dashboard layout', 'widgets'] },
+            { key: 'home.personalise_roles', label: 'Roles that may personalise their own home', kind: 'multiselect', value: [], options: ['Employee', 'Manager', 'HR', 'Finance', 'Recruiter'], helper: 'Off for everyone by default: people see the layout you set for their role. When allowed, a person can add, remove and reorder widgets on their own home only. "Needs your action" always stays first.', synonyms: ['edit home', 'customise home', 'dashboard layout', 'widgets'] },
             { key: 'home.pay_on_employee_home', label: 'Show net pay on the employee home', kind: 'toggle', value: false, helper: 'HR decides. When on, the amount stays hidden (₹ ••,•••) until the employee selects Show amount, and hides again on every visit.', synonyms: ['salary on home', 'net pay', 'hide pay'] },
           ],
         },
@@ -1368,6 +1379,39 @@ export const GROUP_2: SettingsGroupDef = {
       ],
       lastChange: { by: 'Meera Iyer', role: 'Finance Manager', at: '2026-09-26T17:45', what: 'Delegated statutory filing to Iyer & Rao Chartered Accountants' },
       related: [{ label: 'Partners', screenId: 'PLT-30' }],
+    },
+
+    // ───────────────────────────── 2.12 Groups (answer 2905: HR's own way to the groups, without the access key)
+    {
+      id: '2.12',
+      group: 2,
+      title: 'Groups',
+      summary: 'Groups of people for announcements, surveys, learning rules and approvals: picked by hand or worked out from rules such as location, grade or tags.',
+      owner: ['P02'],
+      contributes: ['P01'],
+      permission: 'people.group.manage',
+      permissionHolder: 'HR Admin or System Admin',
+      note: 'The same groups as Roles & access › Groups. A group from rules updates itself every night.',
+      sections: [
+        {
+          title: 'Groups',
+          settings: [
+            {
+              key: 'people.group.list', label: 'Groups', kind: 'list', addLabel: 'New group',
+              columns: ['Group', 'Members'],
+              rows: [
+                ['Hosur shop floor', '212 people today · from rules: Hosur plant · Operations'],
+                ['First aiders', '18 people today · from rules: First aider'],
+                ['Plant recruiters', 'Divya Raghunathan, Karthik Subramanian'],
+              ],
+              helper: 'Hiring work goes to hand-picked groups only.',
+              synonyms: ['group', 'audience', 'distribution list', 'tags'],
+            },
+          ],
+        },
+      ],
+      lastChange: { by: 'Lakshmi Venkatesan', role: 'HR Admin', at: '2026-11-27T11:10', what: 'Made the group First aiders from the tag First aider' },
+      related: [{ label: 'Roles & access', screenId: 'PLT-11' }],
     },
   ],
 };

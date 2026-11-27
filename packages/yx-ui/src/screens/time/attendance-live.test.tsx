@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AttendanceCalendarScreen, DayCardScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
+import { YxI18nProvider } from '../../i18n';
+import { AttendanceCalendarPhone, AttendanceCalendarScreen, DayCardPhone, DayCardScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
 import type { DayCard, MyAttendance, Muster, PersonAttendance } from './live/types';
 
 // The designed attendance screens with `live` (Me › Attendance, its clock page, and Time › Muster), as the app renders
@@ -520,5 +521,46 @@ describe('batch A items 5 and 18: the month as a list or table, and my requests 
     await ue.click(screen.getByRole('tab', { name: 'Requests (1)' }));
     await ue.click(screen.getByRole('radio', { name: 'Approved' }));
     expect(screen.getByText('No requests match this filter.')).toBeInTheDocument();
+  });
+});
+
+// T2-H (answer 2741): Me › Attendance on a phone with the same month and calls.
+describe('Me › Attendance phone (live)', () => {
+  it('my month, the next month at the limit says why; a day opens its live day card and Fix this day opens the request', async () => {
+    const l = live();
+    render(<AttendanceCalendarPhone live={l} />);
+    await ue.click(screen.getByRole('button', { name: 'Next month' }));
+    expect((await screen.findAllByText('November 2026 has not started yet.')).length).toBeGreaterThan(0);
+    expect(l.onMonth).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: /6 Oct 2026: Missing check-out/ }));
+    expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-06');
+    await ue.click(await screen.findByRole('button', { name: 'Fix this day' }));
+    expect(await screen.findByRole('dialog', { name: 'New attendance request' })).toBeInTheDocument();
+  });
+
+  it('DayCardPhone opens the given day at once; a failed load offers a retry', async () => {
+    const l = live();
+    const { unmount } = render(<DayCardPhone live={l} on="2026-10-06" />);
+    await waitFor(() => expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-06'));
+    unmount();
+    const onRetry = vi.fn();
+    render(<AttendanceCalendarPhone live={live({ state: 'error', data: null, onRetry })} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+});
+
+// T2-G 84b (answer 2743): My attendance in Hindi for a Hindi reader; English otherwise.
+describe('T2-G 84b: My attendance in Hindi', () => {
+  it('a Hindi reader sees the page words in Hindi', () => {
+    render(<YxI18nProvider locale="hi"><MyAttendanceTodayScreen live={live()} /></YxI18nProvider>);
+    expect(screen.getByRole('heading', { name: 'आज की मेरी हाज़िरी', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('यह हफ़्ता')).toBeInTheDocument();
+    expect(screen.getByText('आपके नियम')).toBeInTheDocument();
+  });
+  it('negative: English without the provider', () => {
+    render(<MyAttendanceTodayScreen live={live()} />);
+    expect(screen.getByRole('heading', { name: 'My attendance today', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('Your rules')).toBeInTheDocument();
   });
 });

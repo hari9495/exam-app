@@ -73,6 +73,8 @@ export class RuleDto {
   @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) locationIds!: string[];
   @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) departmentIds!: string[];
   @IsOptional() @IsString() @MaxLength(120) designation?: string | null;
+  /** T2-G 42: the company's groups (any of them). */
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) groupIds?: string[];
   @IsInt() @Min(1) @Max(365) dueDays!: number;
   @IsIn([0, 12, 24]) repeatMonths!: 0 | 12 | 24;
   @IsBoolean() active!: boolean;

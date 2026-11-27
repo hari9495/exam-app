@@ -93,14 +93,14 @@ export { PROJECT_SETTING_KEYS, projectSettingsChanges, projectSettingsPage, type
 // Settings S-2 (answers 1323, 1324): the Time & Leave pages with the company's settings.
 export { MORE_SETTINGS, PAY_SETTINGS, PEOPLE_SETTINGS, TIME_SETTINGS, timeSettingsOverrides, changeWords, historyOnPage, withApprovalPolicies, type SettingChangeRow, pendingOnPage, timeSettingsChanges, timeSettingsListChanges, timeSettingsPage, type PendingSettingChange, type RegistryDef, type TimeSettingsData } from '../../settings/time-settings-live';
 export { DocumentTypeDrawer, REMINDER_CHOICES, documentTypesPage, type DocTypeInput, type DocTypeRow } from '../../settings/document-types-live';
-export { type AccountData, type AccountBilling, ClosureRequestDrawer, dataPage, invoicesPage, planPage, usagePage } from '../../settings/account-live';
+export { type AccountData, type AccountBilling, type ExportFrequency, type ScheduledExport, type StorageInput, ClosureRequestDrawer, StorageDrawer, dataPage, invoicesPage, planPage, usagePage } from '../../settings/account-live';
 export { ConnectionDrawer, ShownOnceDrawer, aiPage, calendarPage, developersPage, integrationsPage, type ApiUsage, type CalendarConnection, type ConnectedApp, type DeliveryRow, type DrawerField, type DrawerValues, type IntegrationsState, type ProviderSpec, type ProviderState } from '../../settings/integrations-live';
 export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
 // Projects P-3 (answers 1409, 1410): the designed PRJ-08 mapping rules, live with `live`.
 export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';
 export type { LiveMappingRule, MappingRuleInput, MappingRulesData, MappingTestResult } from '../mapping-live';
 // Projects P-2 (answers 1406 to 1408, 1442): the designed PRJ-02 timesheet approvals, live with `live`.
-export { TimesheetApprovalsScreen, type LiveApprovalsData, type LiveLineDecision, type LiveTimesheetApprovals, type NotSentPerson } from '../projects';
+export { TimesheetApprovalsPhone, TimesheetApprovalsScreen, type LiveApprovalsData, type LiveLineDecision, type LiveTimesheetApprovals, type NotSentPerson } from '../projects';
 // Projects P-4 (answers 1411, 1417, 1418, 1541): PRJ-03 capacity and PRJ-07 resource requests, live with `live`.
 export { CapacityBoardScreen, type LiveCapacity, type LiveCapacityData, type LiveTimesheetRow } from '../projects';
 export { BenchRequestsScreen } from '../projects-billing';

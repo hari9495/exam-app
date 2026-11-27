@@ -5,7 +5,7 @@ import { PolicyEditorScreen } from '@yukthix/ui/hiring';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { APPROVAL_LIMITS, useApprovalLimits, useApprovalPolicies, useApprovalPolicyWrite } from '../../../../../lib/yx-approval-policies';
 import { useTeammates } from '../../../../../lib/hooks/useUserDirectory';
-import { useUserGroups } from '../../../../../lib/hooks/useUserGroups';
+import { useGroupOptions } from '../../../../../lib/hooks/useUserGroups';
 
 // Settings › Approvals › Approval policies (S-6, answer 1330; E2): the drawn PLT-12 editor with each request type's
 // rules and otherwise route, the PLT-32 rule builder and PLT-57 "Try it". HR's settings key changes them; those who read
@@ -17,7 +17,7 @@ export default function YxApprovalPoliciesPage() {
   const data = useApprovalPolicies();
   const limits = useApprovalLimits(canEdit);
   const people = useTeammates(canEdit);
-  const groups = useUserGroups(canEdit);
+  const groups = useGroupOptions(canEdit);
   const write = useApprovalPolicyWrite();
   const err = data.error as { status?: number } | null;
   return (
@@ -33,7 +33,8 @@ export default function YxApprovalPoliciesPage() {
         onReset: write.reset,
         defaultType: params?.get('type') ?? undefined,
         people: (people.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email })),
-        groups: (groups.data ?? []).map((g: { id: string; name: string }) => ({ value: g.id, label: g.name })),
+        // T2-G 42: every group, hand-picked or from rules (the picker list, read with the settings key).
+        groups: (groups.data ?? []).map((g) => ({ value: g.id, label: g.ruleBased ? `${g.name} (from rules)` : g.name })),
         grades: (limits.data?.grades ?? []).map((g) => ({ value: g.id, label: `${g.name} (${g.code})` })),
         ...(canEdit ? { onTry: write.tryIt, pastRequests: write.pastRequests, notices: write.notices } : {}),
         limitsHref: APPROVAL_LIMITS,

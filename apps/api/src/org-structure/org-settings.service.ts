@@ -1,3 +1,4 @@
+import { MODULES, MODULE_KEYS, MODULES_OFF_KEY, MODULES_ORDER_KEY, forgetModules, moduleOrder, modulesOff, ownerKey } from './modules';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -6,6 +7,8 @@ import { parseGuideShares } from '../performance/calibration-rules';
 import { ResolveSettingQueryDto, SettingDto } from './dto';
 import { asDate, isoDate, todayIst } from './org-validation';
 import { audit, CompanyContext, inCompany, Tx } from './org-structure.service';
+import { companyTerms, termProblem } from './terms';
+import { readerLocale } from './ui-locale';
 import { PAYROLL_APPROVAL_KEYS, ScopeContext, ScopeType, SECOND_PERSON_KEY, SETTINGS, SettingDef, SettingRow, resolveSetting } from './settings-registry';
 
 // P01 §4.6 scoped settings (YX-ORG-12, YX-ORG-18): overrides per scope, resolved most-specific first, every
@@ -198,6 +201,9 @@ export class OrgSettingsService {
       dto.value = dto.value.replace(/\r\n?/g, '\n').trim();
       if (!dto.value) throw new BadRequestException(`Write what goes in "${def.label}", one thing a line.`);
       if (dto.value.length > def.text.maxLength) throw new BadRequestException(`"${def.label}" is ${dto.value.length} characters. Keep it to ${def.text.maxLength} or fewer.`);
+      // T2-G 84a: a renamed term is one short line of plain words.
+      const termIssue = dto.key.startsWith('terms.') ? termProblem(dto.value) : null;
+      if (termIssue) throw new BadRequestException(`${def.label}: ${termIssue}`);
       if (dto.key === 'perf.calibration.guide_shares') {
         const g = parseGuideShares(dto.value);
         if ('problem' in g) throw new BadRequestException(g.problem);
@@ -206,6 +212,7 @@ export class OrgSettingsService {
       // Checked against the platform list below, inside the company's transaction.
     } else {
       const parts = def.multi ? (dto.value ? dto.value.split(',') : []) : [dto.value];
+      if (dto.key === MODULES_OFF_KEY && parts.some((p) => MODULES.find((m) => m.id === p)?.locked)) throw new BadRequestException('People, Payroll and Compliance cannot be switched off.');
       if (!parts.every((p) => def.values.includes(p)) || new Set(parts).size !== parts.length) throw new BadRequestException(`${def.label} is ${def.multi ? 'any of' : 'one of'}: ${def.values.join(', ')}`);
     }
     // YX-ORG-18: a dated setting always carries its start date; a plain one never does.
@@ -243,10 +250,55 @@ export class OrgSettingsService {
         ? await tx.setting.update({ where: { id: existing.id }, data: { value: dto.value, updatedBy: c.userId } })
         : await tx.setting.create({ data: { ...where, value: dto.value, updatedBy: c.userId } });
       if (dto.key === 'employee_code.scope') await rekeyEmployeeCodes(tx, c, dto.value);
+      if (MODULE_KEYS.includes(dto.key)) forgetModules(c.organizationId);
       // A guarded key loosens an approval, retro, access or fraud control: recorded as a control change (P08).
       await audit(tx, c, 'org.setting.changed', 'setting', row.id, { key: dto.key, scopeType, scopeId, validFrom: dto.validFrom ?? null, from: existing?.value ?? null, to: dto.value, control: Boolean(SETTINGS[dto.key]?.guard) });
       return rowView(row);
     });
+  }
+
+  /**
+   * T2-G 41 (answer 2746): the company's modules in its rail order, each on or off. Read by everyone signed in to the
+   * company (the menu needs it); nothing in it is personal.
+   */
+  modules(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const off = await modulesOff(tx, c.organizationId);
+      const order = (await tx.setting.findFirst({ where: { organizationId: c.organizationId, key: MODULES_ORDER_KEY, scopeType: 'tenant' }, select: { value: true } }))?.value;
+      // T2-G 44: each module's owner (an active person of the company; one who left shows as nobody).
+      const owned = await tx.setting.findMany({ where: { organizationId: c.organizationId, scopeType: 'tenant', key: { in: MODULES.map((m) => ownerKey(m.id)) } }, select: { key: true, value: true } });
+      const ids = owned.map((o) => String(o.value)).filter((v) => /^[0-9a-f-]{36}$/i.test(v));
+      const people = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: ids }, status: 'active' }, select: { id: true, name: true, email: true } })).map((u) => [u.id, { id: u.id, name: u.name || u.email }]));
+      const ownerOf = (id: string) => people.get(String(owned.find((o) => o.key === ownerKey(id))?.value)) ?? null;
+      return {
+        modules: moduleOrder(order).map((id) => {
+          const m = MODULES.find((x) => x.id === id)!;
+          return { id, label: m.label, on: !off.includes(id), locked: Boolean(m.locked), owner: ownerOf(id) };
+        }),
+      };
+    });
+  }
+
+  /** T2-G 84a: the company's words for the renamed terms (everyone signed in: every screen shows them). */
+  display(ctx: TenantContext) {
+    // T2-G 84b: and the reader's screen language (Hindi or English).
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({ terms: await companyTerms(tx, c.organizationId), locale: await readerLocale(tx, c) }));
+  }
+
+  /** Saves the page: which modules are off and their order, each changed key audited as any setting. */
+  async saveModules(ctx: TenantContext, dto: { off: string[]; order: string[]; owners?: Record<string, string | null> }) {
+    const now = await this.modules(ctx);
+    const was = { off: now.modules.filter((m) => !m.on).map((m) => m.id), order: now.modules.map((m) => m.id) };
+    const order = moduleOrder(dto.order.join(','));
+    const off = [...new Set(dto.off)].sort().join(',');
+    if (off !== [...was.off].sort().join(',')) await this.set(ctx, { key: MODULES_OFF_KEY, scopeType: 'tenant', value: off } as SettingDto);
+    if (order.join(',') !== was.order.join(',')) await this.set(ctx, { key: MODULES_ORDER_KEY, scopeType: 'tenant', value: order.join(',') } as SettingDto);
+    // T2-G 44: a changed owner (null: nobody); the setting checks the person is active in the company.
+    for (const [id, userId] of Object.entries(dto.owners ?? {})) {
+      if (!MODULES.some((m) => m.id === id)) throw new BadRequestException('Choose one of the modules.');
+      if ((now.modules.find((m) => m.id === id)?.owner?.id ?? null) !== (userId ?? null)) await this.set(ctx, { key: ownerKey(id), scopeType: 'tenant', value: userId ?? 'none' } as SettingDto);
+    }
+    return this.modules(ctx);
   }
 
   /** The setting and scope a waiting change is for (the controller checks the keys for it). */

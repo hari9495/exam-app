@@ -1,25 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
-import { HomeReminderCards, RoleHomeScreen, dismissForToday, dismissedToday, type HomeLayout, type HomeReminder, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
+import { HomeReminderCards, MobileHomeScreen, RoleHomeScreen, dismissForToday, dismissedToday, type HomeLayout, type HomeReminder, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
 import { useToast } from '@yukthix/ui';
 import { NudgeCard } from '@yukthix/ui/console';
 import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
 import { Button } from '@yukthix/ui';
+import { useYxT } from '@yukthix/ui/i18n';
 import { HomeClockCard, TimesheetNudgeCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useOrgBranding } from '../../../../lib/hooks/useBranding';
-import { useYxPermissions } from '../../../../lib/yx-org';
+import { useOrg, useYxPermissions } from '../../../../lib/yx-org';
+import type { CompanyModule } from '../../../../lib/yx-modules';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
-import { useScope } from '../../../../lib/yx-shell';
+import { YxNavContext, useScope } from '../../../../lib/yx-shell';
+import { homeQuickActions, homeTodos, navHref, usePhone } from '../../../../lib/yx-phone';
 import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, inboxActions, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets, type TeamTodayResponse } from '../../../../lib/yx-home';
 import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
@@ -51,6 +54,8 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 // the note uses policy limits, no per-approver money limit until customers ask (162).
 export default function YxHomePage() {
   const router = useRouter();
+  const phone = usePhone();
+  const { nav } = useContext(YxNavContext);
   const qc = useQueryClient();
   const { accessToken, actingSuperAdmin } = useAuth();
   const me = useCurrentUser();
@@ -58,6 +63,8 @@ export default function YxHomePage() {
   const perms = useYxPermissions();
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   const employee = Boolean(team.data?.managerId) && !actingSuperAdmin;
+  // T2-G 44 (answer 2745): the people the company named per module (on modules that are on), shown as "Who to ask".
+  const companyModules = useOrg<{ modules: CompanyModule[] }>('/modules', employee);
   const isManager = Boolean(team.data?.members.length) && !actingSuperAdmin;
   // C-8 (YX-12): the one nudge for this person, if any (the API applies the switches, who can act and the weekly limit).
   const nudge = useQuery<{ nudge: { id: string; featureLabel: string; heading: string; body: string; switchHref: string | null } | null }>({ queryKey: ['yx', 'nudge'], queryFn: () => apiFetch('/help/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false, staleTime: Infinity });
@@ -105,6 +112,8 @@ export default function YxHomePage() {
   const persona = own === 'employee' && !employee && hiring.view ? 'recruiter' : own;
   // T2-F 79 (answer 2884): Edit home when the company lets this role personalise; the layout is kept per person.
   const { toast } = useToast();
+  // T2-G 84b: the quick actions in the reader's language.
+  const tHome = useYxT('home');
   type Saved = Pick<HomeLayout, 'order' | 'hidden' | 'sizes'>;
   const layoutQ = useQuery<{ personaliseRoles: string[]; layout: Saved | null }>({ queryKey: ['yx', 'workspace', 'home-layout'], queryFn: () => apiFetch('/workspace/home/layout', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   const [ownLayout, setOwnLayout] = useState<Saved | null | undefined>(undefined);
@@ -223,14 +232,33 @@ export default function YxHomePage() {
     ...(asEmployee ? { pay: homePay(pay.data) } : {}),
     ...(asEmployee ? { tasks: myTasks({ checklist: checklist.data?.tasks, feedback: feedbackTasks.data, reviews: myReviews.data }) } : {}),
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),
+    ...(employee && companyModules.data?.modules ? { owners: companyModules.data.modules.filter((m) => m.on && m.owner).map((m) => ({ module: m.label, name: m.owner!.name })) } : {}),
     quickActions: employee
       ? [
-          { label: 'Apply leave', href: '/yx/time/leave?apply=1', kind: 'leave' },
-          { label: 'Request work from home', href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
-          { label: 'Download payslip', href: '/yx/me/payslips', kind: 'payslip' },
+          { label: tHome('applyLeave'), href: '/yx/time/leave?apply=1', kind: 'leave' },
+          { label: tHome('wfh'), href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
+          { label: tHome('payslip'), href: '/yx/me/payslips', kind: 'payslip' },
         ]
       : [],
   };
+  // T2-H (answer 2741): on a phone, the designed phone Home with the same data and calls.
+  if (phone)
+    return (
+      <MobileHomeScreen
+        state={inbox.isLoading || widgets.isLoading ? 'loading' : 'ready'}
+        live={{
+          firstName: live.firstName,
+          clock: live.clock,
+          todos: homeTodos(actions, live.tasks, new Date()),
+          celebrations: (live.coming ?? []).filter((c) => c.kind === 'person').map((c) => ({ id: c.id, name: c.name, text: c.text })),
+          kudosHref: navHref(nav, 'engage-recognition'),
+          quickActions: employee ? homeQuickActions(nav) : [],
+          team: live.team,
+          onNudge: live.onNudge,
+          onNavigate: (href) => router.push(href),
+        }}
+      />
+    );
   return (
     <>
       <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading || widgets.isLoading} live={live} />

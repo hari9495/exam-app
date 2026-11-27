@@ -8,6 +8,7 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } fr
 import { Badge, PersonLabel } from './display';
 import { EmptyState, InlineAlert, Skeleton } from './feedback';
 import { useToastIfAny } from './notify';
+import { useYxT } from '../i18n';
 
 /* ------------------------------------------------------------------ */
 /* Widget                                                               */
@@ -496,8 +497,11 @@ function DueText({ due, today }: { due: Date; today: Date }) {
 }
 
 /** "Needs your action": first on every home (§22). Inline Approve / Review, then "View all". */
-export function NeedsActionList({ items: all, total: allTotal = all.length, viewAllHref, onApprove, onReview, today = new Date(), loading, title = 'Needs your action' }: NeedsActionListProps) {
+export function NeedsActionList({ items: all, total: allTotal = all.length, viewAllHref, onApprove, onReview, today = new Date(), loading, title: titleProp }: NeedsActionListProps) {
   const id = useId();
+  // T2-G 84b: the list's own words in the reader's language.
+  const t = useYxT('actions');
+  const title = titleProp ?? t('title');
   const toaster = useToastIfAny();
   const running = useRef(new Set<string>());
   const [busy, setBusy] = useState<string[]>([]);
@@ -516,7 +520,7 @@ export function NeedsActionList({ items: all, total: allTotal = all.length, view
       setDone((d) => [...d, it.id]);
       toaster?.toast({ tone: 'success', title: `Approved: ${it.type}${it.who.trim() ? ` for ${it.who}` : ''}`, description: it.title });
     } catch (e) {
-      setFailed((f) => ({ ...f, [it.id]: e instanceof Error && e.message ? e.message : 'Not approved. Try again in a moment.' }));
+      setFailed((f) => ({ ...f, [it.id]: e instanceof Error && e.message ? e.message : t('retry') }));
     } finally {
       running.current.delete(it.id);
       setBusy((b) => b.filter((x) => x !== it.id));
@@ -531,7 +535,7 @@ export function NeedsActionList({ items: all, total: allTotal = all.length, view
         </Heading>
         {!loading && total > 0 && (
           <Link href={viewAllHref} className="yx-actions__all">
-            View all {groupIndian(total)}
+            {t('viewAll', { n: groupIndian(total) })}
           </Link>
         )}
       </div>
@@ -558,7 +562,7 @@ export function NeedsActionList({ items: all, total: allTotal = all.length, view
           ))}
         </div>
       ) : items.length === 0 ? (
-        <EmptyState compact title="Nothing needs your action." description="Approvals, tasks and deadlines will show here." />
+        <EmptyState compact title={t('emptyTitle')} description={t('emptyText')} />
       ) : (
         <ul className="yx-actions__list">
           {items.map((it) => (
@@ -575,26 +579,26 @@ export function NeedsActionList({ items: all, total: allTotal = all.length, view
                   {it.note && <span className="yx-actions__note">{it.note}</span>}
                 </div>
                 {failed[it.id] && (
-                  <InlineAlert tone="danger" title="Not approved">
+                  <InlineAlert tone="danger" title={t('notApproved')}>
                     {failed[it.id]}
                   </InlineAlert>
                 )}
               </div>
               <div className="yx-actions__buttons">
                 {(it.kind ?? 'approve') === 'approve' && (
-                  <Button variant="approve" size="sm" icon={Check} loading={busy.includes(it.id)} onClick={() => void approve(it)} aria-label={`Approve ${it.type.toLowerCase()} for ${it.who}`}>
-                    Approve
+                  <Button variant="approve" size="sm" icon={Check} loading={busy.includes(it.id)} onClick={() => void approve(it)} aria-label={t('approveFor', { type: it.type.toLowerCase(), who: it.who })}>
+                    {t('approve')}
                   </Button>
                 )}
                 {it.href ? (
                   <Button variant="review" size="sm" asChild>
-                    <a href={it.href} aria-label={`${it.actionLabel ?? 'Review'}: ${it.title}`}>
-                      <span className="yx-button__label">{it.actionLabel ?? 'Review'}</span>
+                    <a href={it.href} aria-label={`${it.actionLabel ?? t('review')}: ${it.title}`}>
+                      <span className="yx-button__label">{it.actionLabel ?? t('review')}</span>
                     </a>
                   </Button>
                 ) : (
-                  <Button variant="review" size="sm" onClick={() => onReview?.(it)} aria-label={it.actionLabel ? `${it.actionLabel}: ${it.title}` : `Review ${it.type.toLowerCase()} for ${it.who}`}>
-                    {it.actionLabel ?? 'Review'}
+                  <Button variant="review" size="sm" onClick={() => onReview?.(it)} aria-label={it.actionLabel ? `${it.actionLabel}: ${it.title}` : t('reviewFor', { type: it.type.toLowerCase(), who: it.who })}>
+                    {it.actionLabel ?? t('review')}
                   </Button>
                 )}
               </div>

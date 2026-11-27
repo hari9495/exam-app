@@ -29,6 +29,18 @@ describe('ENG-03 announcements (live)', () => {
     expect(onPublish).not.toHaveBeenCalled();
   });
 
+  // T2-G 42 (answer 2745): a group in the audience; its reach and the publish carry the group.
+  it('a group can be the audience: the reach asks for it and Publish sends it', async () => {
+    const reach = vi.fn(async () => 12);
+    const onPublish = vi.fn(async () => ({ id: 'a3' }));
+    show(<AnnouncementScreen live={liveAnnouncements({ view: 'compose', reach, onPublish })} />);
+    await ue.type(screen.getByRole('textbox', { name: /Title/ }), 'Safety drill on Friday');
+    await ue.click(screen.getByRole('combobox', { name: /Audience/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Group: Hosur shop floor' }));
+    expect(reach).toHaveBeenLastCalledWith([], [], ['grp-floor']);
+    expect(await screen.findByText(/^12 people right now/)).toBeInTheDocument();
+  });
+
   it('an amount in the title cannot go by email', async () => {
     show(<AnnouncementScreen live={liveAnnouncements({ view: 'compose' })} />);
     await ue.type(screen.getByRole('textbox', { name: /Title/ }), 'September bonus: ₹12,000 credited');

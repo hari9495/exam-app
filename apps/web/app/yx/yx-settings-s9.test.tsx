@@ -28,13 +28,16 @@ const BILLING = {
   usage: { seats: { used: 412, limit: 500 }, candidates: { used: 3, limit: 50 }, aiCredits: { used: 0, limit: 100 }, proctoringMinutes: { used: 0, limit: 60 }, periodStart: '2026-11-01' },
   invoices: [],
 };
+// T2-G 45: the scheduled export, connected to S3, its last run not sent.
+const SCHED = { frequency: 'weekly', destination: { kind: 's3', where: 's3://kaveri-backups/yukthix', by: 'Arjun', at: '2026-11-20T10:00:00Z', lastAttemptAt: '2026-11-22T20:30:00Z', lastSuccessAt: null, lastError: 'Amazon S3 did not take the file: Access Denied' } };
 const DATA = { companyName: 'Kaveri Foods', linkHours: 24, keepDays: 30, exports: [], closure: null };
 const routes = (opts: { refuse?: boolean } = {}) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
-    if (init?.method === 'POST') return (calls.push([`POST ${path}`, init.body ? JSON.parse(String(init.body)) : null]), { id: 'x1' });
+    if (init?.method && init.method !== 'GET') return (calls.push([`${init.method} ${path}`, init.body ? JSON.parse(String(init.body)) : null]), path.endsWith('/send') ? { ok: false, error: 'Amazon S3 did not take the file: Access Denied' } : { id: 'x1' });
     if (opts.refuse) throw Object.assign(new Error('Missing required permission(s): org:manage_billing'), { status: 403 });
     if (path === '/account/billing') return BILLING;
     if (path === '/account/data') return DATA;
+    if (path === '/account/export-destination') return SCHED;
     throw new Error(`unexpected ${path}`);
   });
 const show = (slug: string, role = 'org_admin') => {
@@ -91,6 +94,26 @@ describe('Settings S-9: Billing & Account', () => {
     await ue.type(within(drawer).getByRole('textbox', { name: /Why/ }), 'Moving to another tool');
     await ue.click(within(drawer).getByRole('button', { name: 'Ask to close' }));
     await waitFor(() => expect(calls[1]).toEqual(['POST /account/closure', { companyName: 'Kaveri Foods', reason: 'Moving to another tool' }]));
+  });
+
+  it('T2-G 45: a System Admin changes the storage and the schedule; Send now says when it did not go through', async () => {
+    routes();
+    show('data-export-and-closure');
+    expect(await screen.findByText('Amazon S3 · s3://kaveri-backups/yukthix')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Send now/ }));
+    expect((await screen.findAllByText('Amazon S3 did not take the file: Access Denied')).length).toBeGreaterThan(1);
+    await ue.click(screen.getByRole('button', { name: /^Change$/ }));
+    const drawer = await screen.findByRole('dialog');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Bucket/ }), 'kaveri-backups');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Region/ }), 'ap-south-1');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Access key ID/ }), 'AKIAFAKEFAKEFAKE0000');
+    await ue.type(within(drawer).getByLabelText(/Secret access key/), 'fake/secret/value/0000000000');
+    await ue.type(within(drawer).getByLabelText(/^Zip password(?! again)/), 'a-long-zip-password');
+    await ue.type(within(drawer).getByLabelText(/Zip password again/), 'a-long-zip-password');
+    await ue.click(within(drawer).getByRole('radio', { name: 'Daily' }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls.map((c) => c[0])).toEqual(['POST /account/export-destination/send', 'PUT /account/export-destination', 'PUT /org/settings']));
+    expect(calls[2]![1]).toEqual({ key: 'account.scheduled_export.frequency', value: 'daily', scopeType: 'tenant' });
   });
 
   it('negative: someone who is not a System Admin is told so and nothing is sent; the menu shows 8.5 to System Admins only', async () => {

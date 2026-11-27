@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen, type LiveApprovals } from './inbox';
+import { ToastProvider } from '../../components/notify';
+import { ApprovalsInboxPhone, ApprovalsInboxScreen, DelegationPhone, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen, type LiveApprovals } from './inbox';
 import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME, type ApprovalRow } from './platform-data';
 
 const HISTORY = APPROVALS.slice(0, 2).map((a, i) => ({ ...a, id: `h${i}`, status: 'Approved' as const }));
@@ -395,5 +396,48 @@ describe('PLT-05 "+ New" (T2-F 81, answer 2886)', () => {
     unmount();
     render(<RequestSheetScreen live={{ open: true, onOpenChange: vi.fn(), onPick: vi.fn(), types: [] }} />);
     expect(screen.getByText('Nothing to request here yet.')).toBeInTheDocument();
+  });
+});
+
+// T2-H (answer 2741): the phone approval cards and delegation with the desk inbox's own calls.
+describe('PLT-04 / PLT-07 phone live', () => {
+  const today = new Date(2026, 10, 3);
+  const row = (id: string, over: Partial<ApprovalRow> = {}): ApprovalRow => ({ id, ref: id.toUpperCase(), type: 'Leave', requester: 'Arjun Kulkarni', requesterRole: '', summary: `Casual leave ${id}`, detail: 'Step 1 of 1: Manager', submitted: today, due: null, step: 'Manager', lowRisk: true, policy: { ok: true }, status: 'Waiting', context: [], ...over });
+  const delegation = { meId: 'me', meName: 'Divya', today, people: [], onFindPeople: () => undefined, current: null, waiting: 2, onSave: vi.fn(), onEnd: vi.fn(), delegatedToYou: [{ id: 'd1', person: 'Karthik S', from: today, to: today }], approvalsHref: '/yx/approvals' };
+  const live = (over: Partial<LiveApprovals> = {}): LiveApprovals => ({ today, onDecide: vi.fn(async () => undefined), onBulkApprove: vi.fn(async () => []), delegation, onDone: vi.fn(), ...over });
+
+  it('Approve on a card calls decide; bulk approve reports the refused ones; the sheet needs a reason to not approve', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live({ onBulkApprove: vi.fn(async () => [{ id: 'b', message: 'This approval is already closed.' }]) });
+    render(<ToastProvider><ApprovalsInboxPhone waiting={[row('a'), row('b')]} live={l} /></ToastProvider>);
+    await u.click(screen.getAllByRole('button', { name: 'Approve' })[0]);
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'approve', '');
+    await u.click(screen.getByRole('button', { name: 'Approve 2 leave requests' }));
+    expect(await screen.findByText('This approval is already closed.')).toBeInTheDocument();
+    await u.click(screen.getAllByRole('button', { name: 'Details' })[0]);
+    const sheet = await screen.findByRole('dialog');
+    await u.click(within(sheet).getByRole('button', { name: 'Do not approve' }));
+    await u.click(within(sheet).getByRole('button', { name: 'Do not approve' }));
+    expect(within(sheet).getByText('Say why, so the person who asked knows.')).toBeInTheDocument();
+  });
+
+  it('a refused approve says why; empty and error states', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live({ onDecide: vi.fn(async () => { throw new Error('You already decided this.'); }) });
+    const { unmount } = render(<ToastProvider><ApprovalsInboxPhone waiting={[row('a')]} live={l} /></ToastProvider>);
+    await u.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(await screen.findByText('You already decided this.')).toBeInTheDocument();
+    expect(l.onDone).not.toHaveBeenCalled();
+    unmount();
+    const { unmount: u2 } = render(<ApprovalsInboxPhone waiting={[]} live={live()} />);
+    expect(screen.getByText('Nothing is waiting for you.')).toBeInTheDocument();
+    u2();
+    render(<ApprovalsInboxPhone waiting={[]} state="error" live={live()} />);
+    expect(screen.getByText("We couldn't load your approvals.")).toBeInTheDocument();
+  });
+
+  it('DelegationPhone live shows who delegated to me', () => {
+    render(<DelegationPhone live={delegation} />);
+    expect(screen.getByText('Karthik S')).toBeInTheDocument();
   });
 });

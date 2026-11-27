@@ -175,6 +175,9 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },
   // PLT-02 Team today: a manager or HR reminded you about something still waiting (today: checking in).
+  // Answer 2901: the timesheet line approvals (T2-D), with their own neutral push title and a Push switch.
+  { type: 'time.timesheet.lines', group: 'approvals', label: 'Timesheet hours are waiting for your approval' },
+  { type: 'time.timesheet.line', group: 'approvals', label: 'Hours in your timesheet were approved, reduced or sent back' },
   { type: 'time.web_device.requested', group: 'approvals', label: 'Someone asked HR to approve a computer for web clock-in' },
   { type: 'nudge.reminder', group: 'reminders', label: 'Your manager or HR reminded you about something waiting' },
   // Batch A C4 (answer 2313): a colleague named you to be told when their leave was approved (dates only).
@@ -192,6 +195,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'settings.change.waiting', group: 'approvals', label: 'A payroll setting change waits for a second person' },
   { type: 'settings.change.decided', group: 'approvals', label: 'Your payroll setting change was approved, rejected or lapsed' },
   { type: 'visitor.walkin.approval.host', group: 'approvals', label: 'A walk-in visitor is asking for you at reception' },
+  // T2-G 45 (answer 2744): the scheduled company data export could not be sent to the company's storage.
+  { type: 'account.export.failed', group: 'reminders', label: 'The scheduled data export to your storage did not go through' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

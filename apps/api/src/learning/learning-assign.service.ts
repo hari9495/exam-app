@@ -1,3 +1,4 @@
+import { ownGroupIds } from '../user-groups/group-rules';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -22,6 +23,7 @@ export interface RuleInput {
   locationIds: string[];
   departmentIds: string[];
   designation?: string | null;
+  groupIds?: string[];
   dueDays: number;
   repeatMonths: 0 | 12 | 24;
   active: boolean;
@@ -63,6 +65,7 @@ export class LearningAssignService {
         locationIds: r.locationIds,
         departmentIds: r.departmentIds,
         designation: r.designation,
+        groupIds: r.groupIds,
         population: this.population(r, names),
         dueDays: r.dueDays,
         repeatMonths: r.repeatMonths,
@@ -75,18 +78,19 @@ export class LearningAssignService {
 
   private async placeNames(tx: Tx, c: CompanyContext) {
     const org = { organizationId: c.organizationId };
-    const [entities, locations, departments] = await Promise.all([
+    const [entities, locations, departments, groups] = await Promise.all([
       tx.legalEntity.findMany({ where: org, select: { id: true, name: true } }),
       tx.location.findMany({ where: org, select: { id: true, name: true } }),
       tx.department.findMany({ where: org, select: { id: true, name: true } }),
+      tx.userGroup.findMany({ where: org, select: { id: true, name: true } }),
     ]);
-    return new Map([...entities, ...locations, ...departments].map((x) => [x.id, x.name]));
+    return new Map([...entities, ...locations, ...departments, ...groups].map((x) => [x.id, x.name]));
   }
 
   /** "Hosur plant · Operations, Quality · designation has 'operator'" or "Everyone". */
-  private population(r: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; designation: string | null }, names: Map<string, string>) {
+  private population(r: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; designation: string | null; groupIds?: string[] }, names: Map<string, string>) {
     const part = (ids: string[]) => ids.map((id) => names.get(id) ?? 'Unknown').join(', ');
-    const parts = [part(r.legalEntityIds), part(r.locationIds), part(r.departmentIds), r.designation ? `designation has "${r.designation}"` : ''].filter(Boolean);
+    const parts = [part(r.legalEntityIds), part(r.locationIds), part(r.departmentIds), r.designation ? `designation has "${r.designation}"` : '', r.groupIds?.length ? `in ${part(r.groupIds)}` : ''].filter(Boolean);
     return parts.length ? parts.join(' · ') : 'Everyone';
   }
 
@@ -127,13 +131,14 @@ export class LearningAssignService {
   }
 
   private data(dto: RuleInput) {
-    return { name: dto.name.trim(), courseId: dto.courseId, legalEntityIds: [...new Set(dto.legalEntityIds)], locationIds: [...new Set(dto.locationIds)], departmentIds: [...new Set(dto.departmentIds)], designation: dto.designation?.trim() || null, dueDays: dto.dueDays, repeatMonths: dto.repeatMonths, active: dto.active };
+    return { name: dto.name.trim(), courseId: dto.courseId, legalEntityIds: [...new Set(dto.legalEntityIds)], locationIds: [...new Set(dto.locationIds)], departmentIds: [...new Set(dto.departmentIds)], designation: dto.designation?.trim() || null, groupIds: [...new Set(dto.groupIds ?? [])], dueDays: dto.dueDays, repeatMonths: dto.repeatMonths, active: dto.active };
   }
 
   private async checkRule(tx: Tx, c: CompanyContext, dto: RuleInput) {
     const course = await tx.learningCourse.findFirst({ where: { organizationId: c.organizationId, id: dto.courseId }, select: { status: true } });
     if (!course) throw new BadRequestException('Choose a course of this company.');
     if (dto.active && course.status !== 'published') throw new BadRequestException('Publish the course before an active rule assigns it.');
+    await ownGroupIds(tx, c.organizationId, dto.groupIds);
     const org = { organizationId: c.organizationId };
     const [e, l, d] = await Promise.all([
       tx.legalEntity.count({ where: { ...org, id: { in: dto.legalEntityIds } } }),

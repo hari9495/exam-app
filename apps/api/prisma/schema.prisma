@@ -2585,6 +2585,9 @@ model UserGroup {
   organizationId String   @map("organization_id") @db.Uuid
   name           String   @db.VarChar(200)
   description    String?  @db.VarChar(1000)
+  /// T2-G 42 (answer 2745): null = picked by hand; else the rules members are worked out from (daily and on save).
+  rules          Json?
+  membersRefreshedAt DateTime? @map("members_refreshed_at") @db.Timestamptz(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([organizationId, name])
@@ -3111,6 +3114,36 @@ model EmploymentType {
 
   @@unique([organizationId, id])
   @@map("employment_types")
+}
+
+/// T2-G 2903: the company's person tags (a structure master); rule groups may match them.
+model PersonTag {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("person_tags")
+}
+
+/// T2-G 2903: a tag on a person (HR edits; the person cannot).
+model EmployeeTag {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  tagId          String   @map("tag_id") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId, tagId])
+  @@index([organizationId, tagId], map: "employee_tags_tag_idx")
+  @@map("employee_tags")
 }
 
 model CostCentre {
@@ -4228,6 +4261,8 @@ model SdCategory {
   skills           String[] @default([])
   /// Batch F item 33 (answer 2573): 'desk' or 'manager' (the requester's manager answers; never for confidential ones).
   answeredBy       String   @default("desk") @map("answered_by") @db.VarChar(8)
+  /// T2-G 44 (answer 2745): the module this category is about; with answered_by 'owner' its named owner answers.
+  module           String?  @db.VarChar(20)
   active           Boolean  @default(true)
   sortOrder        Int      @default(0) @map("sort_order")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -13640,6 +13675,9 @@ model EngPost {
   kudos         EngKudos?
 
   @@index([organizationId, kind, publishAt(sort: Desc)], map: "eng_posts_feed_idx")
+  /// T2-G 42: groups in the audience (any of them).
+  groupIds       String[] @default([]) @map("group_ids") @db.Uuid
+
   @@map("eng_posts")
 }
 
@@ -13686,6 +13724,9 @@ model EngSurvey {
   invites        EngSurveyInvite[]
   responses      EngSurveyResponse[]
   plans          EngActionPlan[]
+
+  /// T2-G 42: groups in the audience (any of them).
+  groupIds       String[] @default([]) @map("group_ids") @db.Uuid
 
   @@map("eng_surveys")
 }
@@ -15930,6 +15971,9 @@ model LearningRule {
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
   version        Int      @default(1)
 
+  /// T2-G 42: groups in the audience (any of them).
+  groupIds       String[] @default([]) @map("group_ids") @db.Uuid
+
   @@map("learning_rules")
 }
 
@@ -16341,4 +16385,24 @@ model HomeLayout {
 
   @@unique([organizationId, userId], map: "home_layouts_org_user_key")
   @@map("home_layouts")
+}
+
+/// T2-G 45 (answer 2744): where the company's scheduled data export goes. Secrets are encrypted by the API.
+model CompanyExportDestination {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  /// s3 | azure_blob | google_drive
+  kind                 String    @db.VarChar(16)
+  /// Not secret: { bucket, region, prefix } | { accountUrl, container, prefix } | { folderId }
+  target               Json
+  secretEncrypted      String    @map("secret_encrypted")
+  zipPasswordEncrypted String    @map("zip_password_encrypted")
+  setBy                String    @map("set_by") @db.Uuid
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastAttemptAt        DateTime? @map("last_attempt_at") @db.Timestamptz(3)
+  lastSuccessAt        DateTime? @map("last_success_at") @db.Timestamptz(3)
+  lastError            String?   @map("last_error") @db.VarChar(300)
+
+  @@unique([organizationId], map: "company_export_destinations_org_key")
+  @@map("company_export_destinations")
 }

@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react';
 import { DeskSetupScreen, type Banner, type Bounce, type Calendar, type CannedResponse, type ComplianceReport, type DeskDetail, type DeskSummary, type DeskTemplates, type InboundEmail, type InboundEmailDetail, type InboundVerdict, type Mailbox, type MailRule, type PortalView, type SeatCost, type SendingDomain, type SlaSetup, type TicketPage, type WebhookSecret } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
-import { useYxPermissions } from '../../../../../lib/yx-org';
+import { useOrg, useYxPermissions } from '../../../../../lib/yx-org';
+import type { CompanyModule } from '../../../../../lib/yx-modules';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
 import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, SchedulesAdmin, type BranchView, type ChatQueue, type DocTemplate, type JourneySetup, type LifecycleSetup, type RecurringView, type SequenceDef } from '@yukthix/ui/desk';
@@ -25,6 +26,7 @@ function YxDeskSetupPageInner() {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
   const perms = useYxPermissions();
+  const companyModules = useOrg<{ modules: CompanyModule[] }>('/modules');
   const me = useCurrentUser();
   const desks = useDesk<DeskSummary[]>('/desks');
   const [selected, setSelected] = useState<string | null>(null);
@@ -125,6 +127,8 @@ function YxDeskSetupPageInner() {
       onSaveGroup={async (id, input) => {
         await write(id ? `${base}/groups/${id}` : `${base}/groups`, id ? 'PATCH' : 'POST', input);
       }}
+      // T2-G 44 (answer 2745): a category may be answered by the owner the company named for its module.
+      modules={companyModules.data?.modules?.map((m) => ({ id: m.id, label: m.label, owner: m.owner?.name ?? null }))}
       onSaveCategory={async (id, input) => {
         await write(id ? `${base}/categories/${id}` : `${base}/categories`, id ? 'PATCH' : 'POST', input);
       }}

@@ -1,3 +1,4 @@
+import { ownerKey } from '../org-structure/modules';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -25,6 +26,9 @@ export interface HubArea {
   owner: string;
   checks: HubCheck[];
 }
+
+/** T2-G 44: the set-up hub area each module owner is shown on. */
+const HUB_MODULE: Record<string, string> = { people: 'people', time: 'time', payroll: 'pay' };
 
 /** Registry key prefixes each area's company rules live under ("reviewed" once the company saved one of them). */
 const RULES: Record<string, string[]> = {
@@ -117,6 +121,14 @@ export class SetupHubService {
             check('pay-rules', 'Payroll rules reviewed', false, await rules('payroll'), '/yx/settings/payroll-rules', true),
           ],
         });
+      }
+      // T2-G 44 (answer 2745): where the company named a module's owner, the card shows that person.
+      const named = await tx.setting.findMany({ where: { organizationId: c.organizationId, scopeType: 'tenant', key: { in: Object.values(HUB_MODULE).map(ownerKey) } }, select: { key: true, value: true } });
+      const people = await tx.user.findMany({ where: { organizationId: c.organizationId, status: 'active', id: { in: named.map((n) => String(n.value)).filter((v) => /^[0-9a-f-]{36}$/i.test(v)) } }, select: { id: true, name: true, email: true } });
+      for (const a of areas) {
+        const v = HUB_MODULE[a.id] && named.find((n) => n.key === ownerKey(HUB_MODULE[a.id]!))?.value;
+        const u = people.find((p) => p.id === v);
+        if (u) a.owner = u.name || u.email;
       }
       return areas;
     });

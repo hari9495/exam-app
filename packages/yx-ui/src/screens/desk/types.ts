@@ -72,7 +72,9 @@ export interface DeskCategory {
   active: boolean;
   sortOrder: number;
   /** Batch F item 33 (answer 2573): who answers its tickets (absent on an older API: the desk). */
-  answeredBy?: 'desk' | 'manager';
+  answeredBy?: 'desk' | 'manager' | 'owner';
+  /** T2-G 44 (answer 2745): the module the category is about (its named owner answers with answeredBy 'owner'). */
+  module?: string | null;
   privateByDefault?: boolean;
 }
 export interface DeskGroup {

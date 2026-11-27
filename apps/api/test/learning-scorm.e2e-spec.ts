@@ -194,7 +194,7 @@ describe('Learning: SCORM packages (answer 2781)', () => {
     await content(`${ids.token}/index.html`, 'app.scorm-e2e.test').expect(404);
     // Unsigned, tampered, expired, or signed for another package.
     await content(`${ids.token.split('.')[0]}/index.html`).expect(403);
-    await content(`${ids.token.slice(0, -2)}aa/index.html`).expect(403);
+    await content(`${ids.token.slice(0, -6)}${ids.token.at(-6) === 'A' ? 'B' : 'A'}${ids.token.slice(-5)}/index.html`).expect(403); // a signature character that carries real bits, always changed
     const t = readToken(ids.token)!;
     await content(`${signToken({ ...t, x: Date.now() - 1000 })}/index.html`).expect(403);
     await content(`${ids.token2004}/index.html`).expect(404);

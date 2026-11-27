@@ -6,9 +6,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CalendarClock, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
-import { AccessibilityMenu, Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
+import { AccessibilityMenu, applyTerms, Button, CommandPalette, EmptyState, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, TermsProvider, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast, type Terms } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
-import { DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import { AvailabilityState, DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import { downForMaintenance } from '../../../lib/yx-availability';
 import { ContainedBanner } from '@yukthix/ui/console';
 import type { LegalEntity } from '@yukthix/ui/org';
 import type { TeamMember } from '@yukthix/ui/workforce';
@@ -31,7 +32,12 @@ import { ScopeProvider, YxNavContext, recentMonths, useScope, useWorkspaceCounts
 import { DeskHelp } from './desk-help';
 import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
+import { inCompanyOrder, moduleOfHref, pageOff, type CompanyModule } from '../../../lib/yx-modules';
 import { lastAreaKey, readLastArea, writeLastArea, type LastArea } from '../../../lib/yx-recent';
+import { PHONE_TABS, phoneTab, usePhone } from '../../../lib/yx-phone';
+import { NextIntlClientProvider } from 'next-intl';
+import { YxI18nProvider, type YxLocale } from '@yukthix/ui/i18n';
+import { bellText, messagesFor, navLabel } from '../../../lib/yx-i18n';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/engage', 'engage'], ['/yx/learning', 'learning'], ['/yx/analytics', 'analytics'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
@@ -95,11 +101,26 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
-  const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: 15 * 60_000 });
+  const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: (q) => (q.state.data?.maintenance?.phase === 'now' ? 60_000 : 15 * 60_000) });
+  // T2-G 41 (answer 2746): the company's modules; one that is off leaves the menu and its pages say so.
+  const companyModules = useOrg<{ modules: CompanyModule[] }>('/modules');
+  const modulesOff = useMemo(() => companyModules.data?.modules?.filter((m) => !m.on).map((m) => m.id) ?? [], [companyModules.data]);
+  const moduleOrder = useMemo(() => companyModules.data?.modules?.map((m) => m.id), [companyModules.data]);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const phone = usePhone();
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const bell = useBellItems(!actingSuperAdmin);
+  // T2-G 84a (answer 2743): the company's own words for department, grade and the rest, on every screen and in the menu.
+  // T2-G 84b: and the reader's screen language (Hindi or English; English for every word not yet in Hindi).
+  const display = useOrg<{ terms: Terms; locale?: YxLocale }>('/display');
+  const terms = display.data?.terms;
+  const locale: YxLocale = display.data?.locale === 'hi' ? 'hi' : 'en';
+  const messages = useMemo(() => messagesFor(locale), [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+  const bellLine = useMemo(() => bellText(locale), [locale]);
+  const bell = useBellItems(!actingSuperAdmin, bellLine);
   const contained = useQuery<{ contained: boolean }>({ queryKey: ['yx', 'containment'], queryFn: () => apiFetch('/help/containment', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, staleTime: 60_000 });
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
@@ -129,7 +150,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const employee = Boolean(team.data?.managerId);
   const nav = useMemo(
     () =>
-      buildNav({
+      termedNav(terms, locale, buildNav({
         has: (k) => perms.has(k as never),
         role,
         support,
@@ -152,10 +173,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         projectReports: Boolean(projectsOn.data?.reports),
         panellist: Boolean(myInterviews.data?.length),
         trainer: Boolean(learningRoles.data?.trainer),
-      }),
+        modulesOff,
+        moduleOrder,
+      })),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data],
+    [terms, locale, perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data, modulesOff, moduleOrder],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support,
@@ -222,7 +245,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const areaId: AreaId = hit?.area.id ?? AREA_BY_PATH.find(([p]) => pathname.startsWith(p))?.[1] ?? 'home';
   const area: NavArea = nav.find((a) => a.id === areaId) ?? nav[0];
   const first = (a: NavArea) => a.sections[0].items[0];
-  const rail = SCREEN_RAIL.flatMap((r) => {
+  const rail = inCompanyOrder(SCREEN_RAIL, moduleOrder).flatMap((r) => {
     const a = nav.find((x) => x.id === r.id);
     return a ? [{ ...r, href: first(a).href }] : [];
   });
@@ -303,6 +326,9 @@ function Frame({ children }: { children: React.ReactNode }) {
   const profileHref = meHref('profile') ?? '/profile';
 
   return (
+    <NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Kolkata">
+    <YxI18nProvider locale={locale}>
+    <TermsProvider terms={terms}>
     <DesktopFrame
       area={area.id}
       panelTitle={shown.title}
@@ -312,7 +338,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         onNavigate: go,
         ...(newTypes.length ? { onNew: () => setNewOpen(true) } : {}),
         lastUsed: lastArea && !rail.some((r) => r.id === lastArea.area) ? { ...SCREEN_RAIL.find((r) => r.id === lastArea.area)!, href: lastArea.href } : null,
-        onSearch: () => setPaletteOpen(true),
+        // T2-H: on a phone, Search opens the designed full-screen phone search.
+        onSearch: () => (phone ? go('/yx/search') : setPaletteOpen(true)),
         onHelp: support ? undefined : () => setHelpOpen(true),
         helpUnread: !support && (news?.unread ?? 0) > 0,
         scope: scopePicker,
@@ -345,7 +372,10 @@ function Frame({ children }: { children: React.ReactNode }) {
         breadcrumbs: crumbs,
         panelCollapsed: collapsed,
         onPanelCollapsedChange: setCollapsed,
-        tabs: { home: '/yx/home', ...(support ? {} : { requests: '/yx/approvals' }), ...(employee && !support ? { time: '/yx/time/attendance', pay: '/yx/me/payslips' } : {}), me: profileHref },
+        // T2-H (answer 2741): the phone tabs open the designed tab landings; on a desk those move on to the menu's page.
+        tabs: { home: PHONE_TABS.home, ...(support ? {} : { requests: PHONE_TABS.requests }), ...(employee && !support ? { time: PHONE_TABS.time, pay: PHONE_TABS.pay } : {}), me: support ? profileHref : PHONE_TABS.me },
+        tab: phoneTab(pathname),
+        tabBadges: { requests: counts.data?.approvals ?? 0 },
         overlays: (
           <>
             {newTypes.length > 0 && <RequestSheetScreen live={{ open: newOpen, onOpenChange: setNewOpen, types: newTypes, onPick: go }} />}
@@ -380,8 +410,24 @@ function Frame({ children }: { children: React.ReactNode }) {
       {/* Answer 1050: while YukthiX has the company contained, every page says so. */}
       {contained.data?.contained && <ContainedBanner />}
       <YxPageHelp pathname={pathname} requests={!support && !impersonating}>
-        <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{children}</YxNavContext.Provider>
+        {/* T2-G (6.5): during a planned window, once the API stops answering, the designed maintenance page. */}
+        {downForMaintenance(availability.data?.maintenance, availability.isError) ? (
+          <AvailabilityState kind="maintenance" feature="YukthiX" until={new Date(availability.data!.maintenance!.endsAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} action={null} />
+        ) : (
+          <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{pageOff(pathname, modulesOff) ? <EmptyState title={`${companyModules.data?.modules?.find((m) => m.id === moduleOfHref(pathname))?.label ?? 'This module'} is switched off`} description="Your company does not use it now. Its data is kept. Your System Admin can switch it on in Settings › Modules." /> : children}</YxNavContext.Provider>
+        )}
       </YxPageHelp>
     </DesktopFrame>
+    </TermsProvider>
+    </YxI18nProvider>
+    </NextIntlClientProvider>
   );
+}
+
+/** The menu in the company's own words (T2-G 84a) and, for a Hindi reader, its self-service links in Hindi (84b). */
+function termedNav(terms: Terms | undefined, locale: YxLocale, nav: NavArea[]): NavArea[] {
+  if (!terms && locale === 'en') return nav;
+  const word = (s: string) => (terms ? applyTerms(s, terms) : s);
+  const label = navLabel(locale);
+  return nav.map((a) => ({ ...a, sections: a.sections.map((s) => ({ ...s, ...(s.label ? { label: word(s.label) } : {}), items: s.items.map((l) => ({ ...l, label: word(label(l.id, l.label)) })) })) }));
 }

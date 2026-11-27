@@ -15,6 +15,9 @@ describe('T2-E 52 push rules (answers 2875 to 2877)', () => {
     expect(pushDefault('assigned')).toBe(false);
     expect(pushTitle('approval.requested')).toBe('A request needs your approval');
     expect(pushTitle('not.a.kind')).toBe('You have something new in YukthiX');
+    // Answer 2901: the timesheet line kinds have their own neutral title and push by default (approvals group).
+    expect(pushTitle('time.timesheet.lines')).toBe('Timesheet hours are waiting for your approval');
+    expect(pushDefault('time.timesheet.line')).toBe(true);
   });
 
   it('negative: only https push addresses; no keys in config means no push', () => {

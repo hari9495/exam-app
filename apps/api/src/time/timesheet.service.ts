@@ -141,10 +141,38 @@ export class TimesheetService implements OnModuleInit {
       const managers = await tx.user.findMany({ where: { organizationId: org, id: { in: projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
       const sum = (ms: number[]) => ms.reduce((a, b) => a + b, 0);
       const today = todayIst();
+      const isNow = (a: { fromOn: Date; toOn: Date | null }) => dateOf(a.fromOn) <= today && (!a.toOn || dateOf(a.toOn) >= today);
+      // Answer 2900: on the projects I am on now, who else of the team is away in the next 14 days ("Away" with the
+      // days, never the leave type, as the project page shows it, 2868), for people without the Projects key.
+      const nowOn = [...new Set(allocations.filter((a) => !a.tentative && isNow(a)).map((a) => a.projectId))];
+      const team = nowOn.length ? await tx.projectAllocation.findMany({ where: { organizationId: org, projectId: { in: nowOn }, tentative: false, employeeId: { not: me }, fromOn: { lte: asDate(today) }, OR: [{ toOn: null }, { toOn: { gte: asDate(today) } }] }, select: { projectId: true, employeeId: true } }) : [];
+      const to = addDays(today, 13);
+      const teamIds = [...new Set(team.map((t) => t.employeeId))];
+      const leave = teamIds.length
+        ? await tx.$queryRaw<{ employee_id: string; on: string }[]>`
+            SELECT DISTINCT d.employee_id::text, d.leave_on::text AS on FROM leave_request_days d
+            JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+            WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${today}::date AND ${to}::date AND d.employee_id = ANY(${teamIds}::uuid[])
+            ORDER BY 2 LIMIT 1000`
+        : [];
+      const awayIds = [...new Set(leave.map((r) => r.employee_id))];
+      const names = awayIds.length ? await tx.employee.findMany({ where: { organizationId: org, id: { in: awayIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }) : [];
+      const nameOf = (id: string) => {
+        const e = names.find((x) => x.id === id);
+        return e ? [e.preferredName ?? e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
+      };
+      const awayOn = (projectId: string) => {
+        if (!nowOn.includes(projectId)) return null;
+        const ids = new Set(team.filter((t) => t.projectId === projectId).map((t) => t.employeeId));
+        const by = new Map<string, string[]>();
+        for (const r of leave) if (ids.has(r.employee_id)) by.set(r.employee_id, [...(by.get(r.employee_id) ?? []), r.on]);
+        return { from: today, to, people: [...by].map(([id, days]) => ({ person: nameOf(id), days })).sort((a, b) => a.days[0]!.localeCompare(b.days[0]!) || a.person.localeCompare(b.person)) };
+      };
       return projects.map((p) => {
         const mine = lines.filter((l) => l.projectId === p.id);
         const allocs = allocations.filter((a) => a.projectId === p.id);
         return {
+          away: awayOn(p.id),
           id: p.id,
           code: p.code,
           name: p.name,

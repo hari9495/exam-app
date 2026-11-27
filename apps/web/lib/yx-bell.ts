@@ -26,11 +26,12 @@ export function approvableTask(n: NotificationView, tasks: InboxTask[] | undefin
   return tasks?.find((t) => t.requestId === n.entityId && !t.decideAt) ?? null;
 }
 
-export function toBellItem(n: NotificationView): NotificationItem {
-  return { id: n.id, actor: { name: n.actorName ?? 'YukthiX' }, system: !n.actorName, text: notificationText(n), at: new Date(n.createdAt), read: Boolean(n.readAt), href: n.linkPath };
+/** `text`: the line in the reader's language (T2-G 84b; English as built by default). */
+export function toBellItem(n: NotificationView, text: (n: NotificationView) => string = notificationText): NotificationItem {
+  return { id: n.id, actor: { name: n.actorName ?? 'YukthiX' }, system: !n.actorName, text: text(n), at: new Date(n.createdAt), read: Boolean(n.readAt), href: n.linkPath };
 }
 
-export function useBellItems(enabled: boolean) {
+export function useBellItems(enabled: boolean, text: (n: NotificationView) => string = notificationText) {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
   const qc = useQueryClient();
@@ -41,7 +42,7 @@ export function useBellItems(enabled: boolean) {
   // The same query (and cache) as the Approvals page: what waits for this person, and nothing else.
   const inbox = useQuery<InboxTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, token), enabled: enabled && Boolean(token) && hasApprovals, retry: false });
   const items = (notifications.data ?? []).map((n): NotificationItem => {
-    const item = toBellItem(n);
+    const item = toBellItem(n, text);
     if (approved.has(n.id)) return { ...item, approval: { onApprove: () => undefined, approved: true } };
     const task = enabled ? approvableTask(n, inbox.data) : null;
     if (!task) return item;

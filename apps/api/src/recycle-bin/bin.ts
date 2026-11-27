@@ -10,6 +10,7 @@ export const BIN_KINDS = {
   grade: { model: 'grade', area: 'Organisation', what: 'Grade' },
   employment_type: { model: 'employmentType', area: 'Organisation', what: 'Employment type' },
   cost_centre: { model: 'costCentre', area: 'Organisation', what: 'Cost centre' },
+  person_tag: { model: 'personTag', area: 'Organisation', what: 'Person tag' },
   location: { model: 'location', area: 'Organisation', what: 'Location' },
   candidate_email_template: { model: 'candidateEmailTemplate', area: 'Hiring', what: 'Email template' },
   candidate_sms_template: { model: 'candidateSmsTemplate', area: 'Hiring', what: 'SMS template' },

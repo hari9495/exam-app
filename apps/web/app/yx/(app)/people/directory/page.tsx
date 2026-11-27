@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { DirectoryPhone, DirectoryScreen, type DirectorySavedView, type LiveDirectory, type WorkforceFilter, type WorkforceRow } from '@yukthix/ui/frame';
@@ -13,6 +13,7 @@ import { chartPeople, useChangeOptions, usePeople, usePeopleWrite } from '../../
 import { usePdfPost } from '../../../../../lib/yx-lifecycle';
 import { useScope } from '../../../../../lib/yx-shell';
 import { useApi } from '../../../../../lib/yx-pay-5j';
+import { usePhone } from '../../../../../lib/yx-phone';
 
 interface Ref {
   id: string;
@@ -91,15 +92,7 @@ export default function YxDirectoryPage() {
   const download = usePdfPost();
   const { toast } = useToast();
   const [adding, setAdding] = useState(false);
-  const [phone, setPhone] = useState(false);
-  useEffect(() => {
-    const m = window.matchMedia?.('(max-width: 767px)');
-    if (!m) return;
-    setPhone(m.matches);
-    const on = (e: MediaQueryListEvent) => setPhone(e.matches);
-    m.addEventListener('change', on);
-    return () => m.removeEventListener('change', on);
-  }, []);
+  const phone = usePhone();
   // Add employee: the hire form (P01 §4.4, PPL-36) with the people and entities it needs, loaded only for HR.
   const chart = usePeople<OrgChartData>(canHire ? '/org-chart' : null);
   const options = useChangeOptions(useMemo(() => chartPeople(chart.data), [chart.data]), perms.has('employee.salary.manage'), canHire);

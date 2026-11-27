@@ -1,3 +1,4 @@
+import { MODULE_IDS } from '../org-structure/modules';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -288,8 +289,13 @@ export class CategoryDto {
 
   /** Batch F item 33 (answer 2573): who answers tickets of this category. */
   @IsOptional()
-  @IsIn(['desk', 'manager'])
-  answeredBy?: 'desk' | 'manager';
+  @IsIn(['desk', 'manager', 'owner'])
+  answeredBy?: 'desk' | 'manager' | 'owner';
+
+  /** T2-G 44 (answer 2745): the module the category is about; with answeredBy 'owner' its named owner answers. */
+  @IsOptional()
+  @IsIn([...MODULE_IDS, null])
+  module?: string | null;
 }
 
 /** Batch F GLPI 10 (answer 2574): a desk set-up file to import; dryRun says what would happen and writes nothing. */

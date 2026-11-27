@@ -12,7 +12,7 @@ import { NotificationCentre, useToast, type NotificationItem } from '../../compo
 import { Select } from '../../components/select';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { DashboardGrid, NeedsActionList, type ActionItem, type DashboardWidget, type WidgetSize } from '../../components/dashboard';
 import { LineChart, StatCard } from '../../components/charts';
 import { Dialog } from '../../components/overlay';
@@ -30,6 +30,7 @@ import { ClockCard } from '../time/time-kit';
 import { GENERAL_SHIFT, NOW_MIN, TODAY_PUNCHES } from '../time/time-data';
 import '../time/time.css';
 import { ListPage, homePanel, parseQuery } from './platform-kit';
+import { formatDateIn, useYxLocale, useYxT } from '../../i18n';
 import { SETTINGS_GROUPS as SETTINGS_MAP } from '../settings/settings-groups';
 import { SettingsHomeScreen as SettingsMapHome } from '../settings/settings-screens';
 import { NOTIFICATIONS } from './platform-data';
@@ -698,6 +699,8 @@ export interface LiveHome {
   goals?: { text: string; href: string }[];
   /** Employee: "My tasks": checklist tasks, feedback asked of them and their own review, each linked. */
   tasks?: { text: string; href: string }[];
+  /** T2-G 44 (answer 2745): "Who to ask": each module's named owner (People's is "Your HR contact"). */
+  owners?: { module: string; name: string }[];
   /** "Coming up": birthdays and work anniversaries in the person's circle, and the next holidays. */
   coming?: { id: string; kind: 'person' | 'holiday'; name: string; text: string }[];
   quickActions?: { label: string; href: string; kind: 'leave' | 'wfh' | 'payslip' }[];
@@ -802,7 +805,7 @@ const SAMPLE_TEAM_TODAY: TeamToday = {
 };
 
 /** Nudge on Team today (PLT-02): once sent it says so and stays done; a refusal says why in a toast. */
-function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boolean; onNudge: () => Promise<void> }) {
+export function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boolean; onNudge: () => Promise<void> }) {
   const { toast } = useToast();
   const [state, setState] = useState<'idle' | 'busy' | 'done'>(reminded ? 'done' : 'idle');
   const send = async () => {
@@ -826,7 +829,7 @@ function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boo
 }
 
 const QUICK_ICON = { leave: CalendarPlus, wfh: House, payslip: Download };
-const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 17 ? 'afternoon' : 'evening');
+export const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 17 ? 'afternoon' : 'evening');
 
 /** Widths that fill each row: n cards share it evenly (live data decides how many cards there are). */
 const SHARE: Record<number, WidgetSize> = { 1: 12, 2: 6, 3: 4 };
@@ -888,6 +891,9 @@ const hideRupees = (t: string) => t.replace(/₹[\d,]+(\.\d+)?/g, HIDDEN);
 function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScreenProps['persona']; data: HomeData; loading: boolean; live: LiveHome }) {
   // Every ₹ figure goes through m() (and titles through hideRupees) so "Hide amounts" masks the whole page.
   const hide = Boolean(live.amounts?.hidden);
+  // T2-G 84b: the Home words in the reader's language (Hindi or English).
+  const t = useYxT('home');
+  const locale = useYxLocale();
   const m = (v: number) => (hide ? HIDDEN : formatINR(v));
   const outTotal = (live.moneyOut ?? []).reduce((t, r) => t + (r.amount ?? 0), 0);
   const hiring = live.hiring ? hiringWidgets(live.hiring, loading) : [];
@@ -897,34 +903,34 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
   const laterHiring = hiring.filter((w) => !besideActions.includes(w) && w.id !== 'interviewsToday');
   const pair = (ws: DashboardWidget[]) => (ws.length === 1 ? [{ ...ws[0], size: 12 as const }] : ws);
   const widgets: DashboardWidget[] = [
-    ...(live.nudge ? [{ id: 'nudge', pinned: true, bare: true, title: 'For you', size: 12 as const, content: live.nudge }] : []),
+    ...(live.nudge ? [{ id: 'nudge', pinned: true, bare: true, title: t('forYou'), size: 12 as const, content: live.nudge }] : []),
     {
       id: 'actions',
-      title: 'Needs your action',
+      title: t('actions'),
       size: live.clock || besideActions.length ? 8 : 12,
       pinned: true,
       bare: true,
       content: <NeedsActionList items={hide ? data.actions.map((x) => ({ ...x, title: hideRupees(x.title) })) : data.actions} total={data.actionsTotal} viewAllHref={live.approvalsHref} today={live.today} onApprove={live.onApprove} onReview={live.onReview} loading={loading} />,
     },
-    ...(live.clock ? [{ id: 'clock', pinned: true, title: 'Attendance today', size: 4 as const, content: live.clock }] : []),
+    ...(live.clock ? [{ id: 'clock', pinned: true, title: t('clock'), size: 4 as const, content: live.clock }] : []),
     ...besideActions,
     ...pair([
     ...(live.team
       ? [{
           id: 'today',
-          title: 'My team today',
+          title: t('team'),
           size: 8 as const,
-          actions: <Link href={live.team.href}>{`View all ${live.team.total}`}</Link>,
+          actions: <Link href={live.team.href}>{t('viewAll', { n: live.team.total })}</Link>,
           content: <TeamTodayCard team={live.team} onNudge={live.onNudge} />,
         }]
       : []),
     ...(live.off
       ? [{
           id: 'off',
-          title: "Who's off this week",
+          title: t('off'),
           size: 4 as const,
-          actions: live.offHref ? <Link href={live.offHref}>Team calendar</Link> : undefined,
-          empty: live.off.length ? undefined : 'No one in your team is off this week.',
+          actions: live.offHref ? <Link href={live.offHref}>{t('teamCalendar')}</Link> : undefined,
+          empty: live.off.length ? undefined : t('offEmpty'),
           content: (
             <ul className="yx-plt-list">
               {live.off.map((w) => (
@@ -940,9 +946,9 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ]),
     ...fill([
       ...(live.stats ?? []).map((x) =>
-        x.id === 'late' && live.pay ? stat('pay', 'Net pay', <PayStat loading={loading} pay={live.pay} />) : stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} money={x.money} masked={hide && x.money} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />),
+        x.id === 'late' && live.pay ? stat('pay', t('netPay'), <PayStat loading={loading} pay={live.pay} />) : stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} money={x.money} masked={hide && x.money} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />),
       ),
-      ...(live.pay && !live.stats?.some((x) => x.id === 'late') ? [stat('pay', 'Net pay', <PayStat loading={loading} pay={live.pay} />)] : []),
+      ...(live.pay && !live.stats?.some((x) => x.id === 'late') ? [stat('pay', t('netPay'), <PayStat loading={loading} pay={live.pay} />)] : []),
     ]),
     ...pair([
     ...(live.moneyOut
@@ -1070,27 +1076,27 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ...(live.goals
       ? [{
           id: 'goals',
-          title: 'Goals and 1:1s',
+          title: t('goals'),
           size: 4 as const,
-          empty: live.goals.length ? undefined : 'No 1:1s, reviews or goals to look at.',
+          empty: live.goals.length ? undefined : t('goalsEmpty'),
           content: <Bullets items={live.goals.map((g) => <Link href={g.href}>{g.text}</Link>)} />,
         }]
       : []),
     ...(live.tasks
       ? [{
           id: 'tasks',
-          title: 'My tasks',
+          title: t('tasks'),
           size: 4 as const,
-          empty: live.tasks.length ? undefined : 'No tasks for you right now.',
+          empty: live.tasks.length ? undefined : t('tasksEmpty'),
           content: <Bullets items={live.tasks.map((t) => <Link href={t.href}>{t.text}</Link>)} />,
         }]
       : []),
     ...(live.coming
       ? [{
           id: 'coming',
-          title: 'Coming up',
+          title: t('coming'),
           size: 4 as const,
-          empty: live.coming.length ? undefined : 'Nothing coming up this week.',
+          empty: live.coming.length ? undefined : t('comingEmpty'),
           content: (
             <Bullets
               items={live.coming.map((x) =>
@@ -1100,25 +1106,42 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
           ),
         }]
       : []),
+    // T2-G 44 (answer 2745): the person named for each module, drawn as the first-run "Your people" list (Your HR contact).
+    ...(live.owners?.length
+      ? [{
+          id: 'owners',
+          title: t('owners'),
+          size: 4 as const,
+          content: (
+            <ul className="yx-plt-list">
+              {live.owners.map((o) => (
+                <li key={o.module}>
+                  <span className="yx-plt-list__main"><PersonLabel name={o.name} secondary={o.module === 'People' ? t('hrContact') : t('moduleContact', { module: o.module })} /></span>
+                </li>
+              ))}
+            </ul>
+          ),
+        }]
+      : []),
     ...hiring.filter((w) => w.id === 'interviewsToday' && !besideActions.includes(w)),
     ], 4),
     ...laterHiring,
   ];
-  const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : GREETING[persona];
+  const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : persona === 'employee' || persona === 'manager' ? t(persona) : GREETING[persona];
   return (
     <>
       <div className="yx-plt-row" data-justify="between">
         <div className="yx-plt-greet">
-          <Heading level={1}>{`Good ${partOfDay(live.today)}, ${live.firstName}`}</Heading>
+          <Heading level={1}>{t(partOfDay(live.today), { name: live.firstName })}</Heading>
           <p className="yx-plt-muted">
-            {formatDate(live.today)} · {greeting}
+            {formatDateIn(locale, live.today)} · {greeting}
           </p>
         </div>
         {live.quickActions?.length || live.amounts ? (
-          <div className="yx-plt-row" role="group" aria-label="Quick actions">
+          <div className="yx-plt-row" role="group" aria-label={t('quickActions')}>
             {live.amounts && (
               <Button icon={hide ? Eye : EyeOff} aria-pressed={hide} onClick={live.amounts.onToggle}>
-                {hide ? 'Show amounts' : 'Hide amounts'}
+                {hide ? t('showAmounts') : t('hideAmounts')}
               </Button>
             )}
             {(live.quickActions ?? []).map((a) => (
@@ -1672,18 +1695,37 @@ const MOBILE_SUGGESTED = [
 ];
 const MOBILE_RECENT = ['Arjun Mehta', 'LV-26-01842', 'Form 16'];
 
-export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }: { query: string; hits: SearchHit[]; persona?: Persona }) {
-  const hits = searchableFor(persona, allHits);
-  const [q, setQ] = useState(query);
+/** T2-H: phone search with the workspace search the desk uses; the hits are only what the person may open. */
+export interface LiveMobileSearch {
+  /** The page searches as the person types (two characters or more). */
+  onQueryChange: (q: string) => void;
+  loading?: boolean;
+  onOpen: (hit: SearchHit) => void;
+  /** Suggested actions: pages the person may open. */
+  suggested: { label: string; href: string; kind: 'leave' | 'expense' | 'payslip' }[];
+  onNavigate: (href: string) => void;
+}
+
+const SUGGESTED_ICON = { leave: CalendarPlus, expense: Receipt, payslip: FileText };
+
+export function MobileSearchScreen({ query, hits: allHits, persona = 'manager', live }: { query: string; hits: SearchHit[]; persona?: Persona; live?: LiveMobileSearch }) {
+  const hits = live ? allHits : searchableFor(persona, allHits);
+  const [q, setQState] = useState(query);
+  const setQ = (v: string) => {
+    setQState(v);
+    live?.onQueryChange(v);
+  };
   const [scope, setScope] = useState<string | null>(null);
-  const [recent, setRecent] = useState(MOBILE_RECENT);
+  const [recent, setRecent] = useState(live ? [] : MOBILE_RECENT);
   const term = q.trim().toLowerCase();
   const sc = MOBILE_SCOPES.find((x) => x.key === scope);
   const shown = useMemo(
     () => explainedHits(hits, term).filter((h) => !sc || sc.sources.includes(h.source)),
     [hits, term, sc],
   );
-  const actions = MOBILE_SUGGESTED.filter((a) => !term || a.label.toLowerCase().includes(term));
+  const suggested = live ? live.suggested.map((s) => ({ label: s.label, icon: SUGGESTED_ICON[s.kind], href: s.href })) : MOBILE_SUGGESTED.map((s) => ({ ...s, href: undefined as string | undefined }));
+  const actions = suggested.filter((a) => !term || a.label.toLowerCase().includes(term));
+  const act = (href?: string) => (href && live ? () => live.onNavigate(href) : undefined);
   return (
     <PhoneFrame tab="home" title="Search" hideTabs back={<IconButton icon={ArrowLeft} label="Back to Home" />}>
       <FormField label="Search" hideLabel>
@@ -1714,9 +1756,9 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
           )}
           <Card title="Suggested for you">
             <ul className="yx-plt-list">
-              {MOBILE_SUGGESTED.map((a) => (
+              {suggested.map((a) => (
                 <li key={a.label}>
-                  <button type="button" className="yx-plt-myreq__row">
+                  <button type="button" className="yx-plt-myreq__row" onClick={act(a.href)}>
                     <Icon icon={a.icon} />
                     <span className="yx-plt-list__main">{a.label}</span>
                   </button>
@@ -1729,7 +1771,7 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
         <ul className="yx-plt-list" aria-live="polite">
           {actions.map((a) => (
             <li key={a.label}>
-              <button type="button" className="yx-plt-myreq__row">
+              <button type="button" className="yx-plt-myreq__row" onClick={act(a.href)}>
                 <Icon icon={a.icon} />
                 <span className="yx-plt-list__main">{a.label}</span>
               </button>
@@ -1741,7 +1783,18 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
           {shown.map((h) => (
             <li key={h.id}>
               <Icon icon={h.source === 'People' || h.source === 'Candidates' ? UserRound : h.source === 'Tickets' ? Ticket : FileText} />
-              <a href="#" className="yx-plt-list__main yx-plt-hit">
+              <a
+                href={live ? (h.href ?? '#') : '#'}
+                className="yx-plt-list__main yx-plt-hit"
+                onClick={
+                  live
+                    ? (e) => {
+                        e.preventDefault();
+                        live.onOpen(h);
+                      }
+                    : undefined
+                }
+              >
                 <span className="yx-plt-hit__title">
                   <Highlight text={h.title} query={q} />
                 </span>
@@ -1754,7 +1807,11 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
           ))}
         </ul>
       ) : (
-        <EmptyState compact title={`No results for “${q.trim()}”.`} description="Try a name or request reference." action={<Button icon={MessageCircleQuestionMark}>Ask AI</Button>} />
+        live?.loading ? (
+          <Skeleton height={64} />
+        ) : (
+          <EmptyState compact title={`No results for “${q.trim()}”.`} description="Try a name or request reference." action={live ? undefined : <Button icon={MessageCircleQuestionMark}>Ask AI</Button>} />
+        )
       )}
     </PhoneFrame>
   );

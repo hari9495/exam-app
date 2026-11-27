@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useKitWords } from './kit-words';
+import { useTerm } from '../lib/terms';
 import { AlertCircle } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { Icon } from './foundations';
@@ -72,6 +73,8 @@ export function FormField({ label, children, required = false, optional, helper,
   // leave the field or press Save. One rule for every field, whatever set the error.
   const [typing, setTyping] = useState(false);
   const words = useKitWords();
+  // T2-G 84a: the company's own words for department, grade and the rest.
+  const term = useTerm();
   // The control's own message is about what was typed ("Choose a date on or after …"), so it beats the form's generic one.
   const shownError = typing ? null : internalError ?? error;
   const shownRule = shownError ? undefined : rule;
@@ -104,7 +107,7 @@ export function FormField({ label, children, required = false, optional, helper,
         onBlur={() => setTyping(false)}
       >
         <label htmlFor={fieldId} className="yx-field__label" data-hidden={hideLabel || undefined}>
-          <span>{label}</span>
+          <span>{term(label)}</span>
           {required && <span className="yx-field__req">{words.required}</span>}
           {!required && optional && <span className="yx-field__req">{words.optional}</span>}
         </label>

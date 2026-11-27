@@ -1,3 +1,6 @@
+import { MODULES, MODULE_IDS, MODULES_OFF_KEY, MODULES_ORDER_KEY, SWITCHABLE_IDS, ownerKey } from './modules';
+import { TERM_SETTINGS } from './terms';
+
 // P01 §4.6 scoped settings. Every key is registered here with its allowed scopes, whether it is dated, its
 // values and its product default (a starter value, spec D17). Modules add their keys as they are built.
 
@@ -78,6 +81,15 @@ export const PAYROLL_APPROVAL_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
+  // T2-G 84a (answer 2743): the company's own words for department, grade and the rest (Settings 1.1 › Language and region).
+  ...TERM_SETTINGS,
+  // T2-G 41 (answer 2746): modules switched off (People, Payroll and Compliance cannot be) and the rail's order (empty:
+  // the designed order). Changed on Settings › Modules (org.settings.manage); the module list is in modules.ts.
+  [MODULES_OFF_KEY]: { label: 'Modules switched off', scopes: ['tenant'], dated: false, values: SWITCHABLE_IDS, default: '', multi: true, labels: Object.fromEntries(MODULES.map((m) => [m.id, m.label])) },
+  // T2-G 44 (answer 2745): a named owner per module (Settings › Modules): shown on Home and the set-up hub, and who answers
+  // helpdesk questions in that module's categories. Not a permission.
+  ...Object.fromEntries(MODULES.map((m): [string, SettingDef] => [ownerKey(m.id), { label: `${m.label}: owner`, scopes: ['tenant'], dated: false, values: ['none'], default: 'none', labels: { none: 'Nobody named' }, oneOf: 'company_users' }])),
+  [MODULES_ORDER_KEY]: { label: 'Order of the modules', scopes: ['tenant'], dated: false, values: MODULE_IDS, default: '', multi: true, labels: Object.fromEntries(MODULES.map((m) => [m.id, m.label])) },
   // Batch B item 3 (answer 2368): how long the recycle bin keeps deleted items; shortening applies from the next nightly run.
   'recycle_bin.keep_days': { label: 'Keep deleted items in the recycle bin for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '180' },
   // Answer 1325: payroll setting changes wait for a second person (turning it off loosens a control: the access key too).
@@ -212,6 +224,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'work.normal_week_hours': { label: 'Normal working week (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['pack', '35', '37.5', '38', '40', '42', '44', '45', '48'], default: 'pack' },
   // G1 (gap pass G1): the company value is the language its own words are typed in; an entity or a person may differ.
   'people.language': { label: 'Language', scopes: ['tenant', 'legal_entity', 'employee'], dated: false, values: ['en', 'hi', 'ta', 'te'], default: 'en' },
+  // T2-G 84b (answer 2743): people who choose Hindi see the self-service screens, notifications and emails in Hindi.
+  'people.language.hindi_screens': { label: 'Show the self-service screens in Hindi to people who choose Hindi', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // P06 YX-HIS-12: how far back a past-dated change may go without a System Admin override (Q5:
   // default the start of the current financial year; the company may widen it).
   // Widening it loosens a control (YX-HIS-12), so it is the access admin's (P02 §4.2, YX-SEC-02).
@@ -556,7 +570,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', platform: { feature: 'white_label' } },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // T2-F 79 (answer 2884; the drawn 2.2 Home page setting): roles that may personalise their own Home. Off for everyone.
-  'home.personalise_roles': { label: 'Roles that may personalise their own home', scopes: ['tenant'], dated: false, multi: true, values: ['employee', 'manager', 'hr', 'finance'], default: '', labels: { employee: 'Employee', manager: 'Manager', hr: 'HR', finance: 'Finance' } },
+  'home.personalise_roles': { label: 'Roles that may personalise their own home', scopes: ['tenant'], dated: false, multi: true, values: ['employee', 'manager', 'hr', 'finance', 'recruiter'], default: '', labels: { employee: 'Employee', manager: 'Manager', hr: 'HR', finance: 'Finance', recruiter: 'Recruiter' } },
+  // T2-G 45 (answer 2744): how often the company's data goes to its own storage (once a System Admin connects one).
+  'account.scheduled_export.frequency': { label: 'Send the company data export to your storage', scopes: ['tenant'], dated: false, values: ['daily', 'weekly', 'monthly', 'off'], default: 'weekly', labels: { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', off: 'Off' } },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
   // PPL-43: the day each financial year's BFSI declarations are due (designated persons).

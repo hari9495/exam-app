@@ -50,6 +50,8 @@ export interface AnnouncementInput {
   body: string;
   locationIds: string[];
   departmentIds: string[];
+  /** T2-G 42 (answer 2745): the company's groups in the audience. */
+  groupIds?: string[];
   email: boolean;
   ackRequired: boolean;
   ackDueOn?: string;
@@ -59,6 +61,8 @@ export interface AnnouncementInput {
 export interface AnnouncementOptions {
   locations: { id: string; name: string }[];
   departments: { id: string; name: string }[];
+  /** T2-G 42: the company's groups (hand-picked or worked out from rules). */
+  groups?: { id: string; name: string }[];
   everyone: number;
 }
 export interface LiveAnnouncements {
@@ -69,7 +73,7 @@ export interface LiveAnnouncements {
   onNew?: () => void;
   onOpen?: (id: string) => void;
   options?: AnnouncementOptions | null;
-  reach?: (locationIds: string[], departmentIds: string[]) => Promise<number>;
+  reach?: (locationIds: string[], departmentIds: string[], groupIds?: string[]) => Promise<number>;
   onPublish?: (input: AnnouncementInput) => Promise<{ id: string }>;
   onDone?: (id: string) => void;
   detail?: AnnouncementDetail | null;
@@ -146,7 +150,7 @@ function Compose({ live }: { live: LiveAnnouncements }) {
   const [confirm, setConfirm] = useState(false);
   const tomorrow = new Date(live.today.getFullYear(), live.today.getMonth(), live.today.getDate() + 1);
   const text = body.replace(/<[^>]*>/g, '').trim();
-  const lists = (a: string[]) => (a.includes('everyone') ? { locationIds: [], departmentIds: [] } : { locationIds: a.filter((x) => x.startsWith('loc:')).map((x) => x.slice(4)), departmentIds: a.filter((x) => x.startsWith('dep:')).map((x) => x.slice(4)) });
+  const lists = (a: string[]) => (a.includes('everyone') ? { locationIds: [], departmentIds: [], groupIds: [] } : { locationIds: a.filter((x) => x.startsWith('loc:')).map((x) => x.slice(4)), departmentIds: a.filter((x) => x.startsWith('dep:')).map((x) => x.slice(4)), groupIds: a.filter((x) => x.startsWith('grp:')).map((x) => x.slice(4)) });
   const amount = email && carriesAmount(title);
   const early = useTooEarly([
     ...(title.trim().length < 3 ? [{ fieldId: 'an-title', message: 'Write a title (at least 3 letters).' }] : []),
@@ -161,7 +165,7 @@ function Compose({ live }: { live: LiveAnnouncements }) {
     setReach(null);
     if (next.length && live.reach) {
       const l = lists(next);
-      void live.reach(l.locationIds, l.departmentIds).then(setReach, () => setReach(null));
+      void live.reach(l.locationIds, l.departmentIds, l.groupIds).then(setReach, () => setReach(null));
     }
   };
   const shown = audience.includes('everyone') ? (o?.everyone ?? 0) : reach;
@@ -200,7 +204,7 @@ function Compose({ live }: { live: LiveAnnouncements }) {
             <MultiSelect
               value={audience}
               onChange={chooseAudience}
-              options={[{ value: 'everyone', label: 'Everyone' }, ...o.locations.map((l) => ({ value: `loc:${l.id}`, label: `Location: ${l.name}` })), ...o.departments.map((d) => ({ value: `dep:${d.id}`, label: `Department: ${d.name}` }))]}
+              options={[{ value: 'everyone', label: 'Everyone' }, ...o.locations.map((l) => ({ value: `loc:${l.id}`, label: `Location: ${l.name}` })), ...o.departments.map((d) => ({ value: `dep:${d.id}`, label: `Department: ${d.name}` })), ...(o.groups ?? []).map((g) => ({ value: `grp:${g.id}`, label: `Group: ${g.name}` }))]}
             />
           </FormField>
           <FormField label="Channels">

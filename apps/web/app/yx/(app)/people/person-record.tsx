@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { AboutMeDialog, AskDocumentDialog, ChangeActionDrawer, ClearAboutMeDialog, ContactsDrawer, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, type AskableType, CustomFieldsDrawer, FamilyDrawer, PayAccessDialog, PersonWorkspace, type PayAccessAskInput, type PayAccessRow, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { AboutMeDialog, AskDocumentDialog, ChangeActionDrawer, ClearAboutMeDialog, ContactsDrawer, PersonTagsDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, type AskableType, CustomFieldsDrawer, FamilyDrawer, PayAccessDialog, PersonWorkspace, type PayAccessAskInput, type PayAccessRow, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -118,6 +118,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const payRead = usePayRead();
   // PPL-45: HR who sees the person's identity class.
   const workAuth = usePeople<WorkAuths>(hr && profile.data && !profile.data.self && profile.data.classes.identity ? `/employees/${p}/work-authorisations` : null);
+  // T2-G 2903: HR's tags on the person (HR who may open the record; the API checks scope).
+  const tags = usePeople<{ tags: { id: string; name: string; archived: boolean }[]; canEdit: boolean }>(personId && hr ? `/employees/${p}/tags` : null);
   const activity = usePeople<{ entries: { id: string; kind: ActivityEntry['kind']; actor: string | null; at: string; text: string }[] }>(personId ? `/employees/${p}/activity` : null);
   // Performance tab: for the person, their managers (the API decides) and perf.goal.view / perf.review.view.
   const perfAllowed = Boolean(profile.data) && (Boolean(profile.data?.self) || !hr || perms.has('perf.goal.view') || perms.has('perf.review.view'));
@@ -141,6 +143,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
   const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const tagList = useOrg<{ id: string; name: string }[]>('/masters/tags', tagsOpen);
   const [aboutOpen, setAboutOpen] = useState<'edit' | 'clear' | null>(null);
   const [askingPay, setAskingPay] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -259,6 +263,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
       : null,
     custom: custom.data?.fields.length ? { rows: customRows(custom.data.fields), ...(custom.data.fields.some((f) => f.canEdit) ? { onEdit: () => setFamilyEdit('custom') } : {}) } : null,
     job: v ? jobRows(v) : null,
+    tags: tags.data && !self ? { names: tags.data.tags.map((t) => t.name), ...(tags.data.canEdit ? { onEdit: () => setTagsOpen(true) } : {}) } : null,
     scheduled: h ? scheduledNotes(h, pay.data?.next) : [],
     pastChanges: h ? h.changes.filter((c) => c.status === 'effective').length : 0,
     pay: payState,
@@ -412,6 +417,19 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
             done(`${first}'s About me cleared`);
           }}
           onClose={() => setAboutOpen(null)}
+        />
+      )}
+      {tagsOpen && tags.data && (
+        <PersonTagsDialog
+          name={name}
+          initial={tags.data.tags.map((t) => t.id)}
+          options={[...(tagList.data ?? []).map((t) => ({ value: t.id, label: t.name })), ...tags.data.tags.filter((t) => t.archived).map((t) => ({ value: t.id, label: `${t.name} (archived)` }))]}
+          onSave={async (tagIds) => {
+            await write('PUT', `/employees/${p}/tags`, { tagIds });
+            void tags.refetch();
+            done(`${first}'s tags saved`);
+          }}
+          onClose={() => setTagsOpen(false)}
         />
       )}
       {phoneOpen && (

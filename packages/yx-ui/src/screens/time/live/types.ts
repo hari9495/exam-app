@@ -1278,4 +1278,6 @@ export interface MyProject {
   allocations: { role: string | null; fromOn: string; toOn: string | null; percent: number; tentative: boolean }[];
   bookedMinutes: number;
   approvedMinutes: number;
+  /** Answer 2900: on a project I am on now, who else is away in the next 14 days (days only, never the leave type). */
+  away?: { from: string; to: string; people: { person: string; days: string[] }[] } | null;
 }

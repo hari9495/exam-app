@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { HomeClockScreen, MyAttendanceTodayScreen } from './attendance';
 import type { Punch } from './time-logic';
 import { TODAY_PUNCHES } from './time-data';
+import { YxI18nProvider } from '../../i18n';
+import { TermsProvider } from '../../lib/terms';
 
 // Founder extra 1 · Web clock-in / clock-out page ("My attendance today") + Home widget.
 const meta: Meta<typeof MyAttendanceTodayScreen> = { title: 'Screens/Time/Extra · My attendance today (web clock-in)', component: MyAttendanceTodayScreen, render: (args) => <MyAttendanceTodayScreen {...args} />, parameters: { layout: 'fullscreen' } };
@@ -28,3 +30,7 @@ export const RegulariseOpen: S = { name: 'Regularise link → sheet', args: { re
 
 export const HomeWidget: StoryObj<typeof HomeClockScreen> = { name: 'Home · ClockCard not clocked in', render: () => <HomeClockScreen /> };
 export const HomeWidgetWorking: StoryObj<typeof HomeClockScreen> = { name: 'Home · ClockCard working', render: () => <HomeClockScreen clock={{ defaultState: 'working', defaultPunches: [at('a', 'in', '09:38')] }} /> };
+
+// T2-G 84b and 84a: the same page for a Hindi reader, and with the company's own word for "location".
+export const Hindi: S = { name: 'Hindi reader (84b)', render: (args) => <YxI18nProvider locale="hi"><MyAttendanceTodayScreen {...args} /></YxI18nProvider> };
+export const RenamedTerms: S = { name: 'Company words · Location → Site (84a)', render: (args) => <TermsProvider terms={{ location: { one: 'Site', many: 'Sites' } }}><MyAttendanceTodayScreen {...args} /></TermsProvider> };

@@ -1,6 +1,7 @@
 'use client';
 
-import { TodayBoardScreen, type TodayBoard } from '@yukthix/ui/time';
+import { TeamTodayPhone, TodayBoardScreen, type LiveTodayBoard, type TodayBoard } from '@yukthix/ui/time';
+import { usePhone } from '../../../../../lib/yx-phone';
 import { timeState, useTime, useTimeWrite } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
@@ -10,16 +11,15 @@ export default function YxTodayPage() {
   const { entity } = useScopeParams();
   const board = useTime<TodayBoard>(withParams('/today', entity));
   const write = useTimeWrite();
-  return (
-    <TodayBoardScreen
-      live={{
-        state: timeState(board),
-        onRetry: () => void board.refetch(),
-        data: board.data ?? null,
-        onNudge: (employeeId) => write(`/people/${encodeURIComponent(employeeId)}/nudge`),
-        // The field-force map is not built yet (TIM-32), so the board has no map button.
-        links: { exceptions: '/yx/time/exceptions', muster: '/yx/time/muster', roster: '/yx/time/roster', fieldMap: null },
-      }}
-    />
-  );
+  const phone = usePhone();
+  const live: LiveTodayBoard = {
+    state: timeState(board),
+    onRetry: () => void board.refetch(),
+    data: board.data ?? null,
+    onNudge: (employeeId) => write(`/people/${encodeURIComponent(employeeId)}/nudge`),
+    // The field-force map is not built yet (TIM-32), so the board has no map button.
+    links: { exceptions: '/yx/time/exceptions', muster: '/yx/time/muster', roster: '/yx/time/roster', fieldMap: null },
+  };
+  // T2-H: on a phone, the designed Team today phone screen with the same board and Nudge.
+  return phone ? <TeamTodayPhone live={live} /> : <TodayBoardScreen live={live} />;
 }

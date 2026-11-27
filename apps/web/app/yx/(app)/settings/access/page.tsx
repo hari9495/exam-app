@@ -8,8 +8,7 @@ import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
 import { useAccess, useAccessRead, useAccessWrite } from '../../../../../lib/yx-access';
 import { loadState, todayIst, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import { useFieldPermissions, useUpdateFieldPermissions } from '../../../../../lib/hooks/useFieldPermissions';
-import { useCreateUserGroup, useDeleteUserGroup, useSetGroupMembers, useUpdateUserGroup, useUserGroups } from '../../../../../lib/hooks/useUserGroups';
-import { useTeammates } from '../../../../../lib/hooks/useUserDirectory';
+import { useGroupsPanel } from '../../../../../lib/yx-groups';
 import { GOVERNABLE_ROLES, GOVERNED_FIELDS } from '../../../../../lib/types';
 
 const id = encodeURIComponent;
@@ -35,15 +34,11 @@ export default function YxRolesAccessPage() {
   // Answers 2426 and 2430 (retiring /v2): hiring field access (org:manage_settings) and staff groups (users:manage_groups).
   const perms = useYxPermissions();
   const canFields = perms.has('org:manage_settings');
-  const canGroups = perms.has('users:manage_groups');
+  // T2-G 42: HR's groups key too; groups may be worked out from rules (entity, location, department, grade, type).
+  const canGroups = perms.has('users:manage_groups') || perms.has('people.group.manage');
   const fieldConfig = useFieldPermissions(canFields);
   const saveFields = useUpdateFieldPermissions();
-  const groups = useUserGroups(canGroups);
-  const staff = useTeammates(canGroups);
-  const createGroup = useCreateUserGroup();
-  const updateGroup = useUpdateUserGroup();
-  const setMembers = useSetGroupMembers();
-  const deleteGroup = useDeleteUserGroup();
+  const { panel: groupsPanel } = useGroupsPanel(canGroups);
   return (
     <RolesAccessScreen
       state={loadState(users, roles, templates, grants)}
@@ -79,18 +74,7 @@ export default function YxRolesAccessPage() {
           ? { config: fieldConfig.data, fields: { candidate: [...GOVERNED_FIELDS.candidate], job: [...GOVERNED_FIELDS.job] }, roles: [...GOVERNABLE_ROLES], onSave: (config) => saveFields.mutateAsync(config) }
           : undefined
       }
-      groups={
-        canGroups && groups.data
-          ? {
-              groups: groups.data,
-              people: (staff.data ?? []).map((p) => ({ value: p.id, label: p.name ? `${p.name} · ${p.email}` : p.email })),
-              onCreate: (input) => createGroup.mutateAsync(input),
-              onUpdate: (groupId, input) => updateGroup.mutateAsync({ groupId, ...input }),
-              onMembers: (groupId, userIds) => setMembers.mutateAsync({ groupId, userIds }),
-              onDelete: (groupId) => deleteGroup.mutateAsync(groupId),
-            }
-          : undefined
-      }
+      groups={groupsPanel}
       initialView={view === 'requests' || view === 'waiting' || view === 'fields' || view === 'groups' ? view : undefined}
       onSystemAdmin={async (userId, makeAdmin, reason) => void (await write(`/users/${id(userId)}/system-admin${makeAdmin ? '' : '/remove'}`, { reason }))}
     />

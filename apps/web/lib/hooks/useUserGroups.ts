@@ -34,7 +34,7 @@ export function useMyGroups() {
   });
 }
 
-export interface CreateUserGroupInput { name: string; description?: string; memberUserIds?: string[]; }
+export interface CreateUserGroupInput { name: string; description?: string; memberUserIds?: string[]; rules?: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; gradeIds: string[]; employmentTypeIds: string[]; tagIds?: string[] }; }
 
 export function useCreateUserGroup() {
   const { accessToken } = useAuth();
@@ -48,7 +48,7 @@ export function useCreateUserGroup() {
   });
 }
 
-export interface UpdateUserGroupInput { groupId: string; name?: string; description?: string; }
+export interface UpdateUserGroupInput { groupId: string; name?: string; description?: string; rules?: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; gradeIds: string[]; employmentTypeIds: string[]; tagIds?: string[] }; }
 
 export function useUpdateUserGroup() {
   const { accessToken } = useAuth();
@@ -82,5 +82,17 @@ export function useDeleteUserGroup() {
   return useMutation({
     mutationFn: (groupId: string) => apiFetch(`/user-groups/${groupId}`, { method: 'DELETE' }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-groups'] }),
+  });
+}
+
+/** T2-G 42 (answer 2745): every group an audience or approver picker offers (hand-picked or from rules). */
+export interface GroupOption { id: string; name: string; ruleBased: boolean; members: number }
+export function useGroupOptions(enabled = true) {
+  const { accessToken } = useAuth();
+  return useQuery<GroupOption[]>({
+    queryKey: ['user-groups', 'options'],
+    queryFn: () => apiFetch('/user-groups/options', {}, accessToken ?? undefined),
+    enabled: enabled && Boolean(accessToken),
+    retry: false,
   });
 }

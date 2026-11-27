@@ -32,6 +32,7 @@ import { NumberField, TextArea } from './inputs';
 import { Checkbox } from './choice';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
 import { useControllable } from './overlay';
+import { useYxT } from '../i18n';
 
 /* ======================= Toasts (§25) ======================= */
 
@@ -362,11 +363,13 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   const unread = unreadCount ?? items.filter((i) => !i.read).length;
   const ref = now ?? new Date();
-  const label = unread ? `Notifications, ${unread} unread` : 'Notifications';
+  // T2-G 84b: the bell's words in the reader's language.
+  const t = useYxT('bell');
+  const label = unread ? t('unreadLabel', { n: unread }) : t('title');
 
   const list = (shown: NotificationItem[], empty: string) =>
     loading ? (
-      <div className="yx-notif__loading" role="status" aria-busy="true" aria-label="Loading notifications">
+      <div className="yx-notif__loading" role="status" aria-busy="true" aria-label={t('loading')}>
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} height={40} />
         ))}
@@ -376,7 +379,7 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
     ) : (
       groupByDay(shown, ref).map((g) => (
         <section key={g.label} className="yx-notif__group" aria-label={g.label}>
-          <h3 className="yx-notif__day">{g.label}</h3>
+          <h3 className="yx-notif__day">{g.label === 'Today' ? t('today') : g.label === 'Yesterday' ? t('yesterday') : g.label}</h3>
           <ul className="yx-notif__list">
             {g.items.map((it) => (
               <NotificationRow
@@ -409,7 +412,7 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
       <PopoverContent
         className="yx-notif"
         align="end"
-        aria-label="Notifications"
+        aria-label={t('title')}
         // Focus the selected tab, never "Mark all read": Enter on open must not clear everything (founder review 30 Sep 2026).
         onOpenAutoFocus={(e) => {
           e.preventDefault();
@@ -417,39 +420,39 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
         }}
       >
         <header className="yx-notif__head">
-          <h2 className="yx-notif__title">Notifications</h2>
+          <h2 className="yx-notif__title">{t('title')}</h2>
           <Button size="sm" onClick={onMarkAllRead} disabled={unread === 0}>
-            Mark all read
+            {t('markAll')}
           </Button>
         </header>
         <RT.Root defaultValue="all" className="yx-notif__tabs">
-          <RT.List className="yx-ntabs" aria-label="Show">
+          <RT.List className="yx-ntabs" aria-label={t('show')}>
             <RT.Trigger value="all" className="yx-ntabs__tab">
-              All
+              {t('all')}
             </RT.Trigger>
             <RT.Trigger value="unread" className="yx-ntabs__tab">
-              Unread <span className="yx-ntabs__count">{unread}</span>
+              {t('unread')} <span className="yx-ntabs__count">{unread}</span>
             </RT.Trigger>
           </RT.List>
           <RT.Content value="all" className="yx-notif__panel">
-            {list(items, 'No notifications yet. Approvals, payslips and reminders will show up here.')}
+            {list(items, t('emptyAll'))}
           </RT.Content>
           <RT.Content value="unread" className="yx-notif__panel">
             {list(
               items.filter((i) => !i.read),
-              "You're all caught up. No unread notifications.",
+              t('emptyUnread'),
             )}
           </RT.Content>
         </RT.Root>
         <footer className="yx-notif__foot">
           {allHref && (
             <Link href={allHref} onClick={() => setOpen(false)}>
-              See all notifications
+              {t('seeAll')}
             </Link>
           )}
           {settingsHref && (
             <Link href={settingsHref} onClick={() => setOpen(false)}>
-              Notification settings
+              {t('settings')}
             </Link>
           )}
         </footer>

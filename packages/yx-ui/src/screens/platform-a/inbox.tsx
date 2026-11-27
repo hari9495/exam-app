@@ -20,12 +20,13 @@ import { Icon } from '../../components/foundations';
 import { useMinWidth, useNarrow } from '../../components/stepper';
 import type { TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
-import { dayLabel } from '../../components/notify';
+import { dayLabel, useToast } from '../../components/notify';
 import { timeOf } from '../../lib/dates';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { HOLIDAYS_2026, ME, TODAY } from '../_kit/data';
 import { ListPage, bulkApprovable, bulkNotApprovable, homePanel, leaveEffect, toneFor, validateDelegation } from './platform-kit';
 import { PEOPLE, type ApprovalRow, type MyRequest, type NotifCategory, type PlatformNotification } from './platform-data';
+import { useYxT } from '../../i18n';
 
 /* ================================================================ PLT-03 Notifications inbox */
 
@@ -883,24 +884,28 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
     live: live ? { decide: (d: 'approve' | 'reject' | 'send_back', reason: string) => live.onDecide(r, d, reason), today, reassign: live.reassign, onlyReassign: tab === 'everyone' } : undefined,
   });
   const overdue = overdueCount(items, today);
+  // T2-G 84b: the page's words in the reader's language.
+  const t = useYxT('approvals');
+  const COL: Record<string, string> = { requester: t('colRequester'), type: t('colType'), due: t('colDue'), status: t('colStatus'), approver: t('colApprover') };
+  const worded = (cs: TableColumn<ApprovalRow>[]) => cs.map((c) => (COL[c.key] ? { ...c, header: COL[c.key]! } : c));
   const page = (
       <ListPage
-        title="Approvals"
-        description="Everything waiting for your decision, including requests delegated to you."
-        facts={`${items.length} waiting${overdue ? ` · ${overdue} overdue` : ''}`}
-        actions={<Button onClick={live ? () => setAway(true) : undefined}>Set up delegation</Button>}
+        title={t('title')}
+        description={t('description')}
+        facts={`${t('facts', { n: items.length })}${overdue ? ` · ${t('overdue', { n: overdue })}` : ''}`}
+        actions={<Button onClick={live ? () => setAway(true) : undefined}>{t('delegation')}</Button>}
         above={
           <>
             <span className="yx-visually-hidden" aria-live="polite">
               {announce}
             </span>
             {rowError && (
-              <InlineAlert tone="danger" title="Not approved">
+              <InlineAlert tone="danger" title={t('notApproved')}>
                 {rowError}
               </InlineAlert>
             )}
             {refused.length > 0 && (
-              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not ${refusedVerb}`} actions={<Button size="sm" onClick={() => setRefused([])}>Dismiss</Button>}>
+              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not ${refusedVerb}`} actions={<Button size="sm" onClick={() => setRefused([])}>{t('dismiss')}</Button>}>
                 <ul className="yx-plt-list">
                   {refused.map((x) => (
                     <li key={x.title}>
@@ -913,12 +918,12 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           </>
         }
         tabs={[
-          { id: 'waiting', label: 'Waiting for me', count: mine.length },
-          { id: 'delegated', label: 'Delegated to me', count: delegated.length },
-          { id: 'sent', label: 'Sent by me', count: sent.length },
-          { id: 'history', label: 'Team history' },
-          ...(decided ? [{ id: 'decided', label: 'Decided by me' }] : []),
-          ...(everyone ? [{ id: 'everyone', label: 'Everyone’s pending', count: everyone.length }] : []),
+          { id: 'waiting', label: t('waiting'), count: mine.length },
+          { id: 'delegated', label: t('delegated'), count: delegated.length },
+          { id: 'sent', label: t('sent'), count: sent.length },
+          { id: 'history', label: t('history') },
+          ...(decided ? [{ id: 'decided', label: t('decided') }] : []),
+          ...(everyone ? [{ id: 'everyone', label: t('everyone'), count: everyone.length }] : []),
         ]}
         tab={tab}
         onTabChange={setTab}
@@ -927,47 +932,47 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
             <div className="yx-plt-row">
               {tab === 'decided' && (
                 <Segment
-                  label="Decided in the last"
+                  label={t('decidedIn')}
                   value={String(days) as '30' | '90' | '365'}
                   onChange={(v) => {
                     const n = Number(v) as 30 | 90 | 365;
                     setOwnDays(n);
                     live?.onDecidedDays?.(n);
                   }}
-                  options={[{ value: '30', label: '30 days' }, { value: '90', label: '3 months' }, { value: '365', label: '12 months' }]}
+                  options={[{ value: '30', label: t('days30') }, { value: '90', label: t('months3') }, { value: '365', label: t('months12') }]}
                 />
               )}
               {!desk && kinds.length > 1 && (
                 <Segment
-                  label="Kind of request"
+                  label={t('kind')}
                   value={shownKind}
                   onChange={setKind}
-                  options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+                  options={[{ value: 'all', label: t('all', { n: tabRows.length }) }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
                 />
               )}
             </div>
           ) : undefined
         }
-        label="Approval requests"
-        columns={tab === 'everyone' ? everyoneColumns(today, Boolean(live)) : approvalColumns(!actionable, today, Boolean(live))}
+        label={t('table')}
+        columns={worded(tab === 'everyone' ? everyoneColumns(today, Boolean(live)) : approvalColumns(!actionable, today, Boolean(live)))}
         rows={rows}
         getRowId={(r) => r.id}
         key={tab}
         filters={[
-          { key: 'type', label: 'Type', type: 'multi', options: (live ? [...new Set([...items, ...sent, ...history].map((r) => r.type))] : APPROVAL_TYPES).map((t) => ({ value: t, label: t })) },
-          ...(tab === 'sent' || tab === 'decided' ? [] : [{ key: 'due', label: 'Due', type: 'date' as const }]),
+          { key: 'type', label: t('type'), type: 'multi', options: (live ? [...new Set([...items, ...sent, ...history].map((r) => r.type))] : APPROVAL_TYPES).map((t) => ({ value: t, label: t })) },
+          ...(tab === 'sent' || tab === 'decided' ? [] : [{ key: 'due', label: t('due'), type: 'date' as const }]),
           // T2-E 49 (answer 2872): who asked (a person, or my direct or whole team), and the request's status where it varies.
-          ...(tab === 'sent' ? [] : [{ key: 'askedBy', label: 'Asked by', type: 'multi' as const, options: askedByOptions(tabRows) }]),
-          ...(tab === 'sent' || tab === 'history' || tab === 'decided' ? [{ key: 'requestStatus', label: 'Status', type: 'multi' as const, options: STATUS_OPTIONS }] : []),
+          ...(tab === 'sent' ? [] : [{ key: 'askedBy', label: t('askedBy'), type: 'multi' as const, options: askedByOptions(tabRows) }]),
+          ...(tab === 'sent' || tab === 'history' || tab === 'decided' ? [{ key: 'requestStatus', label: t('status'), type: 'multi' as const, options: STATUS_OPTIONS }] : []),
         ]}
         filterValue={approvalFilterValue}
-        searchPlaceholder="Search name or reference"
+        searchPlaceholder={t('search')}
         state={state}
         onRetry={live?.onRetry}
         empty={
           <EmptyState
-            title={tab === 'waiting' ? 'Nothing is waiting for you.' : tab === 'delegated' ? 'Nobody has delegated approvals to you.' : 'No requests here yet.'}
-            description={tab === 'waiting' ? 'New requests from your team will appear here and on your home.' : undefined}
+            title={tab === 'waiting' ? t('emptyWaiting') : tab === 'delegated' ? t('emptyDelegated') : t('emptyOther')}
+            description={tab === 'waiting' ? t('emptyWaitingText') : undefined}
           />
         }
         selectable={actionable}
@@ -1013,13 +1018,13 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
             ? (r) =>
                 live ? (
                   <>
-                    <MenuItem onSelect={() => openRow(r.id)}>Open request</MenuItem>
-                    {!r.decideAt && <MenuItem onSelect={() => openRow(r.id, 'reject')}>Do not approve</MenuItem>}
+                    <MenuItem onSelect={() => openRow(r.id)}>{t('open')}</MenuItem>
+                    {!r.decideAt && <MenuItem onSelect={() => openRow(r.id, 'reject')}>{t('doNotApprove')}</MenuItem>}
                   </>
                 ) : (
                   <>
-                    <MenuItem onSelect={() => setOpen(r.id)}>Open request</MenuItem>
-                    <MenuItem onSelect={() => setOpen(r.id)}>Send back</MenuItem>
+                    <MenuItem onSelect={() => setOpen(r.id)}>{t('open')}</MenuItem>
+                    <MenuItem onSelect={() => setOpen(r.id)}>{t('sendBack')}</MenuItem>
                     <MenuItem destructive onSelect={() => setOpen(r.id)}>
                       Reject
                     </MenuItem>
@@ -1088,7 +1093,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           </ConfirmDialog>
         )}
         {live && away && (
-          <Drawer open onOpenChange={(o) => !o && setAway(false)} title="When I am away" subtitle="Choose who approves requests for you while you are away." size="md">
+          <Drawer open onOpenChange={(o) => !o && setAway(false)} title={t('away')} subtitle={t('awayText')} size="md">
             <DelegationForm key={live.delegation.current?.id ?? 'new'} live={live.delegation} />
           </Drawer>
         )}
@@ -1101,16 +1106,16 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         <div className="yx-plt-desk">
           <div className="yx-plt-desk__groups">
             <Segment
-              label="Kind of request"
+              label={t('kind')}
               orientation="vertical"
               value={shownKind}
               onChange={setKind}
-              options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+              options={[{ value: 'all', label: t('all', { n: tabRows.length }) }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
             />
           </div>
           <div className="yx-plt-desk__list">{page}</div>
-          <aside className="yx-plt-desk__detail" aria-label="The request">
-            {current ? <ApprovalPane key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} /> : <EmptyState compact title="Choose a request." description="It opens here, with what to decide." />}
+          <aside className="yx-plt-desk__detail" aria-label={t('theRequest')}>
+            {current ? <ApprovalPane key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} /> : <EmptyState compact title={t('choose')} description={t('chooseText')} />}
           </aside>
         </div>
       ) : (
@@ -1153,8 +1158,8 @@ function ApprovalCardMobile({ r, onApprove, onOpen }: { r: ApprovalRow; onApprov
   );
 }
 
-function ApprovalSheet({ row, defaultDecision, onDone, onClose }: { row: ApprovalRow; defaultDecision: Decision; onDone: (t: string) => void; onClose: () => void }) {
-  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, true);
+function ApprovalSheet({ row, defaultDecision, onDone, onClose, live }: { row: ApprovalRow; defaultDecision: Decision; onDone: (t: string) => void; onClose: () => void; live?: LiveDecision }) {
+  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, true, live);
   return (
     <BottomSheet open onOpenChange={(o) => !o && onClose()} title={`${row.summary} · ${row.requester}`} description={row.ref} footer={footer}>
       {body}
@@ -1163,33 +1168,66 @@ function ApprovalSheet({ row, defaultDecision, onDone, onClose }: { row: Approva
 }
 
 // PLT-04 · Approvals inbox (phone: Requests › Approvals cards).
-export function ApprovalsInboxPhone({ waiting, openId, defaultDecision }: { waiting: ApprovalRow[]; openId?: string; defaultDecision?: Decision }) {
-  const [items, setItems] = useState(() => byUrgency(waiting));
+export function ApprovalsInboxPhone({ waiting, openId, defaultDecision, state = 'ready', live: liveApprovals }: { waiting: ApprovalRow[]; openId?: string; defaultDecision?: Decision; state?: 'ready' | 'loading' | 'error'; /** T2-H: the approvals engine (the desk inbox's own calls); the list is the server's. */ live?: LiveApprovals }) {
+  const [own, setItems] = useState(() => byUrgency(waiting));
+  const items = liveApprovals ? byUrgency(waiting) : own;
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [live, setLive] = useState('');
+  const { toast } = useToast();
   const current = items.find((r) => r.id === open);
   const approve = (id: string, text = 'Approved') => {
-    setItems((xs) => xs.filter((x) => x.id !== id));
+    if (!liveApprovals) setItems((xs) => xs.filter((x) => x.id !== id));
     setOpen(null);
     setLive(text);
+    liveApprovals?.onDone(text);
+  };
+  // Live: one click calls the decide API; a refusal stays on the card's list and says why.
+  const approveOne = async (r: ApprovalRow) => {
+    if (!liveApprovals) return approve(r.id);
+    try {
+      await liveApprovals.onDecide(r, 'approve', '');
+      approve(r.id, `Approved: ${r.summary}`);
+    } catch (e) {
+      toast({ tone: 'error', title: 'Not approved', description: e instanceof Error ? e.message : 'Try again in a moment.' });
+    }
   };
   const lowRiskLeave = items.filter((i) => i.lowRisk && i.type === 'Leave');
+  const approveAll = async () => {
+    if (!liveApprovals) return lowRiskLeave.forEach((i) => approve(i.id));
+    const refused = await liveApprovals.onBulkApprove(lowRiskLeave);
+    const ok = lowRiskLeave.length - refused.length;
+    if (ok) approve('', `${ok} leave ${ok === 1 ? 'request' : 'requests'} approved`);
+    if (refused.length) toast({ tone: 'error', title: `${refused.length} not approved`, description: refused[0].message });
+  };
   return (
     <PhoneFrame tab="requests" title="Approvals">
       <span className="yx-visually-hidden" aria-live="polite">
         {live}
       </span>
       {lowRiskLeave.length > 1 && (
-        <Button variant="approve" fullWidth onClick={() => lowRiskLeave.forEach((i) => approve(i.id))}>
+        <Button variant="approve" fullWidth onClick={() => void approveAll()}>
           Approve {lowRiskLeave.length} leave requests
         </Button>
       )}
-      {items.length === 0 ? (
+      {state === 'loading' ? (
+        <Skeleton height={160} />
+      ) : state === 'error' ? (
+        <ErrorState title="We couldn't load your approvals." description="Try again in a moment." onRetry={liveApprovals?.onRetry} />
+      ) : items.length === 0 ? (
         <EmptyState compact title="Nothing is waiting for you." />
       ) : (
-        items.map((r) => <ApprovalCardMobile key={r.id} r={r} onApprove={() => approve(r.id)} onOpen={() => setOpen(r.id)} />)
+        items.map((r) => <ApprovalCardMobile key={r.id} r={r} onApprove={() => void approveOne(r)} onOpen={() => setOpen(r.id)} />)
       )}
-      {current && <ApprovalSheet key={current.id} row={current} defaultDecision={current.id === openId ? defaultDecision ?? null : null} onDone={(t) => approve(current.id, t)} onClose={() => setOpen(null)} />}
+      {current && (
+        <ApprovalSheet
+          key={current.id}
+          row={current}
+          defaultDecision={current.id === openId ? defaultDecision ?? null : null}
+          onDone={(t) => approve(current.id, t)}
+          onClose={() => setOpen(null)}
+          live={liveApprovals ? { decide: (d, reason) => liveApprovals.onDecide(current, d, reason), today: liveApprovals.today, reassign: liveApprovals.reassign } : undefined}
+        />
+      )}
     </PhoneFrame>
   );
 }
@@ -1842,15 +1880,30 @@ export function MyRequestsScreen({ rows, state = 'ready', withdrawId, live }: { 
 }
 
 // PLT-06 · My requests (phone): tap a row to see where it is and act on it.
-export function MyRequestsPhone({ rows }: { rows: MyRequest[] }) {
-  const [items, setItems] = useState(() => byNeed(rows));
+/** T2-H: My requests on a phone with the desk page's call; like the desk page it only shows where each one is. */
+export interface LiveMyRequestsPhone {
+  state: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  /** New request (the phone's type picker), when the person can raise one. */
+  newHref?: string;
+  onNavigate: (href: string) => void;
+}
+
+export function MyRequestsPhone({ rows, live }: { rows: MyRequest[]; live?: LiveMyRequestsPhone }) {
+  const [own, setItems] = useState(() => byNeed(rows));
+  const items = live ? byNeed(rows) : own;
   const [openId, setOpenId] = useState<string | null>(null);
   const [action, setAction] = useState<MyAction>(null);
   const current = items.find((r) => r.id === openId);
+  const newRequest = live ? (live.newHref ? () => live.onNavigate(live.newHref!) : undefined) : () => {};
   return (
-    <PhoneFrame tab="requests" title="My requests" actions={<IconButton icon={Plus} label="New request" />}>
-      {items.length === 0 ? (
-        <EmptyState compact title="You haven't raised any requests yet." action={<Button variant="primary">New request</Button>} />
+    <PhoneFrame tab="requests" title="My requests" actions={newRequest && <IconButton icon={Plus} label="New request" onClick={newRequest} />}>
+      {live?.state === 'loading' ? (
+        <Skeleton height={120} />
+      ) : live?.state === 'error' ? (
+        <ErrorState title="We couldn't load your requests." description="Try again in a moment." onRetry={live.onRetry} />
+      ) : items.length === 0 ? (
+        <EmptyState compact title="You haven't raised any requests yet." action={newRequest && <Button variant="primary" onClick={newRequest}>New request</Button>} />
       ) : (
         <ul className="yx-plt-myreq">
           {items.map((r) => (
@@ -1873,7 +1926,7 @@ export function MyRequestsPhone({ rows }: { rows: MyRequest[] }) {
           onOpenChange={(o) => !o && setOpenId(null)}
           title={current.summary}
           description={`${current.ref} · ${current.type} · submitted ${shortDate(current.submitted)}`}
-          footer={myButton(current, setAction) ?? undefined}
+          footer={live ? undefined : (myButton(current, setAction) ?? undefined)}
         >
           <div className="yx-plt-stack" data-gap="sm">
             <span>
@@ -2180,8 +2233,9 @@ export function DelegationScreen(props: DelegationProps) {
 export function DelegationPhone(props: DelegationProps) {
   return (
     <PhoneFrame tab="me" title="Delegation" back={<IconButton icon={ArrowLeft} label="Back to Me" />}>
-      <DelegationForm {...props} />
-      <DelegatedToYou />
+      {/* T2-H: live, the same form and list as the desk page (the approvals engine's delegations). */}
+      <DelegationForm key={props.live?.current?.id ?? 'new'} {...props} />
+      <DelegatedToYou live={props.live} />
     </PhoneFrame>
   );
 }

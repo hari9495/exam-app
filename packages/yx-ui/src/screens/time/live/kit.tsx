@@ -3,6 +3,7 @@ import { Badge, type BadgeTone } from '../../../components/display';
 import { ErrorState, NoAccessState, Skeleton } from '../../../components/feedback';
 import { NoRecordState } from '../time-kit';
 import { PageHeader } from '../../../components/shell';
+import { useYxT } from '../../../i18n';
 import type { DayStatus, LeaveStatus, LoadState } from './types';
 
 // Small shared pieces of the wired time screens: the page frame with its load states, and plain-English labels.
@@ -54,7 +55,11 @@ export const LEAVE_STATUS: Record<LeaveStatus, { label: string; tone: BadgeTone 
   sent_back: { label: 'Sent back for changes', tone: 'warning' },
   resent: { label: 'Changed and sent again', tone: 'neutral' },
 };
-export const LeaveStatusBadge = ({ status }: { status: LeaveStatus }) => <Badge tone={LEAVE_STATUS[status].tone}>{LEAVE_STATUS[status].label}</Badge>;
+// T2-G 84b: the status in the reader's language.
+export const LeaveStatusBadge = ({ status }: { status: LeaveStatus }) => {
+  const t = useYxT('leaveStatus');
+  return <Badge tone={LEAVE_STATUS[status].tone}>{t(status)}</Badge>;
+};
 
 export const DAY_STATUS: Record<DayStatus, { label: string; code: string; tone: BadgeTone }> = {
   present: { label: 'Present', code: 'P', tone: 'success' },

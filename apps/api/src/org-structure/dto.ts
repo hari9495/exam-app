@@ -9,6 +9,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -22,6 +23,7 @@ import {
   validateSync,
 } from 'class-validator';
 import { SCOPE_ORDER } from './settings-registry';
+import { MODULE_IDS } from './modules';
 
 // Request bodies for P01 organisation records. Create and edit share one body (an edit sends the whole
 // record); `code` left out is generated on create and kept on edit (YX-ORG-05).
@@ -181,7 +183,8 @@ export class LocationDto {
 
 // ---- structure masters (YX-ORG-15) ----
 
-export const MASTER_KINDS = ['departments', 'designations', 'grades', 'employment-types', 'cost-centres'] as const;
+// T2-G 2903: 'tags' is the company's person tag list (shared or entity-only like the others).
+export const MASTER_KINDS = ['departments', 'designations', 'grades', 'employment-types', 'cost-centres', 'tags'] as const;
 export type MasterKind = (typeof MASTER_KINDS)[number];
 
 export const EMPLOYMENT_CATEGORIES = ['permanent', 'probation', 'fixed_term', 'intern', 'apprentice', 'consultant', 'deployed_contractor', 'retired_reemployed'] as const;
@@ -260,7 +263,9 @@ export class CostCentreDto extends MasterBaseDto {
   ownerUserId?: string | null;
 }
 
-export type AnyMasterDto = DepartmentDto | DesignationDto | GradeDto | EmploymentTypeDto | CostCentreDto;
+export class PersonTagDto extends ScopedMasterDto {}
+
+export type AnyMasterDto = DepartmentDto | DesignationDto | GradeDto | EmploymentTypeDto | CostCentreDto | PersonTagDto;
 
 const MASTER_DTO: Record<MasterKind, new () => AnyMasterDto> = {
   departments: DepartmentDto,
@@ -268,6 +273,7 @@ const MASTER_DTO: Record<MasterKind, new () => AnyMasterDto> = {
   grades: GradeDto,
   'employment-types': EmploymentTypeDto,
   'cost-centres': CostCentreDto,
+  tags: PersonTagDto,
 };
 
 /** The body for `kind`, validated exactly as the global ValidationPipe would (whitelist, no extras). */
@@ -405,4 +411,22 @@ export class SettingsHistoryQueryDto {
   @Min(1)
   @Max(20)
   limit?: number;
+}
+
+/** T2-G 41: Settings › Modules: the modules switched off and the rail order (module ids). */
+export class ModulesDto {
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsIn(MODULE_IDS, { each: true })
+  off!: string[];
+
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsIn(MODULE_IDS, { each: true })
+  order!: string[];
+
+  /** T2-G 44: module id → the owner's user id, or null for nobody (only the ones that change need be sent). */
+  @IsOptional()
+  @IsObject()
+  owners?: Record<string, string | null>;
 }

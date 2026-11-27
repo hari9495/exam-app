@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@yukthix/ui';
 import { ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type ChannelLinkView, type PickOption } from '@yukthix/ui/desk';
-import { ApprovalsInboxScreen } from '@yukthix/ui/frame';
+import { ApprovalsInboxPhone, ApprovalsInboxScreen, type LiveApprovals } from '@yukthix/ui/frame';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
 import { decidedRow, profileRows, sentRow, teamRow, waitingRow, type TeamDecision } from '../../../../lib/yx-approvals';
@@ -13,6 +13,7 @@ import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import type { ProfileRequest } from '@yukthix/ui/access';
 import { useLiveDelegation } from '../../../../lib/yx-delegation';
+import { usePhone } from '../../../../lib/yx-phone';
 
 // Approvals (PLT-04, the designed inbox; P03 shared screen, M14 SD-2.05): what waits for me and what was delegated to
 // me, bulk approve, what I sent, the team's decisions, and who approves for me while I am away. No permission key: the
@@ -49,6 +50,56 @@ function Approvals() {
   const [q, setQ] = useState('');
   const found = useQuery(get<PickOption[]>(`/people?q=${encodeURIComponent(q)}`));
   const openId = focus ? waiting.find((r) => tasks.data?.find((t) => t.taskId === r.id)?.requestId === focus)?.id : undefined;
+  const phone = usePhone();
+  const live: LiveApprovals = {
+    today: new Date(new Date().toDateString()),
+    decidedDays: days,
+    onDecidedDays: setDays,
+    onRetry: () => void tasks.refetch(),
+    onDecide: async (row, decision, reason) => {
+      await post(`/approvals/tasks/${encodeURIComponent(row.id)}/decide`, { decision, ...(reason ? { reason } : {}) });
+      await refresh();
+    },
+    onBulkApprove: async (rows) => {
+      const out = (await post('/approvals/tasks/decide', { taskIds: rows.map((r) => r.id), decision: 'approve' })) as { results: { taskId: string; ok: boolean; message?: string }[] };
+      await refresh();
+      return out.results.filter((x) => !x.ok).map((x) => ({ id: x.taskId, message: x.message ?? 'Not approved.' }));
+    },
+    // Answer 2503: one reason for all, which every requester sees; the server checks each request again.
+    onBulkReject: async (rows, reason) => {
+      const out = (await post('/approvals/tasks/decide', { taskIds: rows.map((r) => r.id), decision: 'reject', reason })) as { results: { taskId: string; ok: boolean; message?: string }[] };
+      await refresh();
+      return out.results.filter((x) => !x.ok).map((x) => ({ id: x.taskId, message: x.message ?? 'Not decided.' }));
+    },
+    reassign: {
+      people: (found.data ?? []).map((p) => ({ id: p.id, name: p.label })),
+      onFindPeople: setQ,
+      onReassign: async (row, toUserId, reason) => {
+        await post(`/approvals/tasks/${encodeURIComponent(row.id)}/reassign`, { toUserId, reason });
+        await refresh();
+      },
+    },
+    delegation,
+    onDone: (text) => toast({ tone: 'success', title: text }),
+    footer: (
+      <ChannelLinksCard
+        links={links.data}
+        sent={sent.data ?? null}
+        onAdd={async (provider, externalRef) => {
+          await post('/channel-links', { provider, externalRef });
+          await qc.invalidateQueries({ queryKey: ['workflow'] });
+          toast({ tone: 'success', title: `${provider === 'teams' ? 'Microsoft Teams' : 'Slack'} linked. Approval cards go there too.` });
+        }}
+        onRemove={async (id) => {
+          await apiFetch(`/workflow/channel-links/${encodeURIComponent(id)}`, { method: 'DELETE' }, token);
+          await qc.invalidateQueries({ queryKey: ['workflow'] });
+          toast({ tone: 'success', title: 'Unlinked. Approval cards no longer go to that app.' });
+        }}
+      />
+    ),
+  };
+  // T2-H: on a phone, the designed approval cards with the same decide, bulk approve and reassign calls.
+  if (phone) return <ApprovalsInboxPhone key={openId ?? 'list'} waiting={waiting} openId={openId} state={tasks.isLoading ? 'loading' : tasks.isError ? 'error' : 'ready'} live={live} />;
   return (
     <ApprovalsInboxScreen
       key={openId ?? 'list'}
@@ -59,53 +110,7 @@ function Approvals() {
       decided={(history.data?.decided ?? []).map(decidedRow)}
       openId={openId}
       state={tasks.isLoading ? 'loading' : tasks.isError ? 'error' : 'ready'}
-      live={{
-        today: new Date(new Date().toDateString()),
-        decidedDays: days,
-        onDecidedDays: setDays,
-        onRetry: () => void tasks.refetch(),
-        onDecide: async (row, decision, reason) => {
-          await post(`/approvals/tasks/${encodeURIComponent(row.id)}/decide`, { decision, ...(reason ? { reason } : {}) });
-          await refresh();
-        },
-        onBulkApprove: async (rows) => {
-          const out = (await post('/approvals/tasks/decide', { taskIds: rows.map((r) => r.id), decision: 'approve' })) as { results: { taskId: string; ok: boolean; message?: string }[] };
-          await refresh();
-          return out.results.filter((x) => !x.ok).map((x) => ({ id: x.taskId, message: x.message ?? 'Not approved.' }));
-        },
-        // Answer 2503: one reason for all, which every requester sees; the server checks each request again.
-        onBulkReject: async (rows, reason) => {
-          const out = (await post('/approvals/tasks/decide', { taskIds: rows.map((r) => r.id), decision: 'reject', reason })) as { results: { taskId: string; ok: boolean; message?: string }[] };
-          await refresh();
-          return out.results.filter((x) => !x.ok).map((x) => ({ id: x.taskId, message: x.message ?? 'Not decided.' }));
-        },
-        reassign: {
-          people: (found.data ?? []).map((p) => ({ id: p.id, name: p.label })),
-          onFindPeople: setQ,
-          onReassign: async (row, toUserId, reason) => {
-            await post(`/approvals/tasks/${encodeURIComponent(row.id)}/reassign`, { toUserId, reason });
-            await refresh();
-          },
-        },
-        delegation,
-        onDone: (text) => toast({ tone: 'success', title: text }),
-        footer: (
-          <ChannelLinksCard
-            links={links.data}
-            sent={sent.data ?? null}
-            onAdd={async (provider, externalRef) => {
-              await post('/channel-links', { provider, externalRef });
-              await qc.invalidateQueries({ queryKey: ['workflow'] });
-              toast({ tone: 'success', title: `${provider === 'teams' ? 'Microsoft Teams' : 'Slack'} linked. Approval cards go there too.` });
-            }}
-            onRemove={async (id) => {
-              await apiFetch(`/workflow/channel-links/${encodeURIComponent(id)}`, { method: 'DELETE' }, token);
-              await qc.invalidateQueries({ queryKey: ['workflow'] });
-              toast({ tone: 'success', title: 'Unlinked. Approval cards no longer go to that app.' });
-            }}
-          />
-        ),
-      }}
+      live={live}
     />
   );
 }

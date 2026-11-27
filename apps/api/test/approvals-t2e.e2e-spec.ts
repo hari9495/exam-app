@@ -202,6 +202,8 @@ describe('Approvals T2-E 49 and 50', () => {
       expect(await push.send(ctx(), [users.emp!], 'approval.requested', '/yx/approvals', noon)).toBe(0);
       await api3('admin', 'put', '/org/settings').send({ key: 'notify.push.enabled', scopeType: 'tenant', value: 'on' }).expect(want(200));
       // The bell path pushes too (notifySystem), and a subscription the push service says is gone is removed.
+      // notifySystem uses the real clock: equal ends turn quiet hours off so the run time of day never matters.
+      await api3('emp', 'patch', '/notifications/push').send({ quietFrom: '00:00', quietTo: '00:00' }).expect(want(200));
       sent.mockClear();
       await app.get(NotificationsService).notifySystem(ctx(), [users.emp!], 'approval.requested', { entityType: 'test', entityId: randomUUID(), linkPath: '/yx/approvals' }, null);
       for (let k = 0; k < 50 && !sent.mock.calls.length; k++) await new Promise((r) => setTimeout(r, 100));

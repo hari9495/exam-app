@@ -123,6 +123,8 @@ describe('/yx/settings/structure', () => {
     'GET /org/masters/grades': grades,
     'GET /org/masters/employment-types': [],
     'GET /org/masters/cost-centres': [],
+    // T2-G 2903: the person tag list.
+    'GET /org/masters/tags': [],
     'GET /org/legal-entities': [ENTITY],
     'GET /org/settings': SETTINGS,
   });
