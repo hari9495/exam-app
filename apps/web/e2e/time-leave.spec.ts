@@ -90,9 +90,23 @@ test('Arjun applies for 2 days of earned leave → Divya approves → the balanc
 
   // 4. Arjun checks in (or out, if a check-in is already recorded today) from inside the Bengaluru geofence.
   // The clock is the "My attendance today" page now (My month links to it).
+  // The clock follows India time, so the run's own time decides what today is: on a weekly off or a holiday there is no
+  // clock button (CI at 01:15 IST on a Saturday was one); before the shift's clock-in opens the page says when it opens.
   await arjun.goto('/yx/time/attendance?view=today');
+  const ist = new Date(Date.now() + 330 * 60_000);
+  const todayIso = ist.toISOString().slice(0, 10);
+  if (ist.getUTCDay() === 0 || ist.getUTCDay() === 6 || HOLIDAYS.includes(todayIso)) {
+    await expect(arjun.getByText(/^(Weekly off|Holiday) today$/).first()).toBeVisible();
+    await expect(arjun.getByRole('button', { name: /^Clock (in|out)$/ })).toHaveCount(0);
+    return;
+  }
   const punch = arjun.getByRole('button', { name: /^Clock (in|out)$/ });
   await expect(punch).toBeVisible();
+  const notOpen = arjun.getByText('Your shift has not started yet');
+  if (await notOpen.isVisible()) {
+    await expect(arjun.getByText(/Clock-in opens at /).first()).toBeVisible();
+    return;
+  }
   await punch.click();
   await expect(arjun.getByRole('status').filter({ hasText: /^(In|Out) recorded\.$/ })).toBeVisible();
   // Today's punches name the place and that the punch was inside its geofence.

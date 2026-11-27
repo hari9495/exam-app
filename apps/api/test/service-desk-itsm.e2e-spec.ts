@@ -511,7 +511,10 @@ describe('Helpdesk ITSM: changes and problems', () => {
     const r = (await api('deskAdmin', 'post', '/desk/recurring').send(body).expect(201)).body;
     expect((await api('deskAdmin', 'post', '/desk/recurring').send({ ...body, name: 'Again' }).expect(409)).body.message).toMatch(/already repeats/);
     const recurring = app.get(RecurringService);
-    expect(await recurring.tick(new Date(new Date(startsAt).getTime() + 60_000))).toBe(1);
+    // tick runs every schedule due by then (other suites' daily ones too: at night "the next free Saturday" is two weeks
+    // out), so count this schedule's own runs.
+    expect(await recurring.tick(new Date(new Date(startsAt).getTime() + 60_000))).toBeGreaterThanOrEqual(1);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRecurringRun.count({ where: { recurringId: r.id, ticketId: { not: null } } }))).toBe(1);
     const run = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRecurringRun.findFirstOrThrow({ where: { recurringId: r.id } }));
     const made = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdChange.findFirstOrThrow({ where: { ticketId: run.ticketId! } }));
     expect([made.changeKind, made.stage, made.windowFrom.toISOString(), (made.tasks as unknown[]).length]).toEqual(['standard', 'scheduled', new Date(startsAt).toISOString(), 2]);
@@ -519,7 +522,7 @@ describe('Helpdesk ITSM: changes and problems', () => {
     await api('deskAdmin', 'patch', `/desk/recurring/${r.id}`).send({ version: r.version, state: 'paused' }).expect(200);
     const frozenDay = nextDay((p) => frozen(p) && p.dow === 6);
     const r2 = (await api('deskAdmin', 'post', '/desk/recurring').send({ ...body, name: 'Frozen check', startsAt: at(frozenDay, '10:00'), template: { ...body.template, standard: { templateId: (await api('deskAdmin', 'post', `/desk/desks/${ids.it}/templates`).send({ name: 'Monthly antivirus update', ticketTypeId: ids.changeType, defaults: {}, checklist: [], preApproved: true }).expect(201)).body.id, startAfterHours: 0, minutes: 60 } } }).expect(201)).body;
-    expect(await recurring.tick(new Date(new Date(at(frozenDay, '10:00')).getTime() + 60_000))).toBe(0);
+    await recurring.tick(new Date(new Date(at(frozenDay, '10:00')).getTime() + 60_000));
     expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.sdRecurringRun.findFirstOrThrow({ where: { recurringId: r2.id } }))).ticketId).toBeNull();
     expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.recurring.skipped', entityId: r2.id } }))).toBe(1);
   });
