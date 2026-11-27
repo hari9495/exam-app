@@ -75,7 +75,7 @@ const IMPLICIT: Record<string, string[]> = {
     'workPhone', // employee.profile.edit in scope (checked by the service)
   ],
   EmployeeHistoryController: ['list', 'asOf', 'timeline', 'serviceDates'],
-  OrgStructureController: ['reference'], // public reference data (states, regions)
+  OrgStructureController: ['reference', 'modules'], // public reference data (states, regions); T2-G 41: the company's modules (the menu)
   AccessController: [],
   // PPL-34 on: the person record's panels, each with its class's key (the service checks scope per person).
   PersonPanelsController: ['myDisability', 'declareDisability', 'withdrawDisability'], // one's own disability declaration (PPL-38)

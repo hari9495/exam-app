@@ -1,3 +1,4 @@
+import { MODULES, MODULE_KEYS, MODULES_OFF_KEY, MODULES_ORDER_KEY, forgetModules, moduleOrder, modulesOff } from './modules';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -206,6 +207,7 @@ export class OrgSettingsService {
       // Checked against the platform list below, inside the company's transaction.
     } else {
       const parts = def.multi ? (dto.value ? dto.value.split(',') : []) : [dto.value];
+      if (dto.key === MODULES_OFF_KEY && parts.some((p) => MODULES.find((m) => m.id === p)?.locked)) throw new BadRequestException('People, Payroll and Compliance cannot be switched off.');
       if (!parts.every((p) => def.values.includes(p)) || new Set(parts).size !== parts.length) throw new BadRequestException(`${def.label} is ${def.multi ? 'any of' : 'one of'}: ${def.values.join(', ')}`);
     }
     // YX-ORG-18: a dated setting always carries its start date; a plain one never does.
@@ -243,10 +245,39 @@ export class OrgSettingsService {
         ? await tx.setting.update({ where: { id: existing.id }, data: { value: dto.value, updatedBy: c.userId } })
         : await tx.setting.create({ data: { ...where, value: dto.value, updatedBy: c.userId } });
       if (dto.key === 'employee_code.scope') await rekeyEmployeeCodes(tx, c, dto.value);
+      if (MODULE_KEYS.includes(dto.key)) forgetModules(c.organizationId);
       // A guarded key loosens an approval, retro, access or fraud control: recorded as a control change (P08).
       await audit(tx, c, 'org.setting.changed', 'setting', row.id, { key: dto.key, scopeType, scopeId, validFrom: dto.validFrom ?? null, from: existing?.value ?? null, to: dto.value, control: Boolean(SETTINGS[dto.key]?.guard) });
       return rowView(row);
     });
+  }
+
+  /**
+   * T2-G 41 (answer 2746): the company's modules in its rail order, each on or off. Read by everyone signed in to the
+   * company (the menu needs it); nothing in it is personal.
+   */
+  modules(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const off = await modulesOff(tx, c.organizationId);
+      const order = (await tx.setting.findFirst({ where: { organizationId: c.organizationId, key: MODULES_ORDER_KEY, scopeType: 'tenant' }, select: { value: true } }))?.value;
+      return {
+        modules: moduleOrder(order).map((id) => {
+          const m = MODULES.find((x) => x.id === id)!;
+          return { id, label: m.label, on: !off.includes(id), locked: Boolean(m.locked) };
+        }),
+      };
+    });
+  }
+
+  /** Saves the page: which modules are off and their order, each changed key audited as any setting. */
+  async saveModules(ctx: TenantContext, dto: { off: string[]; order: string[] }) {
+    const now = await this.modules(ctx);
+    const was = { off: now.modules.filter((m) => !m.on).map((m) => m.id), order: now.modules.map((m) => m.id) };
+    const order = moduleOrder(dto.order.join(','));
+    const off = [...new Set(dto.off)].sort().join(',');
+    if (off !== [...was.off].sort().join(',')) await this.set(ctx, { key: MODULES_OFF_KEY, scopeType: 'tenant', value: off } as SettingDto);
+    if (order.join(',') !== was.order.join(',')) await this.set(ctx, { key: MODULES_ORDER_KEY, scopeType: 'tenant', value: order.join(',') } as SettingDto);
+    return this.modules(ctx);
   }
 
   /** The setting and scope a waiting change is for (the controller checks the keys for it). */

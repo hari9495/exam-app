@@ -17,6 +17,7 @@ import {
   PayRangeDto,
   PayRangeQueryDto,
   ResolveSettingQueryDto,
+  ModulesDto,
   SettingDto,
   SettingRejectDto,
   SettingsHistoryQueryDto,
@@ -348,6 +349,19 @@ export class OrgStructureController {
   }
 
   // ---- scoped settings (P01 §4.6) ----
+
+  /** T2-G 41: the company's modules, on or off, in its order (everyone signed in: the menu reads it). */
+  @Get('modules')
+  modules(@CurrentTenant() ctx: TenantContext) {
+    return this.settings.modules(ctx);
+  }
+
+  @Put('modules')
+  @RequirePermissions('org.settings.manage')
+  saveModules(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ModulesDto) {
+    ownSession(req);
+    return this.settings.saveModules(ctx, dto);
+  }
 
   @Get('settings')
   @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', ...MODULE_READ)

@@ -301,7 +301,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Assets', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Approval limits', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Modules', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Assets', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Approval limits', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     // AS-2 (Settings 6.5): a test owner with only the assessments settings key gets that page and nothing else.
@@ -660,5 +660,36 @@ describe('buildNav: E2 approval rules editor', () => {
       expect(labelsOf).not.toContain('Approval limits');
       expect(labelsOf).not.toContain('Hiring approvals');
     }
+  });
+});
+
+describe('buildNav: modules on / off and order (T2-G 41, answer 2746)', () => {
+  const all = ['org.settings.manage', 'learning.catalog.manage', 'desk.ticket.view', 'desk.ticket.work', 'attendance.view', 'employee.profile.view'];
+  it('a switched-off module leaves the menu; on again it is back', () => {
+    const on = nav(all, { employee: true });
+    expect(areas(on)).toContain('time');
+    const off = nav(all, { employee: true, modulesOff: ['time'] });
+    expect(areas(off)).not.toContain('time');
+    expect(off.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))).some((h) => h.startsWith('/yx/time'))).toBe(false);
+    expect(areas(nav(all, { employee: true, modulesOff: [] }))).toEqual(areas(on));
+  });
+
+  it('Helpdesk off keeps speak-up, cases and policies in the menu', () => {
+    const off = nav(all, { employee: true, modulesOff: ['helpdesk'] });
+    const hrefs = off.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href)));
+    expect(hrefs.some((h) => h.startsWith('/yx/desk/tickets'))).toBe(false);
+    expect(hrefs).toContain('/yx/desk/policies');
+  });
+
+  it("the areas follow the company's order: Home first, Settings last", () => {
+    const n = nav(all, { employee: true, moduleOrder: ['time', 'people'] });
+    expect(areas(n)[0]).toBe('home');
+    expect(areas(n).slice(1, 3)).toEqual(['time', 'people']);
+    expect(areas(n).at(-1)).toBe('settings');
+  });
+
+  it('Settings › Modules for settings readers', () => {
+    expect(labels(nav(['org.settings.manage']), 'settings')).toContain('Modules');
+    expect(labels(nav(['org.structure.view']), 'settings')).not.toContain('Modules');
   });
 });
