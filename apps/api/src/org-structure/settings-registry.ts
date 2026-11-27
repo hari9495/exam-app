@@ -345,6 +345,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'notify.email.enabled': { label: 'Notifications: also send them by email (the in-app bell always shows them)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // Answer 1826: what new people start with (each changes their own on Me › Notifications); applied when the account is made.
   'notify.email.default_cadence': { label: 'Notifications: new people get', scopes: ['tenant'], dated: false, values: ['immediate', 'daily'], labels: { immediate: 'An email per notice', daily: 'One daily digest' }, default: 'immediate' },
+  // T2-E 52 (answer 2877): push through the installable web app; the company can switch it off (it also needs the
+  // server's push keys).
+  'notify.push.enabled': { label: 'Notifications: also push them to people who allow it on their device', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'notify.digest.time': { label: 'Notifications: the daily digest email goes out at (India time)', scopes: ['tenant'], dated: false, values: ['06:00', '07:00', '08:00', '09:00', '10:00', '18:00'], default: '07:00' },
   // T2-E 51 (answer 2874): the Home cards for a window that is closing, each kind a company switch (on by default).
   'home.reminders.tax_declarations': { label: 'Home reminders: tax declarations closing (7 days before)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },

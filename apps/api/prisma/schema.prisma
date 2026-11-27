@@ -243,6 +243,10 @@ model User {
   // 'daily' (batched into one daily digest by the digest sweep), or 'off' (no notification emails at
   // all; the in-app bell is unaffected). lastDigestSentAt anchors the once-per-day digest sweep.
   notificationDigest     String               @default("immediate") @map("notification_digest") @db.VarChar(1000)
+  /// T2-E 52 (2877): Pause push, and the quiet hours (India time) when nothing is pushed.
+  pushPaused             Boolean              @default(false) @map("push_paused")
+  pushQuietFrom          String               @default("21:00") @map("push_quiet_from") @db.VarChar(5)
+  pushQuietTo            String               @default("08:00") @map("push_quiet_to") @db.VarChar(5)
   lastDigestSentAt       DateTime?            @map("last_digest_sent_at") @db.Timestamptz(3)
   passwordHash           String               @map("password_hash") @db.VarChar(1000)
   role                   String               @db.VarChar(1000)
@@ -1106,6 +1110,8 @@ model UserNotificationPreference {
   userId         String   @map("user_id") @db.Uuid
   type           String   @db.VarChar(1000)
   emailEnabled   Boolean  @map("email_enabled")
+  /// T2-E 52 (2877): push for this kind; null = the kind's default (on for approvals, off for the rest).
+  pushEnabled    Boolean? @map("push_enabled")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -16301,4 +16307,21 @@ model ApprovalLimit {
 
   @@unique([organizationId, family, gradeId], map: "approval_limits_org_family_grade_key")
   @@map("approval_limits")
+}
+
+/// T2-E 52 (answer 2875): one Web Push subscription per signed-in device that allows notifications.
+model PushSubscription {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  endpoint       String    @db.VarChar(1000)
+  p256dh         String    @db.VarChar(200)
+  auth           String    @db.VarChar(100)
+  userAgent      String?   @map("user_agent") @db.VarChar(200)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSentAt     DateTime? @map("last_sent_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, endpoint], map: "push_subscriptions_endpoint_key")
+  @@index([organizationId, userId], map: "push_subscriptions_user_idx")
+  @@map("push_subscriptions")
 }

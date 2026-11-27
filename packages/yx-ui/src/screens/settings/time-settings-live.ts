@@ -273,6 +273,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     links: ['ntf.templates'],
     settings: [
       { section: 'Channels and defaults', key: 'notify.email.enabled', synonyms: ['notification channel', 'email notifications'] },
+      // T2-E 52 (answer 2877): push through the installable web app.
+      { section: 'Channels and defaults', key: 'notify.push.enabled', synonyms: ['push', 'push notifications', 'web app'] },
       { section: 'Digests and quiet hours', key: 'notify.email.default_cadence', synonyms: ['digest default', 'new people'] },
       { section: 'Digests and quiet hours', key: 'notify.digest.time', synonyms: ['summary email', 'digest'] },
       // T2-E 51 (answer 2874): the Home cards for a window that is closing, each kind on or off for the company.

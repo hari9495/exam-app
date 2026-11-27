@@ -8,7 +8,7 @@ export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, Approvals
 export type { ApprovalRow } from '../platform-a/platform-data';
 export type { ApprovalStep } from '../../components/timeline';
 export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../platform-a/shell-home';
-export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
+export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps, type PushPreferences } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
 // People › person record (design audit step 3): PPL-03 with the live record.
 // PPL-36 / PPL-37: possible same person, merge and unmerge.

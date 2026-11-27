@@ -29716,5 +29716,26 @@
                               "Screens/Platform/Home reminders (T2-E 51) (two cards, a self-review, a survey, nothing closing)"
                     ],
                     "note": "Positive and negative (approvals-t2e e2e 51: sent back and the survey closing tomorrow shown in that order, the one closing in 5 days not, the colleague gets none, survey switched off by the company; home-reminders unit 3 (lead days 7/3/2, closed windows never, sent back first, at most 2, switched-off kinds); kit home-reminders 3 incl. blocked storage; settings-s8 5.4 keys). Six company settings home.reminders.* (on by default) on Settings › Notifications. Route GET notifications/home-reminders."
+          },
+          {
+                    "id": "MT-T2E-52-WEB-PUSH",
+                    "area": "T2-E 52 (answers 2875 to 2878): push through the installable web app",
+                    "screen": "Me › Notification preferences (Push on this device, Pause push, quiet hours, a Push column per kind); Settings › Notifications (push switch)",
+                    "url": "http://localhost:3000/yx/me/notifications",
+                    "account": "An employee who approves requests (Chrome or Edge on a laptop, and an iPhone); a colleague on the same laptop; a System Admin. The API has WEB_PUSH_PUBLIC_KEY, WEB_PUSH_PRIVATE_KEY and WEB_PUSH_SUBJECT set (test values made for the test server only).",
+                    "steps": [
+                              "Without the three values in the API config, open Me › Notification preferences.",
+                              "With them set, turn on Push on this device and allow the browser prompt. Look at the Push column: approvals on, the rest off.",
+                              "Have a colleague send a request for approval to you at 12:00. Tap the push.",
+                              "Set quiet hours to cover now, then send another request; then Pause push and send another; then turn Push off for one kind.",
+                              "Sign out; have a request sent to you. Sign in as the colleague on the same browser and turn push on.",
+                              "On an iPhone in Safari open the page; then add YukthiX to the Home Screen and open it from there.",
+                              "As the System Admin switch Notifications › push off; reload the page as the employee. Block notifications for the site in the browser and reload."
+                    ],
+                    "expected": "Step 1: 'Push is switched off for your company. Email and the bell still work.' and no Push column. Step 2: toast 'Push is on for this device.'. Step 3: a push titled 'A request needs your approval' with no names or figures; tapping it opens Approvals (sign-in first if the session ended). Step 4: no push in quiet hours or while paused (the bell still shows it); none for the kind turned off. Step 5: no push after sign-out; the colleague's device now gets the colleague's pushes only. Step 6: 'Add YukthiX to your Home Screen to get push'; from the Home Screen app the switch shows and works. Step 7: the company-off text; 'Notifications are blocked' with what to do. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/PLT-65 · Notification preferences (Push · on for this device, not yet on, iPhone add to the Home Screen first, blocked in the browser, switched off for the company)"
+                    ],
+                    "note": "Positive and negative (approvals-t2e e2e 52 with keys made for the run only: no keys = not available and subscribe 400, http endpoint 400, one subscription per device moving to who signed in, neutral title and link, off-by-default kind, quiet hours 22:30, pause, company switch, the bell path pushes, 410 removes the subscription, sign-out removes mine only; push-rules unit 3; notifications service and controller specs; kit preferences-push 4; rls-isolation push_subscriptions). Migration 903 (push_subscriptions with RLS; push_enabled on preferences; push_paused and quiet hours on users); web-push 3.6.7 (MIT); setting notify.push.enabled; service worker /yx-sw.js caches nothing; web manifest; GO-LIVE item 49 names the env values. WhatsApp (2879): nothing built."
           }
 ]

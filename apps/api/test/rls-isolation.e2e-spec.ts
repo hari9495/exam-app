@@ -880,6 +880,29 @@ describe('PostgreSQL row-level security (app role)', () => {
     }
   });
 
+  // Batch T2-E item 52 (answer 2875): Web Push subscriptions, one per signed-in device.
+  const T2E_TABLES = ['push_subscriptions'];
+  it('the T2-E push subscriptions table is a forced-RLS tenant table with the support-session exclusion', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced, (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname = ANY(${T2E_TABLES}) ORDER BY c.relname`;
+    expect(rows).toEqual(T2E_TABLES.map((table) => ({ table, forced: true, policies: BigInt(2) })));
+  });
+
+  it("(b) org A cannot read, change, delete or plant org B's push subscriptions", async () => {
+    const endpoint = `https://push.example.test/${randomUUID()}`;
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) => tx.pushSubscription.create({ data: { organizationId: orgB, userId: userB, endpoint, p256dh: 'fake-p256dh-key', auth: 'fake-auth' } }));
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      count: await tx.pushSubscription.count({ where: { organizationId: orgB } }),
+      changed: await tx.$executeRaw`UPDATE push_subscriptions SET endpoint = 'https://evil.test' WHERE organization_id = ${orgB}::uuid`,
+      deleted: await tx.$executeRaw`DELETE FROM push_subscriptions WHERE organization_id = ${orgB}::uuid`,
+    }));
+    expect(seenByA).toEqual({ count: 0, changed: 0, deleted: 0 });
+    await expect(tenantPrisma.forTenant(asA(), (tx) => tx.pushSubscription.create({ data: { organizationId: orgB, userId: userB, endpoint: `${endpoint}/2`, p256dh: 'fake-p256dh-key', auth: 'fake-auth' } }))).rejects.toThrow();
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) => tx.pushSubscription.deleteMany({ where: { endpoint } }));
+  });
+
   // Batch T2-C: 1:1 agenda templates (item 70) and goal templates (item 71).
   const T2C_TABLES = ['one_on_one_templates', 'goal_templates'];
   it('the T2-C performance template tables are forced-RLS tenant tables', async () => {

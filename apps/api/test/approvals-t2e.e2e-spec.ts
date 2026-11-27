@@ -8,6 +8,9 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ApprovalsEngine } from '../src/workflow/approvals-engine.service';
+import * as webpush from 'web-push';
+import { NotificationsService } from '../src/notifications/notifications.service';
+import { PushService } from '../src/notifications/push.service';
 
 // Batch T2-E items 49 and 50 end to end (founder answers 2872, 2873, 27 Nov 2026): each waiting request and each Team
 // history decision says whether the requester is in my direct team or my whole team (the Asked by filter), and
@@ -161,5 +164,59 @@ describe('Approvals T2-E 49 and 50', () => {
     // The company switches surveys off: only the sent-back card stays.
     await api2('admin', 'put', '/org/settings').send({ key: 'home.reminders.survey', scopeType: 'tenant', value: 'off' }).expect(want(200));
     expect((await cards('emp')).map((c) => c.kind)).toEqual(['sent_back']);
+  });
+  it('52: push with keys from config only: one subscription per device, neutral title, choices, quiet hours, gone and sign-out', async () => {
+    const api3 = (who: Who, method: 'get' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+    const keys = webpush.generateVAPIDKeys(); // made for this run only, never stored
+    const sub = { endpoint: `https://push.example.test/${run}`, p256dh: 'BFakeP256dhKeyForTestsOnly_abcdefgh', auth: 'FakeAuthKey_123' };
+    // Without keys in config: push is not available and nothing subscribes.
+    delete process.env.WEB_PUSH_PUBLIC_KEY;
+    expect((await api3('emp', 'get', '/notifications/push').expect(want(200))).body).toMatchObject({ available: false, publicKey: null, paused: false, quietFrom: '21:00', quietTo: '08:00' });
+    await api3('emp', 'put', '/notifications/push/subscription').send(sub).expect(400);
+    Object.assign(process.env, { WEB_PUSH_PUBLIC_KEY: keys.publicKey, WEB_PUSH_PRIVATE_KEY: keys.privateKey, WEB_PUSH_SUBJECT: 'mailto:push-test@example.test' });
+    try {
+      expect((await api3('emp', 'get', '/notifications/push').expect(want(200))).body).toMatchObject({ available: true, publicKey: keys.publicKey });
+      await api3('emp', 'put', '/notifications/push/subscription').send({ ...sub, endpoint: 'http://push.example.test/x' }).expect(400);
+      await api3('emp', 'put', '/notifications/push/subscription').send(sub).expect(want(200));
+      // The same device signed in by someone else of the company moves to them, never two.
+      await api3('other', 'put', '/notifications/push/subscription').send(sub).expect(want(200));
+      expect(await inA((tx) => tx.pushSubscription.findMany({ where: { endpoint: sub.endpoint }, select: { userId: true } }))).toEqual([{ userId: users.other }]);
+      await api3('emp', 'put', '/notifications/push/subscription').send(sub).expect(want(200));
+      const sent = jest.spyOn(PushService.transport, 'sendNotification').mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+      const push = app.get(PushService);
+      const noon = new Date(`${new Date().toISOString().slice(0, 10)}T06:30:00Z`); // 12:00 India time
+      // An approval pushes by default, with the kind's neutral title only and the page to open.
+      expect(await push.send(ctx(), [users.emp!], 'approval.requested', '/yx/approvals?request=x', noon)).toBe(1);
+      expect(sent).toHaveBeenCalledWith(expect.objectContaining({ endpoint: sub.endpoint }), JSON.stringify({ title: 'A request needs your approval', url: '/yx/approvals?request=x' }), expect.anything());
+      // Negative: a kind off by default, quiet hours, Pause push, and the company switch all send nothing.
+      expect(await push.send(ctx(), [users.emp!], 'assigned', '/yx/home', noon)).toBe(0);
+      expect(await push.send(ctx(), [users.emp!], 'approval.requested', '/yx/approvals', new Date(`${noon.toISOString().slice(0, 10)}T17:00:00Z`))).toBe(0); // 22:30 India time
+      await api3('emp', 'patch', '/notifications/preferences').send({ type: 'assigned', pushEnabled: true }).expect(want(200));
+      expect(await push.send(ctx(), [users.emp!], 'assigned', '/yx/home', noon)).toBe(1);
+      await api3('emp', 'patch', '/notifications/push').send({ quietFrom: '25:00' }).expect(400);
+      await api3('emp', 'patch', '/notifications/push').send({ paused: true }).expect(want(200));
+      expect(await push.send(ctx(), [users.emp!], 'approval.requested', '/yx/approvals', noon)).toBe(0);
+      await api3('emp', 'patch', '/notifications/push').send({ paused: false }).expect(want(200));
+      await api3('admin', 'put', '/org/settings').send({ key: 'notify.push.enabled', scopeType: 'tenant', value: 'off' }).expect(want(200));
+      expect(await push.send(ctx(), [users.emp!], 'approval.requested', '/yx/approvals', noon)).toBe(0);
+      await api3('admin', 'put', '/org/settings').send({ key: 'notify.push.enabled', scopeType: 'tenant', value: 'on' }).expect(want(200));
+      // The bell path pushes too (notifySystem), and a subscription the push service says is gone is removed.
+      sent.mockClear();
+      await app.get(NotificationsService).notifySystem(ctx(), [users.emp!], 'approval.requested', { entityType: 'test', entityId: randomUUID(), linkPath: '/yx/approvals' }, null);
+      for (let k = 0; k < 50 && !sent.mock.calls.length; k++) await new Promise((r) => setTimeout(r, 100));
+      expect(sent).toHaveBeenCalled();
+      sent.mockRejectedValue(Object.assign(new Error('gone'), { statusCode: 410 }));
+      expect(await push.send(ctx(), [users.emp!], 'approval.requested', '/yx/approvals', noon)).toBe(0);
+      expect(await inA((tx) => tx.pushSubscription.count({ where: { endpoint: sub.endpoint } }))).toBe(0);
+      // Sign-out removes this device for me only.
+      await api3('emp', 'put', '/notifications/push/subscription').send(sub).expect(want(200));
+      await api3('other', 'delete', '/notifications/push/subscription').send({ endpoint: sub.endpoint }).expect(want(200));
+      expect(await inA((tx) => tx.pushSubscription.count({ where: { endpoint: sub.endpoint } }))).toBe(1);
+      await api3('emp', 'delete', '/notifications/push/subscription').send({ endpoint: sub.endpoint }).expect(want(200));
+      expect(await inA((tx) => tx.pushSubscription.count({ where: { endpoint: sub.endpoint } }))).toBe(0);
+      sent.mockRestore();
+    } finally {
+      for (const k of ['WEB_PUSH_PUBLIC_KEY', 'WEB_PUSH_PRIVATE_KEY', 'WEB_PUSH_SUBJECT']) delete process.env[k];
+    }
   });
 });

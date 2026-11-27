@@ -5,11 +5,12 @@ import { NotificationsService } from './notifications.service';
 import { NotificationDigestService } from './notification-digest.service';
 import { HomeRemindersController } from './home-reminders.controller';
 import { HomeRemindersService } from './home-reminders.service';
+import { PushService } from './push.service';
 
 @Module({
   imports: [EmailModule],
   controllers: [NotificationsController, HomeRemindersController],
-  providers: [NotificationsService, NotificationDigestService, HomeRemindersService],
+  providers: [NotificationsService, NotificationDigestService, HomeRemindersService, PushService],
   // PipelineModule injects NotificationsService; ScheduledSweepsModule dispatches the digest sweep.
   exports: [NotificationsService, NotificationDigestService],
 })

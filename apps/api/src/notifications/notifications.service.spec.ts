@@ -274,11 +274,11 @@ describe('NotificationsService', () => {
   });
 
   describe('email preferences', () => {
-    let tx: { userNotificationPreference: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock } };
+    let tx: { userNotificationPreference: { findMany: jest.Mock; findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock } };
     const ctx = context;
 
     beforeEach(() => {
-      tx = { userNotificationPreference: { findMany: jest.fn(), upsert: jest.fn(), deleteMany: jest.fn() } };
+      tx = { userNotificationPreference: { findMany: jest.fn(), findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn(), deleteMany: jest.fn() } };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
     });
 
@@ -302,6 +302,23 @@ describe('NotificationsService', () => {
       expect(tx.userNotificationPreference.deleteMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ userId: 'u1', type: 'assigned' }) }),
       );
+    });
+
+    it('T2-E 52: push per kind defaults to on for approvals and off for the rest; a push choice keeps the row, email kept', async () => {
+      tx.userNotificationPreference.findMany.mockResolvedValue([]);
+      const prefs = await service.getPreferences(ctx, 'u1');
+      expect(prefs.find((p) => p.type === 'approval.requested')?.pushEnabled).toBe(true);
+      expect(prefs.find((p) => p.type === 'assigned')?.pushEnabled).toBe(false);
+      await service.setPreference(ctx, 'u1', 'assigned', undefined, true);
+      expect(tx.userNotificationPreference.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ emailEnabled: true, pushEnabled: true }) }));
+      // Back to the default for the kind (off for assignments) and email on: no row.
+      tx.userNotificationPreference.findUnique.mockResolvedValue({ emailEnabled: true, pushEnabled: true });
+      await service.setPreference(ctx, 'u1', 'assigned', undefined, false);
+      expect(tx.userNotificationPreference.deleteMany).toHaveBeenCalled();
+    });
+
+    it('negative: a change that names neither email nor push is refused', async () => {
+      await expect(service.setPreference(ctx, 'u1', 'assigned')).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('setPreference rejects an unknown type', async () => {
