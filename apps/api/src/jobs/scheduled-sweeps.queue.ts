@@ -109,4 +109,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'asset-licence-alerts', cron: '0 2 * * *' },
   // IT assets answer 2715: the person is reminded the day before a booked asset is due back; IT when overdue (07:35 IST).
   { id: 'asset-booking-alerts', cron: '5 2 * * *' },
+  // T2-G 45 (answer 2744): companies' scheduled data exports to their own storage, when due (02:00 IST).
+  { id: 'scheduled-company-exports', cron: '30 20 * * *' },
 ];

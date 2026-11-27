@@ -192,6 +192,9 @@ export const EXPORT_ACTIONS: Record<string, { what: string; sensitivity: 'Intern
   'audit.exported': { what: 'Audit log', sensitivity: 'Confidential' },
   'audit.export': { what: 'Audit log', sensitivity: 'Confidential' },
   'account.export.downloaded': { what: 'Company data export', sensitivity: 'Confidential' },
+  // T2-G 45: each scheduled export to the company's storage, sent or not.
+  'account.export.sent': { what: 'Scheduled company data export', sensitivity: 'Confidential' },
+  'account.export.failed': { what: 'Scheduled company data export (not sent)', sensitivity: 'Confidential' },
   'exports.log.downloaded': { what: 'Export log', sensitivity: 'Internal' },
 };
 

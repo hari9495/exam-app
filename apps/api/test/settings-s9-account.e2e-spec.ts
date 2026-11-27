@@ -8,6 +8,9 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
 import { PlatformService } from '../src/platform/platform.service';
+import { ExportStorageService } from '../src/account/export-storage.service';
+import { ScheduledExportService } from '../src/account/scheduled-export.service';
+import { configure as zipConfigure, TextWriter, Uint8ArrayReader, ZipReader, type FileEntry } from '@zip.js/zip.js';
 
 // Settings S-9 (answers 1328, 1332), against the real database: the plan, usage and invoices read-only; the
 // whole-company export (System Admins with the security key; the link works the platform's hours, 24 by default; only
@@ -26,7 +29,10 @@ describe('Settings S-9: billing read-only, data export and closing the account',
   const org: Record<'A' | 'B', { id: string; slug: string; name: string }> = {} as never;
   let planId = '';
   let staff = '';
-  const api = (who: string, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  // T2-G 45: the storage upload is mocked (no network); each call keeps what would have been sent.
+  const uploads: { kind: string; target: unknown; secret: unknown; name: string; data: Buffer }[] = [];
+  const storage = { upload: jest.fn(async (kind: string, target: unknown, secret: unknown, name: string, data: Buffer) => void uploads.push({ kind, target, secret, name, data })) };
+  const api = (who: string, method: 'get' | 'post' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inOrg = <T>(k: 'A' | 'B', fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org[k].id, isSuperAdmin: false }, fn);
   const audits = (action: string) => inOrg('A', (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action } }));
   const binary = (res: request.Response, cb: (e: Error | null, b: Buffer) => void) => {
@@ -36,7 +42,7 @@ describe('Settings S-9: billing read-only, data export and closing the account',
   };
 
   beforeAll(async () => {
-    app = await bootAdminApp((b) => b.overrideProvider(EmailService).useValue({ send: jest.fn(async () => ({ success: true })) }));
+    app = await bootAdminApp((b) => b.overrideProvider(EmailService).useValue({ send: jest.fn(async () => ({ success: true })) }).overrideProvider(ExportStorageService).useValue(storage));
     prisma = app.get(PrismaService);
     tenantPrisma = app.get(TenantPrismaService);
     const passwordHash = await argon2.hash(PASSWORD);
@@ -137,6 +143,89 @@ describe('Settings S-9: billing read-only, data export and closing the account',
     expect((await api('billing', 'post', '/account/exports').expect(403)).body.message).toMatch(/System Admin/);
     await api('billing', 'get', `/account/exports/${exportId}/file`).expect(403);
     await api('adminB', 'get', `/account/exports/${exportId}/file`).expect(404);
+  });
+
+  // T2-G 45 (answer 2744): the scheduled export to the company's own storage. Fake keys only.
+  const S3 = { kind: 's3', bucket: 'kaveri-backups', region: 'ap-south-1', prefix: 'yukthix', accessKeyId: 'AKIAFAKEFAKEFAKE0000', secretAccessKey: 'fake/secret/value/0000000000', zipPassword: 'a-long-zip-password' };
+  it('T2-G 45 negative: only a System Admin connects storage; bad input is refused; nothing is connected by default (weekly)', async () => {
+    expect((await api('admin', 'get', '/account/export-destination').expect(200)).body).toEqual({ frequency: 'weekly', destination: null });
+    await api('hr', 'put', '/account/export-destination').send(S3).expect(403);
+    expect((await api('billing', 'put', '/account/export-destination').send(S3).expect(403)).body.message).toMatch(/System Admin/);
+    await api('admin', 'put', '/account/export-destination').send({ ...S3, kind: 'ftp' }).expect(400);
+    await api('admin', 'put', '/account/export-destination').send({ ...S3, zipPassword: 'short' }).expect(400);
+    expect((await api('admin', 'put', '/account/export-destination').send({ ...S3, bucket: 'Bad_Bucket' }).expect(400)).body.message).toMatch(/bucket/);
+    await api('admin', 'post', '/account/export-destination/send').expect(404);
+  });
+
+  it('T2-G 45: a System Admin connects S3; the secret and password are stored encrypted and never shown', async () => {
+    const v = (await api('admin', 'put', '/account/export-destination').send(S3).expect(200)).body;
+    expect(v).toMatchObject({ frequency: 'weekly', destination: { kind: 's3', where: 's3://kaveri-backups/yukthix', lastError: null } });
+    expect(JSON.stringify(v)).not.toMatch(/fake\/secret|a-long-zip-password|AKIAFAKE/);
+    const row = await inOrg('A', (tx) => tx.companyExportDestination.findFirstOrThrow({ where: { organizationId: org.A.id } }));
+    expect(row.secretEncrypted).not.toContain('fake/secret');
+    expect(row.zipPasswordEncrypted).not.toContain('a-long-zip-password');
+    const set = await audits('account.export_destination.set');
+    expect(set).toHaveLength(1);
+    expect(set[0]!.metadataJson).not.toMatch(/fake\/secret|a-long-zip-password/);
+    expect((await api('adminB', 'get', '/account/export-destination').expect(200)).body.destination).toBeNull();
+  });
+
+  it('T2-G 45: Send now uploads an AES-encrypted zip of this company only, logged in the export log', async () => {
+    expect((await api('admin', 'post', '/account/export-destination/send').expect(200)).body).toEqual({ ok: true, error: null });
+    const up = uploads.at(-1)!;
+    expect(up).toMatchObject({ kind: 's3', target: { bucket: 'kaveri-backups', region: 'ap-south-1', prefix: 'yukthix' }, secret: { accessKeyId: 'AKIAFAKEFAKEFAKE0000', secretAccessKey: 'fake/secret/value/0000000000' } });
+    expect(up.name).toMatch(/^yukthix-data-\d{4}-\d{2}-\d{2}\.zip$/);
+    zipConfigure({ useWebWorkers: false });
+    const entries = await new ZipReader(new Uint8ArrayReader(new Uint8Array(up.data))).getEntries();
+    expect(entries.every((e) => e.encrypted)).toBe(true);
+    const le = entries.find((e) => e.filename === 'legal_entities.csv')!;
+    const csv = await (le as FileEntry).getData(new TextWriter(), { password: S3.zipPassword });
+    expect(csv).toContain(`Entity A ${run}`);
+    expect(csv).not.toContain(`Entity B ${run}`);
+    // Negative: the wrong password opens nothing; no secret or other company in any file.
+    await expect((le as FileEntry).getData(new TextWriter(), { password: 'not-the-password' })).rejects.toThrow();
+    for (const e of entries) {
+      const t = await (e as FileEntry).getData(new TextWriter(), { password: S3.zipPassword });
+      expect(t).not.toContain(org.B.id);
+      expect(t).not.toContain('fake/secret');
+    }
+    expect(await audits('account.export.sent')).toHaveLength(1);
+    const log = (await api('admin', 'get', '/library/exports').expect(200)).body as { what: string }[];
+    expect(log.map((r) => r.what)).toContain('Scheduled company data export');
+  }, 150_000);
+
+  it('T2-G 45 negative: a failed upload is recorded, logged and told to the System Admins; another company cannot send', async () => {
+    storage.upload.mockRejectedValueOnce(Object.assign(new Error('Access Denied'), { name: 'AccessDenied' }));
+    const out = (await api('admin', 'post', '/account/export-destination/send').expect(200)).body;
+    expect(out).toEqual({ ok: false, error: 'Amazon S3 did not take the file: Access Denied' });
+    expect((await api('admin', 'get', '/account/export-destination').expect(200)).body.destination.lastError).toBe('Amazon S3 did not take the file: Access Denied');
+    expect(await audits('account.export.failed')).toHaveLength(1);
+    const told = await inOrg('A', (tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, type: 'account.export.failed' }, select: { recipientUserId: true } }));
+    expect(told.map((n) => n.recipientUserId).sort()).toEqual([users.admin, users.admin2].sort());
+    await api('adminB', 'post', '/account/export-destination/send').expect(404);
+    await api('adminB', 'delete', '/account/export-destination').expect(404);
+  }, 150_000);
+
+  it('T2-G 45: the daily sweep sends when the schedule is due, not before, and never when off', async () => {
+    const sweep = () => app.get(ScheduledExportService).sweep();
+    const sentBefore = uploads.length;
+    await inOrg('A', (tx) => tx.companyExportDestination.updateMany({ where: { organizationId: org.A.id }, data: { lastSuccessAt: new Date(), lastAttemptAt: new Date(Date.now() - 21 * 3_600_000) } }));
+    await sweep();
+    expect(uploads.length).toBe(sentBefore);
+    await inOrg('A', (tx) => tx.companyExportDestination.updateMany({ where: { organizationId: org.A.id }, data: { lastSuccessAt: new Date(Date.now() - 8 * 86_400_000), lastAttemptAt: new Date(Date.now() - 8 * 86_400_000) } }));
+    await api('hr', 'put', '/org/settings').send({ key: 'account.scheduled_export.frequency', value: 'off', scopeType: 'tenant' }).expect(200);
+    await sweep();
+    expect(uploads.length).toBe(sentBefore);
+    await api('hr', 'put', '/org/settings').send({ key: 'account.scheduled_export.frequency', value: 'weekly', scopeType: 'tenant' }).expect(200);
+    await sweep();
+    expect(uploads.length).toBe(sentBefore + 1);
+  }, 200_000);
+
+  it('T2-G 45: a System Admin removes the storage', async () => {
+    await api('billing', 'delete', '/account/export-destination').expect(403);
+    await api('admin', 'delete', '/account/export-destination').expect(204);
+    expect((await api('admin', 'get', '/account/export-destination').expect(200)).body.destination).toBeNull();
+    expect(await audits('account.export_destination.removed')).toHaveLength(1);
   });
 
   it('closing: the company only asks (company name typed); it stays open until YukthiX staff close it', async () => {

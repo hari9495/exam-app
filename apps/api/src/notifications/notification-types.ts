@@ -192,6 +192,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'settings.change.waiting', group: 'approvals', label: 'A payroll setting change waits for a second person' },
   { type: 'settings.change.decided', group: 'approvals', label: 'Your payroll setting change was approved, rejected or lapsed' },
   { type: 'visitor.walkin.approval.host', group: 'approvals', label: 'A walk-in visitor is asking for you at reception' },
+  // T2-G 45 (answer 2744): the scheduled company data export could not be sent to the company's storage.
+  { type: 'account.export.failed', group: 'reminders', label: 'The scheduled data export to your storage did not go through' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

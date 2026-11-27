@@ -1296,6 +1296,16 @@ const exportClosure: SettingsPageDef = {
       ],
     },
     {
+      // T2-G 45 (answer 2744): the company's data on a schedule, to its own storage.
+      title: 'Scheduled export to your storage',
+      settings: [
+        { key: 'export.schedule.where', label: 'Your storage', kind: 'text', value: 'Amazon S3 · s3://kaveri-backups/yukthix', locked: 'Connected by Arjun Kulkarni on 20 Nov 2026.' },
+        { key: 'export.schedule.frequency', label: 'How often', kind: 'text', value: 'Weekly', locked: 'Every table as CSV, in a zip locked with your password. Weekly unless you change it.' },
+        { key: 'export.schedule.last', label: 'Last export', kind: 'text', value: 'Sent 23 Nov, 02:00', status: { tone: 'success', text: 'Sent' }, locked: 'Each export is listed in the export log.' },
+        { key: 'export.schedule.connect', label: 'Change the storage or schedule', kind: 'link', linkScreenId: 'PLT-19', linkLabel: 'Change', helper: 'Needs your security key. Keys are stored encrypted and never shown again.', sensitive: true, synonyms: ['backup', 'scheduled export', 's3', 'azure', 'google drive'] },
+      ],
+    },
+    {
       title: 'What happens at closure',
       settings: [
         { key: 'closure.grace', label: 'Read-only grace with full export', kind: 'number', value: 30, unit: 'days', locked: 'Reminder on day 23. Employees can download their own payslips, Form 16 and letters until the end.' },
