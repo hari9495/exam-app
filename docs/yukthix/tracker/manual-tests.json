@@ -30165,5 +30165,129 @@
                               "Screens/Settings/Group 8 (8.5 Data export & closure, storage drawer)"
                     ],
                     "note": "Kit account-live test (answer 2925). Text only; no API change."
+          },
+          {
+                    "id": "MT-T2G-84B-HI-HOME",
+                    "area": "T2-G 84b (answer 2743): Home in Hindi",
+                    "screen": "Home",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee who chose हिन्दी (Hindi) in Me › Language (Arjun); the same page as an English reader (HR, Lakshmi); a Hindi speaker to read every line.",
+                    "steps": [
+                              "Open Home.",
+                              "Look at the greeting, the date, Needs your action, Attendance today, Who's off this week, My tasks, Coming up, Who to ask and the quick-action buttons.",
+                              "Negative: open Home as the English reader.",
+                              "Negative: turn off 'Show the self-service screens in Hindi' (Settings › Company & branding) and reload Arjun's Home."
+                    ],
+                    "expected": "Step 2: सुप्रभात / नमस्ते / शुभ संध्या, <name>; the date with Hindi month names; the cards and their empty texts in Hindi (e.g. इस हफ़्ते कौन छुट्टी पर है); Approve / Review read मंज़ूर करें / देखें; छुट्टी के लिए आवेदन करें, घर से काम का अनुरोध करें, वेतन पर्ची डाउनलोड करें. Names, leave types and company words stay as the company wrote them. Steps 3 and 4: English. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform A/PLT-02 Role homes"
+                    ],
+                    "note": "Positive and negative (kit i18n/hindi-screens.test, leave-live and attendance-live tests: Hindi under the reader language, English without it; guard: every Hindi key exists in English; web yx-i18n.test for the bell lines). English is the fallback for any word not yet in Hindi. Hindi written by the builder: a native reader must check it."
+          },
+          {
+                    "id": "MT-T2G-84B-HI-APPROVALS",
+                    "area": "T2-G 84b (answer 2743): Approvals in Hindi",
+                    "screen": "Approvals",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "An employee who chose हिन्दी (Hindi) in Me › Language (Arjun); the same page as an English reader (HR, Lakshmi); a Hindi speaker to read every line.",
+                    "steps": [
+                              "Open Approvals.",
+                              "Look at the title, the counts, the tabs, the filters, the column headers, the search box and the empty tab (Delegated to me).",
+                              "Open a row's menu.",
+                              "Negative: the same page as the English reader."
+                    ],
+                    "expected": "Steps 2-3: अनुमोदन; मेरे लिए रुके, मुझे सौंपे गए, मेरे भेजे, टीम का इतिहास; अनुरोध करने वाले, प्रकार, आखिरी तारीख, स्थिति, किसका इंतज़ार; अनुरोध खोलें, मंज़ूर न करें. Request details (what was asked) stay as written. Step 4: English. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform A/PLT-04 Approvals"
+                    ],
+                    "note": "Positive and negative (kit i18n/hindi-screens.test, leave-live and attendance-live tests: Hindi under the reader language, English without it; guard: every Hindi key exists in English; web yx-i18n.test for the bell lines). English is the fallback for any word not yet in Hindi. Hindi written by the builder: a native reader must check it."
+          },
+          {
+                    "id": "MT-T2G-84B-HI-LEAVE",
+                    "area": "T2-G 84b (answer 2743): My leave in Hindi",
+                    "screen": "My leave",
+                    "url": "http://localhost:3000/yx/time/leave",
+                    "account": "An employee who chose हिन्दी (Hindi) in Me › Language (Arjun); the same page as an English reader (HR, Lakshmi); a Hindi speaker to read every line.",
+                    "steps": [
+                              "Open My leave.",
+                              "Look at the title, the leave year, the buttons, My requests with their statuses, Upcoming holidays and the optional-holiday button.",
+                              "Withdraw a waiting request: read the dialog.",
+                              "Negative: the same page as the English reader."
+                    ],
+                    "expected": "Step 2: मेरी छुट्टी; छुट्टी वर्ष <dates>; छुट्टी के लिए आवेदन करें; statuses मंज़ूरी का इंतज़ार, मंज़ूर, मंज़ूर नहीं; आने वाली छुट्टियाँ. Step 3: यह अनुरोध वापस लें? with वापस लें / रहने दें. Leave type and holiday names stay as the company wrote them. Step 4: English. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-17 Leave home"
+                    ],
+                    "note": "Positive and negative (kit i18n/hindi-screens.test, leave-live and attendance-live tests: Hindi under the reader language, English without it; guard: every Hindi key exists in English; web yx-i18n.test for the bell lines). English is the fallback for any word not yet in Hindi. Hindi written by the builder: a native reader must check it."
+          },
+          {
+                    "id": "MT-T2G-84B-HI-ATTENDANCE",
+                    "area": "T2-G 84b (answer 2743): My attendance in Hindi",
+                    "screen": "My attendance",
+                    "url": "http://localhost:3000/yx/time/attendance",
+                    "account": "An employee who chose हिन्दी (Hindi) in Me › Language (Arjun); the same page as an English reader (HR, Lakshmi); a Hindi speaker to read every line.",
+                    "steps": [
+                              "Open My attendance today.",
+                              "Look at the title, the description, the buttons, This week and Your rules.",
+                              "Negative: the same page as the English reader."
+                    ],
+                    "expected": "Step 2: आज की मेरी हाज़िरी; मेरा महीना, किसी और दिन को सुधारें; यह हफ़्ता with day words (उपस्थित, साप्ताहिक छुट्टी, काम पर, आज का काम पूरा); आपके नियम (छूट का समय, देर के निशान, सुधार). Times stay as 9:30 am. Step 3: English. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-09 My attendance"
+                    ],
+                    "note": "Positive and negative (kit i18n/hindi-screens.test, leave-live and attendance-live tests: Hindi under the reader language, English without it; guard: every Hindi key exists in English; web yx-i18n.test for the bell lines). English is the fallback for any word not yet in Hindi. Hindi written by the builder: a native reader must check it."
+          },
+          {
+                    "id": "MT-T2G-84B-HI-PAYSLIPS",
+                    "area": "T2-G 84b (answer 2743): My payslips in Hindi",
+                    "screen": "My payslips",
+                    "url": "http://localhost:3000/yx/me/payslips",
+                    "account": "An employee who chose हिन्दी (Hindi) in Me › Language (Arjun); the same page as an English reader (HR, Lakshmi); a Hindi speaker to read every line.",
+                    "steps": [
+                              "Open Payslips.",
+                              "Look at the title, the buttons, the hold notice if any, How your pay was worked out, Reimbursements, Year to date and Why is my pay different.",
+                              "Open the PDF drawer.",
+                              "Negative: the same page as the English reader."
+                    ],
+                    "expected": "Steps 2-3: <month> की वेतन पर्ची; सवाल पूछें, PDF डाउनलोड करें; साल में अब तक with सकल कमाई, कटौतियाँ, शुद्ध वेतन; amounts stay in Indian figures (₹12,34,567). Pay line names stay as payroll wrote them. Step 4: English. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Pay/PAY-21 Payslip viewer"
+                    ],
+                    "note": "Positive and negative (kit i18n/hindi-screens.test, leave-live and attendance-live tests: Hindi under the reader language, English without it; guard: every Hindi key exists in English; web yx-i18n.test for the bell lines). English is the fallback for any word not yet in Hindi. Hindi written by the builder: a native reader must check it."
+          },
+          {
+                    "id": "MT-T2G-84B-HI-HELPDESK",
+                    "area": "T2-G 84b (answer 2743): Help centre and my tickets in Hindi",
+                    "screen": "Help centre and my tickets",
+                    "url": "http://localhost:3000/yx/desk/help",
+                    "account": "An employee who chose हिन्दी (Hindi) in Me › Language (Arjun); the same page as an English reader (HR, Lakshmi); a Hindi speaker to read every line.",
+                    "steps": [
+                              "Open Help centre.",
+                              "Look at the title, Raise a ticket, Find an answer (search box, popular articles), My tickets and Ask the assistant.",
+                              "Search for words with no article.",
+                              "Negative: the same page as the English reader."
+                    ],
+                    "expected": "Step 2: सहायता केंद्र; टिकट दर्ज करें; जवाब खोजें; मेरे टिकट with '<date> को दर्ज'. Step 3: इन शब्दों से कोई लेख नहीं मिला। Article titles and ticket subjects stay as written. Step 4: English. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Ops/HLP-01 Help centre"
+                    ],
+                    "note": "Positive and negative (kit i18n/hindi-screens.test, leave-live and attendance-live tests: Hindi under the reader language, English without it; guard: every Hindi key exists in English; web yx-i18n.test for the bell lines). English is the fallback for any word not yet in Hindi. Hindi written by the builder: a native reader must check it."
+          },
+          {
+                    "id": "MT-T2G-84B-HI-BELL",
+                    "area": "T2-G 84b (answer 2743): The bell in Hindi",
+                    "screen": "The bell",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee who chose हिन्दी (Hindi) in Me › Language (Arjun); the same page as an English reader (HR, Lakshmi); a Hindi speaker to read every line.",
+                    "steps": [
+                              "Open the bell.",
+                              "Look at the title, Mark all read, the tabs, the day headings and the notice lines (an approval, a leave reminder).",
+                              "Negative: open the bell as the English reader."
+                    ],
+                    "expected": "Step 2: सूचनाएँ; सब पढ़ी हुई मानें; सभी / बिना पढ़ी; आज / कल; आपका अनुरोध मंज़ूर हो गया: <detail>; kinds not yet in Hindi keep their English line. Step 3: English. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Components/Notification centre"
+                    ],
+                    "note": "Positive and negative (kit i18n/hindi-screens.test, leave-live and attendance-live tests: Hindi under the reader language, English without it; guard: every Hindi key exists in English; web yx-i18n.test for the bell lines). English is the fallback for any word not yet in Hindi. Hindi written by the builder: a native reader must check it."
           }
 ]

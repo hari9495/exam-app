@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { createTranslator } from 'use-intl';
 import { EN, HI } from './messages';
+import { formatDate } from '../lib/format';
 
 // T2-G 84b (answer 2743): Hindi for the self-service screens, on next-intl's core (use-intl): the web sets the reader's
 // language once (YxI18nProvider beside next-intl's NextIntlClientProvider); a kit screen reads its words with useYxT.
@@ -37,7 +38,8 @@ export function useYxT<N extends YxNamespace>(namespace: N) {
 
 /** A date in Indian style in the reader's language: "3 Dec 2026" or "3 दिस॰ 2026". */
 export function formatDateIn(locale: YxLocale, d: Date): string {
-  return new Intl.DateTimeFormat(locale === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(d);
+  // English is the kit's own date words (formatDate); Hindi the browser's Hindi month names, the same local day.
+  return locale === 'hi' ? new Intl.DateTimeFormat('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(d) : formatDate(d);
 }
 
 /** A number in Indian grouping (12,34,567) in the reader's language. */

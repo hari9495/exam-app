@@ -30,6 +30,7 @@ import { ClockCard } from '../time/time-kit';
 import { GENERAL_SHIFT, NOW_MIN, TODAY_PUNCHES } from '../time/time-data';
 import '../time/time.css';
 import { ListPage, homePanel, parseQuery } from './platform-kit';
+import { formatDateIn, useYxLocale, useYxT } from '../../i18n';
 import { SETTINGS_GROUPS as SETTINGS_MAP } from '../settings/settings-groups';
 import { SettingsHomeScreen as SettingsMapHome } from '../settings/settings-screens';
 import { NOTIFICATIONS } from './platform-data';
@@ -890,6 +891,9 @@ const hideRupees = (t: string) => t.replace(/₹[\d,]+(\.\d+)?/g, HIDDEN);
 function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScreenProps['persona']; data: HomeData; loading: boolean; live: LiveHome }) {
   // Every ₹ figure goes through m() (and titles through hideRupees) so "Hide amounts" masks the whole page.
   const hide = Boolean(live.amounts?.hidden);
+  // T2-G 84b: the Home words in the reader's language (Hindi or English).
+  const t = useYxT('home');
+  const locale = useYxLocale();
   const m = (v: number) => (hide ? HIDDEN : formatINR(v));
   const outTotal = (live.moneyOut ?? []).reduce((t, r) => t + (r.amount ?? 0), 0);
   const hiring = live.hiring ? hiringWidgets(live.hiring, loading) : [];
@@ -899,34 +903,34 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
   const laterHiring = hiring.filter((w) => !besideActions.includes(w) && w.id !== 'interviewsToday');
   const pair = (ws: DashboardWidget[]) => (ws.length === 1 ? [{ ...ws[0], size: 12 as const }] : ws);
   const widgets: DashboardWidget[] = [
-    ...(live.nudge ? [{ id: 'nudge', pinned: true, bare: true, title: 'For you', size: 12 as const, content: live.nudge }] : []),
+    ...(live.nudge ? [{ id: 'nudge', pinned: true, bare: true, title: t('forYou'), size: 12 as const, content: live.nudge }] : []),
     {
       id: 'actions',
-      title: 'Needs your action',
+      title: t('actions'),
       size: live.clock || besideActions.length ? 8 : 12,
       pinned: true,
       bare: true,
       content: <NeedsActionList items={hide ? data.actions.map((x) => ({ ...x, title: hideRupees(x.title) })) : data.actions} total={data.actionsTotal} viewAllHref={live.approvalsHref} today={live.today} onApprove={live.onApprove} onReview={live.onReview} loading={loading} />,
     },
-    ...(live.clock ? [{ id: 'clock', pinned: true, title: 'Attendance today', size: 4 as const, content: live.clock }] : []),
+    ...(live.clock ? [{ id: 'clock', pinned: true, title: t('clock'), size: 4 as const, content: live.clock }] : []),
     ...besideActions,
     ...pair([
     ...(live.team
       ? [{
           id: 'today',
-          title: 'My team today',
+          title: t('team'),
           size: 8 as const,
-          actions: <Link href={live.team.href}>{`View all ${live.team.total}`}</Link>,
+          actions: <Link href={live.team.href}>{t('viewAll', { n: live.team.total })}</Link>,
           content: <TeamTodayCard team={live.team} onNudge={live.onNudge} />,
         }]
       : []),
     ...(live.off
       ? [{
           id: 'off',
-          title: "Who's off this week",
+          title: t('off'),
           size: 4 as const,
-          actions: live.offHref ? <Link href={live.offHref}>Team calendar</Link> : undefined,
-          empty: live.off.length ? undefined : 'No one in your team is off this week.',
+          actions: live.offHref ? <Link href={live.offHref}>{t('teamCalendar')}</Link> : undefined,
+          empty: live.off.length ? undefined : t('offEmpty'),
           content: (
             <ul className="yx-plt-list">
               {live.off.map((w) => (
@@ -942,9 +946,9 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ]),
     ...fill([
       ...(live.stats ?? []).map((x) =>
-        x.id === 'late' && live.pay ? stat('pay', 'Net pay', <PayStat loading={loading} pay={live.pay} />) : stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} money={x.money} masked={hide && x.money} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />),
+        x.id === 'late' && live.pay ? stat('pay', t('netPay'), <PayStat loading={loading} pay={live.pay} />) : stat(x.id, x.title, <StatCard loading={loading} label={x.label} value={x.value} unit={x.unit} money={x.money} masked={hide && x.money} previous={x.previous} previousLabel={x.previousLabel} empty={x.empty} drill={x.drill} />),
       ),
-      ...(live.pay && !live.stats?.some((x) => x.id === 'late') ? [stat('pay', 'Net pay', <PayStat loading={loading} pay={live.pay} />)] : []),
+      ...(live.pay && !live.stats?.some((x) => x.id === 'late') ? [stat('pay', t('netPay'), <PayStat loading={loading} pay={live.pay} />)] : []),
     ]),
     ...pair([
     ...(live.moneyOut
@@ -1072,27 +1076,27 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ...(live.goals
       ? [{
           id: 'goals',
-          title: 'Goals and 1:1s',
+          title: t('goals'),
           size: 4 as const,
-          empty: live.goals.length ? undefined : 'No 1:1s, reviews or goals to look at.',
+          empty: live.goals.length ? undefined : t('goalsEmpty'),
           content: <Bullets items={live.goals.map((g) => <Link href={g.href}>{g.text}</Link>)} />,
         }]
       : []),
     ...(live.tasks
       ? [{
           id: 'tasks',
-          title: 'My tasks',
+          title: t('tasks'),
           size: 4 as const,
-          empty: live.tasks.length ? undefined : 'No tasks for you right now.',
+          empty: live.tasks.length ? undefined : t('tasksEmpty'),
           content: <Bullets items={live.tasks.map((t) => <Link href={t.href}>{t.text}</Link>)} />,
         }]
       : []),
     ...(live.coming
       ? [{
           id: 'coming',
-          title: 'Coming up',
+          title: t('coming'),
           size: 4 as const,
-          empty: live.coming.length ? undefined : 'Nothing coming up this week.',
+          empty: live.coming.length ? undefined : t('comingEmpty'),
           content: (
             <Bullets
               items={live.coming.map((x) =>
@@ -1106,13 +1110,13 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ...(live.owners?.length
       ? [{
           id: 'owners',
-          title: 'Who to ask',
+          title: t('owners'),
           size: 4 as const,
           content: (
             <ul className="yx-plt-list">
               {live.owners.map((o) => (
                 <li key={o.module}>
-                  <span className="yx-plt-list__main"><PersonLabel name={o.name} secondary={o.module === 'People' ? 'Your HR contact' : `${o.module} contact`} /></span>
+                  <span className="yx-plt-list__main"><PersonLabel name={o.name} secondary={o.module === 'People' ? t('hrContact') : t('moduleContact', { module: o.module })} /></span>
                 </li>
               ))}
             </ul>
@@ -1123,21 +1127,21 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ], 4),
     ...laterHiring,
   ];
-  const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : GREETING[persona];
+  const greeting = persona === 'hr' ? `Exceptions, runs and what is due across ${live.company}.` : persona === 'employee' || persona === 'manager' ? t(persona) : GREETING[persona];
   return (
     <>
       <div className="yx-plt-row" data-justify="between">
         <div className="yx-plt-greet">
-          <Heading level={1}>{`Good ${partOfDay(live.today)}, ${live.firstName}`}</Heading>
+          <Heading level={1}>{t(partOfDay(live.today), { name: live.firstName })}</Heading>
           <p className="yx-plt-muted">
-            {formatDate(live.today)} · {greeting}
+            {formatDateIn(locale, live.today)} · {greeting}
           </p>
         </div>
         {live.quickActions?.length || live.amounts ? (
-          <div className="yx-plt-row" role="group" aria-label="Quick actions">
+          <div className="yx-plt-row" role="group" aria-label={t('quickActions')}>
             {live.amounts && (
               <Button icon={hide ? Eye : EyeOff} aria-pressed={hide} onClick={live.amounts.onToggle}>
-                {hide ? 'Show amounts' : 'Hide amounts'}
+                {hide ? t('showAmounts') : t('hideAmounts')}
               </Button>
             )}
             {(live.quickActions ?? []).map((a) => (

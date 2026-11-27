@@ -10,6 +10,7 @@ import { useToast } from '@yukthix/ui';
 import { NudgeCard } from '@yukthix/ui/console';
 import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
 import { Button } from '@yukthix/ui';
+import { useYxT } from '@yukthix/ui/i18n';
 import { HomeClockCard, TimesheetNudgeCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../lib/api-client';
@@ -108,6 +109,8 @@ export default function YxHomePage() {
   const persona = own === 'employee' && !employee && hiring.view ? 'recruiter' : own;
   // T2-F 79 (answer 2884): Edit home when the company lets this role personalise; the layout is kept per person.
   const { toast } = useToast();
+  // T2-G 84b: the quick actions in the reader's language.
+  const tHome = useYxT('home');
   type Saved = Pick<HomeLayout, 'order' | 'hidden' | 'sizes'>;
   const layoutQ = useQuery<{ personaliseRoles: string[]; layout: Saved | null }>({ queryKey: ['yx', 'workspace', 'home-layout'], queryFn: () => apiFetch('/workspace/home/layout', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   const [ownLayout, setOwnLayout] = useState<Saved | null | undefined>(undefined);
@@ -229,9 +232,9 @@ export default function YxHomePage() {
     ...(employee && companyModules.data?.modules ? { owners: companyModules.data.modules.filter((m) => m.on && m.owner).map((m) => ({ module: m.label, name: m.owner!.name })) } : {}),
     quickActions: employee
       ? [
-          { label: 'Apply leave', href: '/yx/time/leave?apply=1', kind: 'leave' },
-          { label: 'Request work from home', href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
-          { label: 'Download payslip', href: '/yx/me/payslips', kind: 'payslip' },
+          { label: tHome('applyLeave'), href: '/yx/time/leave?apply=1', kind: 'leave' },
+          { label: tHome('wfh'), href: '/yx/time/attendance?request=wfh', kind: 'wfh' },
+          { label: tHome('payslip'), href: '/yx/me/payslips', kind: 'payslip' },
         ]
       : [],
   };
