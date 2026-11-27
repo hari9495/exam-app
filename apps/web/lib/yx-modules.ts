@@ -7,6 +7,8 @@ export interface CompanyModule {
   label: string;
   on: boolean;
   locked: boolean;
+  /** T2-G 44 (answer 2745): the named owner (not a permission), or null. */
+  owner?: { id: string; name: string } | null;
 }
 
 // Helpdesk off keeps its legal duties: speak-up and the Internal Committee, cases, ethics, accidents and policies.

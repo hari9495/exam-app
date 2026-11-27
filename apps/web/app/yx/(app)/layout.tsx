@@ -99,8 +99,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: 15 * 60_000 });
   // T2-G 41 (answer 2746): the company's modules; one that is off leaves the menu and its pages say so.
   const companyModules = useOrg<{ modules: CompanyModule[] }>('/modules');
-  const modulesOff = useMemo(() => companyModules.data?.modules.filter((m) => !m.on).map((m) => m.id) ?? [], [companyModules.data]);
-  const moduleOrder = useMemo(() => companyModules.data?.modules.map((m) => m.id), [companyModules.data]);
+  const modulesOff = useMemo(() => companyModules.data?.modules?.filter((m) => !m.on).map((m) => m.id) ?? [], [companyModules.data]);
+  const moduleOrder = useMemo(() => companyModules.data?.modules?.map((m) => m.id), [companyModules.data]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -387,7 +387,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       {/* Answer 1050: while YukthiX has the company contained, every page says so. */}
       {contained.data?.contained && <ContainedBanner />}
       <YxPageHelp pathname={pathname} requests={!support && !impersonating}>
-        <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{pageOff(pathname, modulesOff) ? <EmptyState title={`${companyModules.data?.modules.find((m) => m.id === moduleOfHref(pathname))?.label ?? 'This module'} is switched off`} description="Your company does not use it now. Its data is kept. Your System Admin can switch it on in Settings › Modules." /> : children}</YxNavContext.Provider>
+        <YxNavContext.Provider value={{ nav, ready: perms.isSuccess }}>{pageOff(pathname, modulesOff) ? <EmptyState title={`${companyModules.data?.modules?.find((m) => m.id === moduleOfHref(pathname))?.label ?? 'This module'} is switched off`} description="Your company does not use it now. Its data is kept. Your System Admin can switch it on in Settings › Modules." /> : children}</YxNavContext.Provider>
       </YxPageHelp>
     </DesktopFrame>
   );

@@ -99,6 +99,16 @@ describe('Live home parity (19 Oct 2026)', () => {
     expect(size('Probation confirmations')).toBe('12');
   });
 
+  // T2-G 44 (answer 2745): each module's named owner on Home; nobody named, no card.
+  it('Who to ask: People’s owner is the HR contact; no owners, no card', () => {
+    const { rerender } = render(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, owners: [{ module: 'People', name: 'Lakshmi Venkatesan' }, { module: 'Payroll', name: 'Suresh Pillai' }] }} />);
+    expect(screen.getByText('Who to ask')).toBeInTheDocument();
+    expect(screen.getByText('Your HR contact')).toBeInTheDocument();
+    expect(screen.getByText('Payroll contact')).toBeInTheDocument();
+    rerender(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, owners: [] }} />);
+    expect(screen.queryByText('Who to ask')).toBeNull();
+  });
+
   it('shows the employee their tasks and what is coming up, with empty states', () => {
     render(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...base, tasks: [{ text: 'Write your self-review for H1 by 15 Oct', href: '/yx/performance/reviews/r1' }], coming: [] }} />);
     expect(screen.getByRole('link', { name: 'Write your self-review for H1 by 15 Oct' })).toHaveAttribute('href', '/yx/performance/reviews/r1');

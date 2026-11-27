@@ -70,4 +70,20 @@ describe('Modules (T2-G 41)', () => {
     rerender(<ToastProvider><ModulesScreen modules={[]} live={{ ...live(), state: 'no-access' }} /></ToastProvider>);
     expect(screen.queryByRole('switch')).toBeNull();
   });
+  // T2-G 44 (answer 2745): a named owner per module, saved at once; read-only shows the name.
+  it('naming an owner saves only that change; clearing it says so; read-only shows the owner', async () => {
+    const onSave = vi.fn(async () => {});
+    const people = [{ value: 'u1', label: 'Lakshmi' }, { value: 'u2', label: 'Suresh' }];
+    show(<ModulesScreen modules={[...ROWS.slice(0, 2), { ...ROWS[2]!, owner: { id: 'u2', name: 'Suresh' } }]} people={people} live={live(onSave)} />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Owner of Time & Leave' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Lakshmi' }));
+    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ off: [], order: ['people', 'time', 'pay'], owners: { time: 'u1' } }));
+    expect((await screen.findAllByText('Lakshmi owns Time & Leave')).length).toBeGreaterThan(0);
+  });
+
+  it('without the settings key the owner shows as text', () => {
+    show(<ModulesScreen modules={[{ ...ROWS[0]!, owner: { id: 'u1', name: 'Lakshmi' } }]} people={[]} canEdit={false} live={live()} />);
+    expect(screen.getByText('Owner: Lakshmi')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
 });

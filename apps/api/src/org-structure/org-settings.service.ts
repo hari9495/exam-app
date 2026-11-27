@@ -1,4 +1,4 @@
-import { MODULES, MODULE_KEYS, MODULES_OFF_KEY, MODULES_ORDER_KEY, forgetModules, moduleOrder, modulesOff } from './modules';
+import { MODULES, MODULE_KEYS, MODULES_OFF_KEY, MODULES_ORDER_KEY, forgetModules, moduleOrder, modulesOff, ownerKey } from './modules';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -260,23 +260,33 @@ export class OrgSettingsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const off = await modulesOff(tx, c.organizationId);
       const order = (await tx.setting.findFirst({ where: { organizationId: c.organizationId, key: MODULES_ORDER_KEY, scopeType: 'tenant' }, select: { value: true } }))?.value;
+      // T2-G 44: each module's owner (an active person of the company; one who left shows as nobody).
+      const owned = await tx.setting.findMany({ where: { organizationId: c.organizationId, scopeType: 'tenant', key: { in: MODULES.map((m) => ownerKey(m.id)) } }, select: { key: true, value: true } });
+      const ids = owned.map((o) => String(o.value)).filter((v) => /^[0-9a-f-]{36}$/i.test(v));
+      const people = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: ids }, status: 'active' }, select: { id: true, name: true, email: true } })).map((u) => [u.id, { id: u.id, name: u.name || u.email }]));
+      const ownerOf = (id: string) => people.get(String(owned.find((o) => o.key === ownerKey(id))?.value)) ?? null;
       return {
         modules: moduleOrder(order).map((id) => {
           const m = MODULES.find((x) => x.id === id)!;
-          return { id, label: m.label, on: !off.includes(id), locked: Boolean(m.locked) };
+          return { id, label: m.label, on: !off.includes(id), locked: Boolean(m.locked), owner: ownerOf(id) };
         }),
       };
     });
   }
 
   /** Saves the page: which modules are off and their order, each changed key audited as any setting. */
-  async saveModules(ctx: TenantContext, dto: { off: string[]; order: string[] }) {
+  async saveModules(ctx: TenantContext, dto: { off: string[]; order: string[]; owners?: Record<string, string | null> }) {
     const now = await this.modules(ctx);
     const was = { off: now.modules.filter((m) => !m.on).map((m) => m.id), order: now.modules.map((m) => m.id) };
     const order = moduleOrder(dto.order.join(','));
     const off = [...new Set(dto.off)].sort().join(',');
     if (off !== [...was.off].sort().join(',')) await this.set(ctx, { key: MODULES_OFF_KEY, scopeType: 'tenant', value: off } as SettingDto);
     if (order.join(',') !== was.order.join(',')) await this.set(ctx, { key: MODULES_ORDER_KEY, scopeType: 'tenant', value: order.join(',') } as SettingDto);
+    // T2-G 44: a changed owner (null: nobody); the setting checks the person is active in the company.
+    for (const [id, userId] of Object.entries(dto.owners ?? {})) {
+      if (!MODULES.some((m) => m.id === id)) throw new BadRequestException('Choose one of the modules.');
+      if ((now.modules.find((m) => m.id === id)?.owner?.id ?? null) !== (userId ?? null)) await this.set(ctx, { key: ownerKey(id), scopeType: 'tenant', value: userId ?? 'none' } as SettingDto);
+    }
     return this.modules(ctx);
   }
 

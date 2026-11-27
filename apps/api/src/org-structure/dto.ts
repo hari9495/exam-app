@@ -9,6 +9,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -419,4 +420,9 @@ export class ModulesDto {
   @ArrayMaxSize(30)
   @IsIn(MODULE_IDS, { each: true })
   order!: string[];
+
+  /** T2-G 44: module id → the owner's user id, or null for nobody (only the ones that change need be sent). */
+  @IsOptional()
+  @IsObject()
+  owners?: Record<string, string | null>;
 }

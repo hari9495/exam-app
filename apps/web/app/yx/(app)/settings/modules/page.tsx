@@ -6,18 +6,23 @@ import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import type { CompanyModule } from '../../../../../lib/yx-modules';
+import { useTeammates } from '../../../../../lib/hooks/useUserDirectory';
 
 // Settings › Modules (T2-G 41, answer 2746): the drawn ModulesScreen with `live`. HR's settings key switches modules on
-// and off and orders the rail; the API refuses the rest, audits each change and keeps People and Payroll on.
+// and off, orders the rail and names each module's owner (T2-G 44); the API refuses the rest, audits each change and keeps People and Payroll on.
 export default function YxModulesPage() {
   const qc = useQueryClient();
   const perms = useYxPermissions();
   const { accessToken, impersonating, actingSuperAdmin } = useAuth();
   const q = useOrg<{ modules: CompanyModule[] }>('/modules');
+  const canEdit = perms.has('org.settings.manage') && !impersonating && !actingSuperAdmin;
+  // T2-G 44 (answer 2745): who can be named a module's owner.
+  const staff = useTeammates(canEdit);
   return (
     <ModulesScreen
       modules={q.data?.modules ?? []}
-      canEdit={perms.has('org.settings.manage') && !impersonating && !actingSuperAdmin}
+      canEdit={canEdit}
+      people={canEdit ? (staff.data ?? []).map((p) => ({ value: p.id, label: p.name ? p.name : p.email })) : undefined}
       live={{
         state: loadState(q),
         onRetry: () => void q.refetch(),

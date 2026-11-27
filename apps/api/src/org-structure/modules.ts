@@ -45,6 +45,8 @@ export const SWITCHABLE_IDS = MODULES.filter((m) => !m.locked).map((m) => m.id);
 export const MODULES_OFF_KEY = 'org.modules.off';
 export const MODULES_ORDER_KEY = 'org.modules.order';
 export const MODULE_KEYS: readonly string[] = [MODULES_OFF_KEY, MODULES_ORDER_KEY];
+/** T2-G 44 (answer 2745): each module's named owner, a company setting (a person of the company, or none). Not a permission. */
+export const ownerKey = (id: string) => `org.module_owner.${id}`;
 
 /** The module an API path belongs to, or null (shared or always-on routes). */
 export const moduleOfPath = (path: string): string | null => MODULES.find((m) => m.api?.test(path))?.id ?? null;

@@ -7,9 +7,9 @@ type S = StoryObj;
 
 // T2-G 41 (answer 2746): the rail's modules in the company's order; People, Payroll and Compliance always on.
 const MODULES: ModuleRow[] = [
-  { id: 'people', label: 'People', on: true, locked: true },
+  { id: 'people', label: 'People', on: true, locked: true, owner: { id: 'u1', name: 'Lakshmi Venkatesan' } },
   { id: 'time', label: 'Time & Leave', on: true, locked: false },
-  { id: 'pay', label: 'Payroll', on: true, locked: true },
+  { id: 'pay', label: 'Payroll', on: true, locked: true, owner: { id: 'u2', name: 'Suresh Pillai' } },
   { id: 'compliance', label: 'Compliance', on: true, locked: true },
   { id: 'contract', label: 'Contract labour', on: false, locked: false },
   { id: 'hire', label: 'Hiring', on: true, locked: false },
@@ -22,8 +22,10 @@ const MODULES: ModuleRow[] = [
   { id: 'analytics', label: 'Analytics', on: true, locked: false },
 ];
 
-export const Modules: S = { name: 'Modules · on, off and order', render: () => <ModulesScreen modules={MODULES} /> };
+// T2-G 44 (answer 2745): the people who can be named a module's owner.
+const PEOPLE = [{ value: 'u1', label: 'Lakshmi Venkatesan' }, { value: 'u2', label: 'Suresh Pillai' }, { value: 'u3', label: 'Farhan Sheikh' }];
+export const Modules: S = { name: 'Modules · on, off and order', render: () => <ModulesScreen modules={MODULES} people={PEOPLE} /> };
 export const ModulesReadOnly: S = { name: 'Modules · read-only', render: () => <ModulesScreen modules={MODULES} canEdit={false} /> };
-export const ModulesLive: S = { name: 'Modules · live', render: () => <ModulesScreen modules={MODULES} live={{ state: 'ready', onRetry: () => {}, onSave: () => new Promise((r) => setTimeout(r, 400)) }} /> };
+export const ModulesLive: S = { name: 'Modules · live', render: () => <ModulesScreen modules={MODULES} people={PEOPLE} live={{ state: 'ready', onRetry: () => {}, onSave: () => new Promise((r) => setTimeout(r, 400)) }} /> };
 export const ModulesLoading: S = { name: 'Modules · loading', render: () => <ModulesScreen modules={[]} live={{ state: 'loading', onRetry: () => {}, onSave: async () => {} }} /> };
 export const ModulesError: S = { name: 'Modules · error', render: () => <ModulesScreen modules={[]} live={{ state: 'error', onRetry: () => {}, onSave: async () => {} }} /> };

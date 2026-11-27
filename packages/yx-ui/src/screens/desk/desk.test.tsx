@@ -277,6 +277,22 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await waitFor(() => expect(onSaveCategory).toHaveBeenLastCalledWith(null, expect.objectContaining({ name: 'Grievance', answeredBy: 'desk', sensitive: true })));
   });
 
+  // T2-G 44 (answer 2745): a category answered by the named owner of its module; the module is needed.
+  it("categories: answered by the module's owner needs the module and says who answers", async () => {
+    const onSaveCategory = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="categories" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={onSaveCategory} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} modules={[{ id: 'pay', label: 'Payroll', owner: 'Suresh Pillai' }, { id: 'time', label: 'Time & Leave', owner: null }]} /></ToastProvider>);
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Payslip questions');
+    await ue.click(screen.getByRole('radio', { name: 'The module’s owner' }));
+    await ue.click(screen.getByRole('button', { name: 'Add category' }));
+    expect(await screen.findByText('Choose the module.')).toBeInTheDocument();
+    expect(onSaveCategory).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('combobox', { name: /Module/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Payroll' }));
+    expect(screen.getByText('Suresh Pillai answers. With no owner named, the desk answers.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add category' }));
+    await waitFor(() => expect(onSaveCategory).toHaveBeenCalledWith(null, expect.objectContaining({ name: 'Payslip questions', answeredBy: 'owner', module: 'pay', sensitive: false })));
+  });
+
   // Batch F GLPI 4 (answer 2571): the requester chase on the Requesters tab.
   it('settings: the requester chase saves its numbers; too few solve days is a field error and nothing is saved; off saves only the switch', async () => {
     const onUpdateDesk = ok();

@@ -10,6 +10,8 @@ import { ErrorState, NoAccessState, Skeleton } from '../../components/feedback';
 import { Switch } from '../../components/choice';
 import { ConfirmDialog } from '../../components/overlay';
 import { useToastIfAny } from '../../components/notify';
+import { Select } from '../../components/select';
+import { Text } from '../../components/foundations';
 import { DesktopFrame } from '../_kit/frames';
 import { settingsPanel } from './platform-kit';
 
@@ -19,11 +21,15 @@ export interface ModuleRow {
   on: boolean;
   /** People, Payroll and Compliance: cannot be switched off. */
   locked: boolean;
+  /** T2-G 44 (answer 2745): the person named as the module's owner (shown on Home, answers its helpdesk questions); not a permission. */
+  owner?: { id: string; name: string } | null;
 }
 
 export interface ModulesChange {
   off: string[];
   order: string[];
+  /** T2-G 44: module id → owner's user id or null (only a changed owner is sent). */
+  owners?: Record<string, string | null>;
 }
 
 export interface LiveModules {
@@ -37,21 +43,23 @@ export interface ModulesScreenProps {
   modules: ModuleRow[];
   /** Without the company settings key the page is read-only. */
   canEdit?: boolean;
+  /** T2-G 44: the company's people who can be named owner (absent: no owner choice). */
+  people?: { value: string; label: string }[];
   live?: LiveModules;
 }
 
 const change = (rows: ModuleRow[]): ModulesChange => ({ off: rows.filter((r) => !r.on).map((r) => r.id), order: rows.map((r) => r.id) });
 
-export function ModulesScreen({ modules, canEdit = true, live }: ModulesScreenProps) {
+export function ModulesScreen({ modules, canEdit = true, people, live }: ModulesScreenProps) {
   const toast = useToastIfAny();
   const [local, setLocal] = useState<ModuleRow[] | null>(null);
   const [asking, setAsking] = useState<ModuleRow | null>(null);
   const [busy, setBusy] = useState(false);
   const rows = local ?? modules;
-  const save = async (next: ModuleRow[], done: string) => {
+  const save = async (next: ModuleRow[], done: string, owners?: Record<string, string | null>) => {
     setBusy(true);
     try {
-      if (live) await live.onSave(change(next));
+      if (live) await live.onSave({ ...change(next), ...(owners ? { owners } : {}) });
       setLocal(live ? null : next);
       toast?.toast({ tone: 'success', title: done });
     } catch (e) {
@@ -61,6 +69,10 @@ export function ModulesScreen({ modules, canEdit = true, live }: ModulesScreenPr
     }
   };
   const turn = (m: ModuleRow, on: boolean) => save(rows.map((r) => (r.id === m.id ? { ...r, on } : r)), on ? `${m.label} switched on` : `${m.label} switched off`);
+  const name = (m: ModuleRow, userId: string | null) => {
+    const who = userId ? (people?.find((p) => p.value === userId)?.label ?? '') : '';
+    void save(rows.map((r) => (r.id === m.id ? { ...r, owner: userId ? { id: userId, name: who } : null } : r)), userId ? `${who} owns ${m.label}` : `${m.label} has no owner now`, { [m.id]: userId });
+  };
   const move = (i: number, by: -1 | 1) => {
     const next = [...rows];
     [next[i], next[i + by]] = [next[i + by]!, next[i]!];
@@ -68,7 +80,7 @@ export function ModulesScreen({ modules, canEdit = true, live }: ModulesScreenPr
   };
   const frame = (body: ReactNode) => (
     <DesktopFrame area="settings" panelTitle="Settings" panel={settingsPanel('1.6 Set-up hub')}>
-      <PageHeader title="Modules" description="Switch off what your company does not use, and choose the order of the menu. A module that is off keeps its data." />
+      <PageHeader title="Modules" description="Switch off what your company does not use, choose the order of the menu and name an owner for each module. A module that is off keeps its data." />
       {body}
     </DesktopFrame>
   );
@@ -93,6 +105,11 @@ export function ModulesScreen({ modules, canEdit = true, live }: ModulesScreenPr
               onChange={(on) => (on ? void turn(m, true) : setAsking(m))}
             />
             <div className="yx-plt-row">
+              {people && canEdit ? (
+                <Select aria-label={`Owner of ${m.label}`} value={m.owner?.id ?? null} onChange={(v) => name(m, v)} clearable placeholder="No owner" options={people} searchable disabled={busy} />
+              ) : (
+                m.owner && <Text tone="secondary">Owner: {m.owner.name}</Text>
+              )}
               {m.locked && <Badge tone="neutral">Always on</Badge>}
               {canEdit && (
                 <>
