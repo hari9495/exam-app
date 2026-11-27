@@ -66,6 +66,7 @@ const IMPLICIT: Record<string, string[]> = {
     'profile', // classes decided per record
     'reveal', // the person, or identity / Aadhaar keys in scope (checked by the service)
     'updatePersonal', // the person, or employee.profile.edit in scope
+    'setAboutMe', // only the person (T2-F 87)
     'requestProfileChange', // the person, or employee.identity.manage in scope
     'profileRequests', // own requests and those in scope
     'cancelProfileChange', // the requester or the person

@@ -125,6 +125,8 @@ export class ProfileService {
         identity: identity ? await this.identityView(tx, c, employeeId) : null,
         // Internal class: the work phone and email (PPL-03 key facts, Message).
         work: internal ? { phone: employee.workPhone ?? null, email: employee.workEmail ?? null } : null,
+        // T2-F 87 (answer 2888): the person's own About me, for anyone who may open the record (Internal).
+        aboutMe: internal ? (employee.aboutMe ?? null) : null,
         // Internal: the birthday as the directory shows it (day and month), unless the person hides it.
         birthday: internal ? await this.birthday(tx, c, employeeId) : null,
         can: {
@@ -132,6 +134,9 @@ export class ProfileService {
           requestChange: !v.actingForOther && (a.self || (await this.can(tx, c, v, 'employee.identity.manage', employeeId))),
           reveal: !v.actingForOther && identity,
           editWork: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
+          // About me: the person writes it (no approval); HR with employee.profile.edit may only clear it, with a reason.
+          editAbout: !v.actingForOther && a.self,
+          clearAbout: !v.actingForOther && !a.self && Boolean(employee.aboutMe) && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
           // Family and nominations decide who is paid (YX-LC-16): HR changes them, the person asks HR.
           editFamily: !v.actingForOther && !a.self && (await this.can(tx, c, v, 'employee.profile.edit', employeeId)),
         },
@@ -342,6 +347,29 @@ export class ProfileService {
       if (rows.length) await tx.employeeEmergencyContact.createMany({ data: rows });
       await audit(tx, c, 'employee.emergency_contacts.updated', 'employee', employeeId, { count: rows.length, by: a.self ? 'self' : 'hr' });
       return (await this.familyView(tx, c, employeeId)).contacts;
+    });
+  }
+
+  /** T2-F 87 (answer 2888): the person writes their own About me (500 at most, no approval); blank clears it. */
+  setAboutMe(ctx: TenantContext, v: Viewer, employeeId: string, text: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (!a.self || v.actingForOther) throw new ForbiddenException('Only the person writes their About me.');
+      const aboutMe = text.trim() || null;
+      await tx.employee.update({ where: { id: employeeId }, data: { aboutMe } });
+      await audit(tx, c, 'employee.about_me.updated', 'employee', employeeId, { length: aboutMe?.length ?? 0 });
+      return { aboutMe };
+    });
+  }
+
+  /** HR with employee.profile.edit for the person clears their About me with a reason (the text is not kept). */
+  clearAboutMe(ctx: TenantContext, v: Viewer, employeeId: string, reason: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (a.self || v.actingForOther || !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Clearing About me needs employee.profile.edit for this person.');
+      await tx.employee.update({ where: { id: employeeId }, data: { aboutMe: null } });
+      await audit(tx, c, 'employee.about_me.cleared', 'employee', employeeId, { reason: reason.trim() });
+      return { aboutMe: null };
     });
   }
 

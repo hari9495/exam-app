@@ -91,7 +91,7 @@ export { UnionRegister, type LiveUnionRegister } from '../people/relations';
 export { RestructureWizard } from '../people/changes';
 export { MassUpdateDrawer, PositionRecordScreen, PositionsScreen, PositionsSwitchOnScreen, SeatChangeDrawer, seatStatusBadge, type SeatChangeInput, type SeatList, type SeatOptions, type SeatRecord, type SeatRow, type SeatValues, type SwitchOnData } from '../people/positions';
 export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
-export { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
+export { AboutMeDialog, ClearAboutMeDialog, AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
 export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from '../people/exits';
 export { SetupHubScreen, type LiveSetupHub, type ModuleCard, type SetupHubProps } from '../platform-a/setup-admin';
 // Learning (the core): My learning and catalogue, the player, courses and the builder, assignment rules, compliance, the team.

@@ -3197,6 +3197,8 @@ model Employee {
   preferredName  String?  @map("preferred_name") @db.VarChar(100)
   workEmail      String?  @map("work_email") @db.Citext
   workPhone      String?  @map("work_phone") @db.VarChar(16)
+  /// T2-F 87 (answer 2888): the person's own "About me" on PPL-03 (500 at most; HR may clear it; never on exports).
+  aboutMe        String?  @map("about_me") @db.VarChar(500)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)

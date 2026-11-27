@@ -245,6 +245,66 @@ describe('/yx/people/profile personal details (PPL-03, founder 28 Oct 2026)', ()
   });
 });
 
+describe('/yx/people/profile About me (T2-F 87, answer 2888)', () => {
+  const base = {
+    [`GET ${PERMS_PATH}`]: [],
+    'GET /people/me': { employeeId: 'p-divya', name: 'Divya Raghunathan' },
+    'GET /people/profile-requests': { rows: [] },
+    'GET /org/reference': { states: [], regions: [] },
+    'GET /people/employees/p-divya/as-of': { ...AS_OF, employee: { ...AS_OF.employee, id: 'p-divya' } },
+    'GET /people/employees/p-divya/history': HISTORY,
+    'GET /people/employees/p-divya/person': { id: 'per-divya', roles: [] },
+    'GET /people/profile-requests?status=pending': { rows: [] },
+    'GET /me/leave': { balances: [] },
+  };
+  it('the person writes it; too long is refused on Save; the saved text is sent trimmed', async () => {
+    const puts: unknown[] = [];
+    route({
+      ...base,
+      'GET /people/employees/p-divya/profile': { ...PROFILE, aboutMe: null, can: { ...PROFILE.can, editAbout: true, clearAbout: false } },
+      'PUT /people/employees/p-divya/about-me': (_: string, init: RequestInit) => (puts.push(JSON.parse(String(init.body))), { aboutMe: 'Payroll at Bengaluru' }),
+    });
+    wrap(<YxProfilePage />);
+    const card = within(await screen.findByRole('region', { name: 'About me' }));
+    await ue.click(card.getByRole('button', { name: 'Write' }));
+    const dialog = await screen.findByRole('dialog', { name: 'About me' });
+    const box = within(dialog).getByRole('textbox', { name: /About me/ });
+    await ue.click(box);
+    await ue.paste('x'.repeat(501));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Keep it to 500 characters.')).toBeInTheDocument();
+    expect(puts).toEqual([]);
+    await ue.clear(box);
+    await ue.type(box, ' Payroll at Bengaluru ');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(puts).toEqual([{ aboutMe: 'Payroll at Bengaluru' }]));
+    expect((await screen.findAllByText('About me saved')).length).toBeGreaterThan(0);
+  });
+  it('HR clears it with a reason; with nothing written and no right to write, there is no card', async () => {
+    const posts: unknown[] = [];
+    route({
+      ...base,
+      'GET /people/employees/p-divya/profile': { ...PROFILE, aboutMe: 'Call me on 98450 22872', can: { ...PROFILE.can, editAbout: false, clearAbout: true } },
+      'POST /people/employees/p-divya/about-me/clear': (_: string, init: RequestInit) => (posts.push(JSON.parse(String(init.body))), { aboutMe: null }),
+    });
+    const view = wrap(<YxProfilePage />);
+    const card = within(await screen.findByRole('region', { name: 'About me' }));
+    expect(card.getByText('Call me on 98450 22872')).toBeInTheDocument();
+    await ue.click(card.getByRole('button', { name: 'Clear' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Clear' }));
+    expect(within(dialog).getByText('Say why in a few words.')).toBeInTheDocument();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'A personal phone number');
+    await ue.click(within(dialog).getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(posts).toEqual([{ reason: 'A personal phone number' }]));
+    view.unmount();
+    route({ ...base, 'GET /people/employees/p-divya/profile': { ...PROFILE, aboutMe: null, can: { ...PROFILE.can, editAbout: false } } });
+    wrap(<YxProfilePage />);
+    await screen.findByText('XXXXXX821K');
+    expect(screen.queryByRole('region', { name: 'About me' })).toBeNull();
+  });
+});
+
 describe('/yx/people/profile-requests', () => {
   it('approves a change with the duplicate-value reason when the API asks for one', async () => {
     const bodies: unknown[] = [];

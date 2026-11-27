@@ -31,7 +31,7 @@ import { toResponse } from '../custom-fields/custom-fields-config.controller';
 import { CreateCustomFieldDto } from '../custom-fields/dto/create-custom-field.dto';
 import { UpdateCustomFieldDto } from '../custom-fields/dto/update-custom-field.dto';
 import { ProfileService } from './profile.service';
-import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, MyDataDto, PersonalDetailsDto, PrivacyNomineeDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, MyDataDto, PersonalDetailsDto, PrivacyNomineeDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto, AboutMeDto, ClearAboutMeDto } from './profile.dto';
 import { myDataPdf } from './my-data-pdf';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
@@ -186,6 +186,22 @@ export class PeopleController {
   @Get('employees/:id/activity')
   async activity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.profiles.activity(ctx, await this.viewer(req), id);
+  }
+
+  /** T2-F 87: the person's own About me (the service allows only the person). */
+  @Put('employees/:id/about-me')
+  async setAboutMe(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AboutMeDto) {
+    ownSession(req);
+    return this.profiles.setAboutMe(ctx, await this.viewer(req), id, dto.aboutMe);
+  }
+
+  /** HR clears someone's About me with a reason (in scope; the service checks). */
+  @Post('employees/:id/about-me/clear')
+  @HttpCode(200)
+  @RequirePermissions('employee.profile.edit')
+  async clearAboutMe(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClearAboutMeDto) {
+    ownSession(req);
+    return this.profiles.clearAboutMe(ctx, await this.viewer(req), id, dto.reason);
   }
 
   @Put('employees/:id/work-phone')

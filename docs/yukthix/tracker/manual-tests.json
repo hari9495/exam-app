@@ -29597,5 +29597,26 @@
                               "Screens/People/Me and set-up · My assets, first 30 days, checklists and signatories (Checklists · joining, applies to an employment type)"
                     ],
                     "note": "Grade is not offered yet: a joiner has no grade until they join (question 2891)."
+          },
+          {
+                    "id": "MT-T2F-87",
+                    "area": "People (T2-F item 87, answer 2888): About me on the person record",
+                    "screen": "People › Profile (my record) and People › Directory › a person (PPL-03 Overview: About me card)",
+                    "url": "http://localhost:3000/yx/people/profile",
+                    "account": "An employee (their own record); their manager (panel@, Divya); HR Admin with employee.profile.edit; another company's admin.",
+                    "steps": [
+                              "As the employee open People › Profile. On Overview the About me card says to write a little about yourself; press Write.",
+                              "Paste more than 500 characters and press Save.",
+                              "Write 'I look after incoming quality. Best reached on Teams before 4 pm.' and press Save.",
+                              "As the manager open the employee from My team: read the About me card; look for an Edit or Clear button.",
+                              "As HR open the same person from the Directory; press Clear, then press Clear again with no reason; then give the reason 'Has a phone number in it' and press Clear.",
+                              "As the employee open My data (People › Privacy, download my data as JSON) and search the file for the text.",
+                              "As another company's admin call PUT /people/employees/<id>/about-me."
+                    ],
+                    "expected": "Step 1: the dialog 'About me' with a count '0 of 500 characters'. Step 2: 'Keep it to 500 characters.' under the field, nothing saved. Step 3: toast 'About me saved'; the card shows the text with line breaks kept. Step 4: the manager reads the text and has no button on the card. Step 5: 'Say why in a few words.' first; then toast '<first name>'s About me cleared' and the card is gone for HR and the manager; the audit log has employee.about_me.cleared with the reason. Step 6: the About me text is not in the file. Step 7: 404. No page scroll at 1278 x 635 beyond what the record had before.",
+                    "stories": [
+                              "Screens/People/PPL-03 · Person record (Employee · own record, HR · overview, Manager · team member, About me · write, too long, server refuses, HR clears it, no reason)"
+                    ],
+                    "note": "Positive and negative (access-privacy e2e: 501 characters 400, trimmed save, 500 exactly ok, HR / manager write 403, other company 404, manager reads it, can.editAbout / clearAbout per viewer, clear without reason 400, manager or the person clear 403, cleared with the reason audited, update audit without the text, not in my-data export; kit record-dialogs 10; web access pages 15). Migration 940 (employees.about_me VARCHAR(500)); routes PUT people/employees/:id/about-me (the person only, service-checked) and POST people/employees/:id/about-me/clear (employee.profile.edit, in scope)."
           }
 ]

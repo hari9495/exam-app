@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk } from './record-dialogs';
+import { PersonWorkspace } from './record';
+import { AboutMeDialog, AskDocumentDialog, ClearAboutMeDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk } from './record-dialogs';
 
 // PPL-03 record dialogs (work phone, ask for a document, send back, upload for the person): the stories are the live
 // dialogs; pressed too early they show the field error and focus it; a refusal stays in the open dialog.
@@ -101,5 +102,46 @@ describe('UploadForPersonDialog (ported from the web dialog)', () => {
     expect(screen.getAllByText('Choose a PDF, PNG or JPEG file.').length).toBeGreaterThan(0);
     await ue.click(screen.getByRole('button', { name: 'Upload' }));
     expect(onUpload).not.toHaveBeenCalled();
+  });
+});
+
+describe('About me (T2-F 87)', () => {
+  it('saves the trimmed text; over 500 characters shows the field error and saves nothing', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<AboutMeDialog initial={'x'.repeat(501)} onSave={onSave} onClose={vi.fn()} />);
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Keep it to 500 characters.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    await ue.clear(screen.getByRole('textbox', { name: /About me/ }));
+    await ue.type(screen.getByRole('textbox', { name: /About me/ }), '  Hosur quality  ');
+    expect(screen.getByText(/^13 of 500 characters/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('Hosur quality'));
+  });
+
+  it('HR clears it only with a reason', async () => {
+    const onClear = vi.fn().mockResolvedValue(undefined);
+    render(<ClearAboutMeDialog name="Arjun" onClear={onClear} onClose={vi.fn()} />);
+    await ue.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(await screen.findByText('Say why in a few words.')).toBeInTheDocument();
+    expect(onClear).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Has a phone number');
+    await ue.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(onClear).toHaveBeenCalledWith('Has a phone number'));
+  });
+
+  it('the record shows it: Edit for the person, Clear for HR, read only for the manager', () => {
+    const card = () => within(screen.getByRole('region', { name: 'About me' }));
+    const day = new Date(2026, 8, 30);
+    const self = render(<PersonWorkspace persona="emp" relation="self" today={day} />);
+    expect(card().getByText(/incoming quality at the Hosur plant/)).toBeInTheDocument();
+    expect(card().getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    self.unmount();
+    const hr = render(<PersonWorkspace persona="hr" relation="other" today={day} />);
+    expect(card().getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+    hr.unmount();
+    render(<PersonWorkspace persona="mgr" relation="team" today={day} />);
+    expect(card().getByText(/incoming quality at the Hosur plant/)).toBeInTheDocument();
+    expect(card().queryByRole('button')).toBeNull();
   });
 });
