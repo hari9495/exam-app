@@ -710,6 +710,35 @@ export interface LiveHome {
   movesHref?: string;
   /** People with a hiring key: today's interviews, this week and their open jobs. */
   hiring?: HiringHomeView;
+  /**
+   * T2-F 79 (answer 2884): Edit home, when the company lets this role personalise (Settings 2.2 Home page). order null:
+   * the company layout. Widgets that arrive later and are in neither list join at the end. Pinned ones always stay first.
+   */
+  layout?: HomeLayout | null;
+}
+
+export interface HomeLayout {
+  order: string[] | null;
+  hidden: string[];
+  sizes: Record<string, WidgetSize>;
+  onChange: (next: { order: string[]; hidden: string[]; sizes: Record<string, WidgetSize> }) => void;
+  onReset: () => void;
+}
+
+/** The widgets shown, in order, from the person's layout: saved order first, then new widgets they never removed. */
+export function layoutIds(ids: string[], layout: Pick<HomeLayout, 'order' | 'hidden'> | null | undefined): string[] {
+  if (!layout?.order) return ids;
+  const saved = layout.order.filter((id) => ids.includes(id));
+  return [...saved, ...ids.filter((id) => !saved.includes(id) && !layout.hidden.includes(id))];
+}
+
+/** What to keep after an edit: widgets not loaded right now keep their place in the saved order or the hidden list. */
+export function nextLayout(all: string[], shown: string[], prev: Pick<HomeLayout, 'order' | 'hidden'> | null | undefined) {
+  const absent = (id: string) => !all.includes(id);
+  return {
+    order: [...shown, ...(prev?.order ?? []).filter(absent)],
+    hidden: [...all.filter((id) => !shown.includes(id)), ...(prev?.hidden ?? []).filter(absent)],
+  };
 }
 
 export type TeamTodayKey = 'leave' | 'not_in' | 'late' | 'away';
@@ -1103,9 +1132,26 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
           </div>
         ) : null}
       </div>
-      {/* Controlled: live widgets arrive as their data loads, and the live home is not customisable. */}
-      <DashboardGrid label="Your home" widgets={widgets} value={widgets.map((w) => w.id)} customisable={false} />
+      {/* Controlled: live widgets arrive as their data loads. T2-F 79: Edit home when the company allows the role. */}
+      <LiveGrid widgets={widgets} layout={live.layout} />
     </>
+  );
+}
+
+function LiveGrid({ widgets, layout }: { widgets: DashboardWidget[]; layout?: HomeLayout | null }) {
+  const movable = widgets.filter((w) => !w.pinned).map((w) => w.id);
+  if (!layout) return <DashboardGrid label="Your home" widgets={widgets} value={widgets.map((w) => w.id)} customisable={false} />;
+  return (
+    <DashboardGrid
+      label="Your home"
+      widgets={widgets}
+      defaultValue={movable}
+      value={layoutIds(movable, layout)}
+      sizes={layout.sizes}
+      onChange={(shown) => layout.onChange({ ...nextLayout(movable, shown, layout), sizes: layout.sizes })}
+      onSizesChange={(sizes) => layout.onChange({ ...nextLayout(movable, layoutIds(movable, layout), layout), sizes })}
+      onReset={layout.onReset}
+    />
   );
 }
 

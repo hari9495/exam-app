@@ -1067,6 +1067,34 @@ describe('/yx/home Needs your action (PLT-02, 5 Nov 2026)', () => {
   });
 });
 
+describe('/yx/home Edit home (T2-F 79, answer 2884)', () => {
+  const serve = (layout: unknown, calls: string[]) =>
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      const key = `${init?.method ?? 'GET'} ${path.split('?')[0]}`;
+      if (key === 'GET /workflow/approvals/inbox') return [];
+      if (key === 'GET /workspace/home/layout') return layout;
+      if (key === 'DELETE /workspace/home/layout' || key === 'PUT /workspace/home/layout') return (calls.push(`${key} ${init?.body ?? ''}`), { layout: null });
+      throw new Error(`unexpected ${key}`);
+    });
+
+  it('the company keeps one home for the role: no Edit home', async () => {
+    serve({ personaliseRoles: ['manager'], layout: null }, []);
+    wrap(<YxHomePage />);
+    expect(await screen.findByRole('region', { name: 'Your home' })).toBeInTheDocument();
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/workspace/home/layout', {}, 'tok'));
+    expect(screen.queryByRole('button', { name: 'Edit home' })).toBeNull();
+  });
+
+  it('allowed: Edit home, and Reset to company layout forgets the own layout of the person', async () => {
+    const calls: string[] = [];
+    serve({ personaliseRoles: ['employee'], layout: { order: [], hidden: [], sizes: {} } }, calls);
+    wrap(<YxHomePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit home' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Reset to company layout' }));
+    await waitFor(() => expect(calls).toEqual(['DELETE /workspace/home/layout ']));
+  });
+});
+
 describe('/yx not found and error screens', () => {
   it('say YukthiX, never Prudent Hire, and lead back to YukthiX home', async () => {
     const retry = jest.fn();

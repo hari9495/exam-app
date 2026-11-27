@@ -16290,3 +16290,18 @@ model ApprovalLimit {
   @@unique([organizationId, family, gradeId], map: "approval_limits_org_family_grade_key")
   @@map("approval_limits")
 }
+
+/// T2-F 79 (answer 2884): a person's own Home layout (order, removed widgets, sizes); none = the company layout.
+model HomeLayout {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  widgetOrder    String[] @map("widget_order") @db.VarChar(40)
+  hidden         String[] @db.VarChar(40)
+  /// { widgetId: 4 | 6 | 12 }
+  sizes          Json     @default("{}")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId], map: "home_layouts_org_user_key")
+  @@map("home_layouts")
+}

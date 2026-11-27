@@ -1,6 +1,8 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
-import { IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { ownSession } from '../org-structure/org-structure.controller';
+import { HOME_PERSONAS, HomeLayoutService, type HomePersona } from './home-layout.service';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -24,6 +26,27 @@ export class WorkspaceHomeDto {
   legalEntityId?: string;
 }
 
+const WIDGET_ID = /^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/;
+
+/** T2-F 79: the person's own Home layout (the widgets shown in order, the ones they removed, sizes they picked). */
+export class HomeLayoutDto {
+  @IsIn(HOME_PERSONAS)
+  persona!: HomePersona;
+
+  @IsArray()
+  @ArrayMaxSize(40)
+  @Matches(WIDGET_ID, { each: true })
+  order!: string[];
+
+  @IsArray()
+  @ArrayMaxSize(40)
+  @Matches(WIDGET_ID, { each: true })
+  hidden!: string[];
+
+  @IsObject()
+  sizes!: Record<string, number>;
+}
+
 export class WorkspaceCountsDto {
   /** The top bar's company: counts of lists that follow it (Probation) count only its people. */
   @IsOptional()
@@ -36,7 +59,10 @@ export class WorkspaceCountsDto {
 @Controller('workspace')
 @UseGuards(JwtAuthGuard)
 export class WorkspaceController {
-  constructor(private readonly workspace: WorkspaceService) {}
+  constructor(
+    private readonly workspace: WorkspaceService,
+    private readonly layouts: HomeLayoutService,
+  ) {}
 
   @Get('search')
   search(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() dto: WorkspaceSearchDto) {
@@ -46,6 +72,25 @@ export class WorkspaceController {
   @Get('home')
   home(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() dto: WorkspaceHomeDto) {
     return this.workspace.home(ctx, req.user as RequestUser, dto.month ?? new Date().toISOString().slice(0, 7), dto.legalEntityId ?? null);
+  }
+
+  /** T2-F 79: one's own Home layout and whether the company lets roles personalise (no key: only the caller's own row). */
+  @Get('home/layout')
+  homeLayout(@CurrentTenant() ctx: TenantContext) {
+    return this.layouts.get(ctx);
+  }
+
+  @Put('home/layout')
+  saveHomeLayout(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: HomeLayoutDto) {
+    ownSession(req);
+    return this.layouts.save(ctx, dto);
+  }
+
+  /** Reset to company layout. */
+  @Delete('home/layout')
+  resetHomeLayout(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    ownSession(req);
+    return this.layouts.reset(ctx);
   }
 
   @Get('counts')

@@ -29675,5 +29675,27 @@
                               "Shell/… · Side rail · employee with the \"last used\" slot"
                     ],
                     "note": "Positive and negative (kit shell 23: the slot's place, link and keyboard order, nothing until used, never a copy of a rail area; web access pages 17: an off-rail page fills it and it stays on the next page, nothing on first use, a tampered stored link outside the app never shows). Kept under yx-recent:last-area:<user>:<company> in localStorage; no server change."
+          },
+          {
+                    "id": "MT-T2F-79",
+                    "area": "Home (T2-F item 79, answer 2884): Edit home on the live Home",
+                    "screen": "Home (PLT-02 role home: Edit home, Reset to company layout) and Settings › 2.2 Directory and privacy › Home page",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "HR Admin (settings); an employee (demo org); the same employee on a second browser; a manager while only Employee is allowed.",
+                    "steps": [
+                              "As the employee open Home: look for Edit home.",
+                              "As HR open Settings › Directory and privacy › Home page and tick Employee under 'Roles that may personalise their own home'; save.",
+                              "As the employee reload Home and press Edit home. Open ⋯ on My tasks › Remove widget; on Coming up choose Wide (full row); move Coming up up; press Done.",
+                              "Open Home on a second browser or after signing in again.",
+                              "Press Edit home › Reset to company layout; then Undo; then Reset to company layout again and Done.",
+                              "In Edit home look for a menu on Needs your action and Attendance today.",
+                              "As the manager open Home."
+                    ],
+                    "expected": "Step 1: no Edit home (off for every role by default). Step 2: toast that the setting was saved. Step 3: the bar 'Editing your home… Changes are saved for you only.'; My tasks leaves (with Undo), Coming up fills the row and moves up. Step 4: the same layout (kept in YukthiX per person, not per browser). Step 5: the company layout comes back; Undo restores theirs; reset again gives the company layout on every device. Step 6: no menu; they show 'Always shown' and stay first. Step 7: no Edit home (only Employee is allowed). No page scroll at 1278 x 635 beyond the widgets' own.",
+                    "stories": [
+                              "Dashboards/… DashboardGrid (Edit home, editing bar, Add widget, Reset to company layout)",
+                              "Screens/Platform/PLT-02 · Role homes"
+                    ],
+                    "note": "Positive and negative (small-features e2e 16: off by default and saving refused 403, setting only by a settings manager and only known roles, persona not allowed 403, pinned widget hidden or ordered 400, a widget twice 400, size 5 400, bad id 400, unknown persona 400, saved and read back, another person and another company never see it, one row per person, reset removes it, audit saved/saved/reset, signed out 401; API unit home-layout 3; kit shell-home 34 and settings 175; web pages 'Edit home' 2). Migration 941 (home_layouts, RLS + support-session exclusion, in the rls-isolation list); setting home.personalise_roles (multi, default none); routes GET/PUT/DELETE workspace/home/layout (the caller's own row only)."
           }
 ]

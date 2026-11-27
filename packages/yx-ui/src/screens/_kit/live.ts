@@ -2,7 +2,7 @@
 export { DesktopFrame, SCREEN_RAIL, type AreaId, type DesktopFrameProps, type LiveFrame, type PanelItem, type PanelSection } from './frames';
 export { DirectoryPhone, DirectoryScreen, type DirectoryMe, type DirectorySavedView, type DirectoryViewState, type LiveDirectory, type WorkforceFilter } from '../people/directory';
 export type { WorkforceRow } from '../people/people-data';
-export { PALETTE_PLACEHOLDER, RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '../platform-a/shell-home';
+export { PALETTE_PLACEHOLDER, RoleHomeScreen, type HomeLayout, type LiveHome, type RoleHomeScreenProps, layoutIds, nextLayout } from '../platform-a/shell-home';
 // The Home panel's pages (design audit step 2): notifications, search, my requests, delegation, notification preferences.
 export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, ApprovalsInboxScreen, type LiveInbox, type LiveMyRequests, type LiveDelegation, type LiveApprovals, type NotificationsInboxProps } from '../platform-a/inbox';
 export type { ApprovalRow } from '../platform-a/platform-data';

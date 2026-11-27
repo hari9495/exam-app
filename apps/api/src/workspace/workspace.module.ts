@@ -5,11 +5,12 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
 import { WorkspaceController } from './workspace.controller';
 import { WorkspaceService } from './workspace.service';
 import { HomeSnapshotJobs } from './home-snapshot.jobs';
+import { HomeLayoutService } from './home-layout.service';
 
 // Global search (Ctrl K), the side-menu counts and the Home for the YukthiX app frame.
 @Module({
   imports: [EmployeeHistoryModule, PeopleModule],
-  providers: [WorkspaceService, HomeSnapshotJobs, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
+  providers: [WorkspaceService, HomeSnapshotJobs, HomeLayoutService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
   controllers: [WorkspaceController],
 })
 export class WorkspaceModule {}

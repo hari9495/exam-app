@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
-import { RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
+import { RoleHomeScreen, type HomeLayout, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
+import { useToast } from '@yukthix/ui';
 import { NudgeCard } from '@yukthix/ui/console';
 import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
 import { Button } from '@yukthix/ui';
@@ -97,6 +98,21 @@ export default function YxHomePage() {
   const payPerson = perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('statutory.filing.view');
   const own: RoleHomeScreenProps['persona'] = payPerson ? 'finance' : perms.has('employee.profile.view') ? 'hr' : isManager ? 'manager' : 'employee';
   const persona = own === 'employee' && !employee && hiring.view ? 'recruiter' : own;
+  // T2-F 79 (answer 2884): Edit home when the company lets this role personalise; the layout is kept per person.
+  const { toast } = useToast();
+  type Saved = Pick<HomeLayout, 'order' | 'hidden' | 'sizes'>;
+  const layoutQ = useQuery<{ personaliseRoles: string[]; layout: Saved | null }>({ queryKey: ['yx', 'workspace', 'home-layout'], queryFn: () => apiFetch('/workspace/home/layout', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
+  const [ownLayout, setOwnLayout] = useState<Saved | null | undefined>(undefined);
+  const saved = ownLayout === undefined ? (layoutQ.data?.layout ?? null) : ownLayout;
+  const mayEdit = Boolean(layoutQ.data?.personaliseRoles.includes(persona));
+  const saveLayout = (next: Saved | null) => {
+    setOwnLayout(next);
+    const req = next ? apiFetch('/workspace/home/layout', { method: 'PUT', body: JSON.stringify({ persona, order: next.order, hidden: next.hidden, sizes: next.sizes }) }, accessToken ?? undefined) : apiFetch('/workspace/home/layout', { method: 'DELETE' }, accessToken ?? undefined);
+    Promise.resolve(req).catch((e: unknown) => toast({ tone: 'error', title: 'Your home layout was not saved', description: e instanceof Error ? e.message : 'Try again in a moment.' }));
+  };
+  const layout: HomeLayout | null = mayEdit
+    ? { order: saved?.order ?? null, hidden: saved?.hidden ?? [], sizes: saved?.sizes ?? {}, onChange: (next) => saveLayout(next), onReset: () => saveLayout(null) }
+    : null;
 
   // Employee cards: this month and last month from the attendance record, leave balances and my requests.
   const asEmployee = persona === 'employee' && employee;
@@ -197,6 +213,7 @@ export default function YxHomePage() {
       : {}),
     ...(persona === 'manager' ? { team: manager.team, off: manager.off, offHref: manager.offHref, goals: manager.goals, onNudge: async (r: { id: string }) => void (await write(`/people/${encodeURIComponent(r.id)}/nudge`, 'POST', undefined, false)) } : {}),
     hiring: hiringView,
+    layout,
     ...(asEmployee ? { pay: homePay(pay.data) } : {}),
     ...(asEmployee ? { tasks: myTasks({ checklist: checklist.data?.tasks, feedback: feedbackTasks.data, reviews: myReviews.data }) } : {}),
     ...(employee ? { coming: comingUp(widgets.data?.celebrations, leave.data?.holidays.list, today) } : {}),

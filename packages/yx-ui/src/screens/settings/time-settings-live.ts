@@ -408,6 +408,7 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Privacy', key: 'privacy.retention.personal_years' },
       { section: 'Privacy', key: 'privacy.retention.special_years' },
       { section: 'Privacy', key: 'privacy.erasure.enabled', synonyms: ['erasure', 'delete special data'] },
+      { section: 'Home page', key: 'home.personalise_roles', synonyms: ['edit home', 'customise home', 'widgets'] },
       { section: 'Home page', key: 'home.pay_on_employee_home', synonyms: ['net pay on home'] },
     ],
   },
