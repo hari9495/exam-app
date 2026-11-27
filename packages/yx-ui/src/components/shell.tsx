@@ -56,6 +56,7 @@ import {
   MessageCircleQuestionMark,
 } from 'lucide-react';
 import { cx } from '../lib/cx';
+import { useTerm } from '../lib/terms';
 import { AccessibilityMenu } from './accessibility';
 import { Heading, Icon, Kbd, type IconComponent } from './foundations';
 import { Button, IconButton } from './button';
@@ -1123,16 +1124,17 @@ export interface PageHeaderProps {
 }
 
 export function PageHeader({ title, description, breadcrumbs, status, facts, actions }: PageHeaderProps) {
+  const term = useTerm();
   return (
     <header className="yx-page-header">
       {breadcrumbs}
       <div className="yx-page-header__row">
         <div className="yx-page-header__titles">
           <div className="yx-page-header__title-row">
-            <Heading level={1}>{title}</Heading>
+            <Heading level={1}>{term(title)}</Heading>
             {status}
           </div>
-          {description && <p className="yx-page-header__desc">{description}</p>}
+          {description && <p className="yx-page-header__desc">{term(description)}</p>}
           {facts && <div className="yx-page-header__facts">{facts}</div>}
         </div>
         {actions && <div className="yx-page-header__actions">{actions}</div>}
@@ -1294,13 +1296,14 @@ export interface CardProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
 /** Flat card with a hairline border (§5, §6). Use only when grouping genuinely helps (§11). */
 export function Card({ title, actions, footer, children, className, ...rest }: CardProps) {
   const id = useId();
+  const term = useTerm();
   return (
     <section className={cx('yx-card', className)} aria-labelledby={title ? id : undefined} {...rest}>
       {(title || actions) && (
         <div className="yx-card__head">
           {title && (
             <Heading level={3} id={id} className="yx-card__title">
-              {title}
+              {term(title)}
             </Heading>
           )}
           {actions && <div className="yx-card__actions">{actions}</div>}
@@ -1323,6 +1326,7 @@ export interface DescriptionItem {
 
 /** Key–value facts, 1 or 2 columns; always 1 column on phones. */
 export function DescriptionList({ items, columns = 1 }: { items: DescriptionItem[]; columns?: 1 | 2 }) {
+  const term = useTerm();
   const [copied, setCopied] = useState<string | null>(null);
   const copy = async (item: DescriptionItem) => {
     try {
@@ -1337,7 +1341,7 @@ export function DescriptionList({ items, columns = 1 }: { items: DescriptionItem
       <dl className="yx-dl" data-columns={columns}>
         {items.map((it) => (
           <div key={it.label} className="yx-dl__row">
-            <dt className="yx-dl__label">{it.label}</dt>
+            <dt className="yx-dl__label">{term(it.label)}</dt>
             <dd className="yx-dl__value" data-mono={it.mono || undefined}>
               <span className="yx-dl__text">{it.value}</span>
               {it.copyValue && (

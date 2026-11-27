@@ -221,6 +221,21 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     settings: [
       { section: 'Working week and language', key: 'work.normal_week_hours', synonyms: ['full-time week'] },
       { section: 'Working week and language', key: 'people.language', synonyms: ['language'] },
+      // T2-G 84a (answer 2743): the company's own words for department, grade and the rest.
+      { section: 'Our words', key: 'terms.department.one', synonyms: ['rename', 'department'] },
+      { section: 'Our words', key: 'terms.department.many' },
+      { section: 'Our words', key: 'terms.sub_department.one', synonyms: ['rename', 'sub-department'] },
+      { section: 'Our words', key: 'terms.sub_department.many' },
+      { section: 'Our words', key: 'terms.grade.one', synonyms: ['rename', 'grade'] },
+      { section: 'Our words', key: 'terms.grade.many' },
+      { section: 'Our words', key: 'terms.designation.one', synonyms: ['rename', 'designation'] },
+      { section: 'Our words', key: 'terms.designation.many' },
+      { section: 'Our words', key: 'terms.location.one', synonyms: ['rename', 'location'] },
+      { section: 'Our words', key: 'terms.location.many' },
+      { section: 'Our words', key: 'terms.legal_entity.one', synonyms: ['rename', 'legal entity'] },
+      { section: 'Our words', key: 'terms.legal_entity.many' },
+      { section: 'Our words', key: 'terms.employee.one', synonyms: ['rename', 'employee'] },
+      { section: 'Our words', key: 'terms.employee.many' },
     ],
   },
   '1.5': {

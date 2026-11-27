@@ -46,6 +46,17 @@ export const GROUP_1: SettingsGroupDef = {
             { key: 'org.data_region', label: 'Data region', kind: 'select', value: 'India (IN)', options: ['India (IN)', 'UAE (ME-AE)', 'Saudi Arabia (ME-SA)', 'European Union (EU)', 'United States (US)', 'Singapore (SG)'], locked: 'Chosen at sign-up. All data, files and backups stay in this region.', lockedAction: { label: 'Request a region move', screenId: 'PLT-46' }, synonyms: ['data residency', 'hosting region', 'move region'] },
           ],
         },
+        // T2-G 84a (answer 2743): the company's own words for a fixed list of terms.
+        {
+          title: 'Our words',
+          description: "Your own word for these terms on every screen, notification and email. Keep YukthiX's word by leaving it as it is. The law's names, such as Employees' Provident Fund, never change.",
+          settings: [
+            { key: 'terms.department.one', label: 'Our word for "Department"', kind: 'text', value: 'Business unit', synonyms: ['rename', 'terminology', 'our words', 'label'] },
+            { key: 'terms.department.many', label: 'Our word for "Departments"', kind: 'text', value: 'Business units' },
+            { key: 'terms.employee.one', label: 'Our word for "Employee"', kind: 'text', value: 'Associate' },
+            { key: 'terms.employee.many', label: 'Our word for "Employees"', kind: 'text', value: 'Associates' },
+          ],
+        },
       ],
       lastChange: { by: 'Arjun Kulkarni', role: 'System Admin', at: '2026-08-12T15:40', what: 'Changed brand colour from #2E7D32 to #1F6F5C' },
       related: [

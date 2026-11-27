@@ -242,6 +242,28 @@ describe('T2-G: company control', () => {
       expect(await inA((tx) => tx.userGroupMember.count({ where: { groupId: g.id } }))).toBe(0);
     });
   });
+  describe('84a renamed terms', () => {
+    const set = (who: string, key: string, value: string) => api(who, 'put', '/org/settings').send({ key, scopeType: 'tenant', value });
+    it("HR saves the company's words (audited); everyone signed in reads them; the other company keeps YukthiX's", async () => {
+      const before = (await api('emp1A', 'get', '/org/display').expect(200)).body.terms;
+      expect(before.department).toEqual({ one: 'Department', many: 'Departments' });
+      await set('hrA', 'terms.department.one', 'Business unit').expect(200);
+      await set('hrA', 'terms.department.many', 'Business units').expect(200);
+      expect((await api('emp1A', 'get', '/org/display').expect(200)).body.terms.department).toEqual({ one: 'Business unit', many: 'Business units' });
+      expect((await api('emp1B', 'get', '/org/display').expect(200)).body.terms.department).toEqual({ one: 'Department', many: 'Departments' });
+      const audited = await inA((tx) => tx.auditLog.findMany({ where: { action: 'org.setting.changed', organizationId: org.A! }, select: { metadataJson: true } }));
+      expect(audited.some((a) => (a.metadataJson ?? '').includes('terms.department.one'))).toBe(true);
+    });
+    it('negative: markup, a second line, more than 30 characters, scopes other than the company and people without the key are refused', async () => {
+      await set('hrA', 'terms.grade.one', '<b>Band</b>').expect(400);
+      await set('hrA', 'terms.grade.one', 'Band\nTwo').expect(400);
+      await set('hrA', 'terms.grade.one', 'x'.repeat(31)).expect(400);
+      await api('hrA', 'put', '/org/settings').send({ key: 'terms.grade.one', scopeType: 'legal_entity', scopeId: ids.entityA, value: 'Band' }).expect(400);
+      await set('plainA', 'terms.grade.one', 'Band').expect(403);
+      await set('emp1A', 'terms.grade.one', 'Band').expect(403);
+      expect((await api('plainA', 'get', '/org/display').expect(200)).body.terms.grade.one).toBe('Grade');
+    });
+  });
   describe('44 a named owner per module', () => {
     type Owned = { id: string; owner: { id: string; name: string } | null };
     const owners = (who: string, o: Record<string, string | null>) => api(who, 'put', '/org/modules').send({ off: [], order: [], owners: o });

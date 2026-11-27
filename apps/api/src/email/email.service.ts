@@ -3,6 +3,7 @@ import * as nodemailer from 'nodemailer';
 import { buildSmtpTransportOptions } from './smtp-transport';
 import type { Transporter } from 'nodemailer';
 import { PrismaService, OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
+import { applyTerms, companyTerms, type Terms } from '../org-structure/terms';
 
 export interface SendEmailInput {
   to: string;
@@ -91,7 +92,25 @@ export class EmailService {
     private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
+  /** T2-G 84a: the company's words for renamed terms, kept a minute per company (null: none, or not readable). */
+  private readonly termsCache = new Map<string, { at: number; terms: Terms | null }>();
+  private async termsOf(organizationId: string): Promise<Terms | null> {
+    const hit = this.termsCache.get(organizationId);
+    if (hit && Date.now() - hit.at < 60_000) return hit.terms;
+    let terms: Terms | null = null;
+    try {
+      terms = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) => companyTerms(tx, organizationId));
+    } catch {
+      terms = null;
+    }
+    this.termsCache.set(organizationId, { at: Date.now(), terms });
+    return terms;
+  }
+
   async send(input: SendEmailInput): Promise<SendEmailResult> {
+    // T2-G 84a (answer 2743): a company's email says its own words for department, grade and the rest.
+    const terms = input.organizationId ? await this.termsOf(input.organizationId) : null;
+    if (terms) input = { ...input, subject: applyTerms(input.subject, terms), html: applyTerms(input.html, terms), ...(input.text !== undefined ? { text: applyTerms(input.text, terms) } : {}) };
     try {
       const { transporter, fromAddress, deliverable } = await this.resolveTransporter(
         input.organizationId,

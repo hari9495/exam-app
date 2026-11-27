@@ -30107,5 +30107,26 @@
                               "Screens/Settings/Group 2 (2.12 Groups)"
                     ],
                     "note": "Positive and negative (yx-nav test: people.group.manage alone shows All settings and Groups; access key alone, settings key alone and a support session do not; settings home test: every page with a front door; kit access test: the panel and no access). No new route: the page uses the user-groups API (people.group.manage, checked per company)."
+          },
+          {
+                    "id": "MT-T2G-84A-RENAMED-TERMS",
+                    "area": "T2-G 84a (answer 2743): the company's own words for department, sub-department, grade, designation, location, legal entity and employee",
+                    "screen": "Settings › Organisation › Company & branding › Our words; then any screen, the menu, notification emails",
+                    "url": "http://localhost:3000/yx/settings/org/company-and-branding",
+                    "account": "hr@demo-org.test (HR Admin - Lakshmi); an employee (Arjun); another company's admin.",
+                    "steps": [
+                              "As HR open Settings › Company & branding. In Our words set Department to Business unit and Departments to Business units; Employee to Associate and Employees to Associates. Save.",
+                              "Open Settings › Structure, People › Directory, Arjun's record (Job tab) and Settings › Roles & access › Groups (New group, from rules).",
+                              "Change Arjun's department so a notification email goes out (or any email that names a department); open it in Mailpit (http://localhost:8025).",
+                              "Sign in as Arjun and open Home and his profile.",
+                              "Negative: in Our words type <b>Unit</b>, then a word of 31 characters, and save each.",
+                              "Negative: look at a payslip or the PF pages: the law's names (Employees' Provident Fund, Employees' State Insurance) and words in capitals.",
+                              "Negative: another company's admin opens their own Structure page."
+                    ],
+                    "expected": "Step 1: toast that the settings are saved; the change is in the audit log. Step 2: page titles, table headers, form labels, card titles and the record's Job tab say Business unit(s) and Associate(s); the menu too. Step 3: the email's subject and text say business unit; its links still work. Step 4: Arjun sees the same words. Step 5: refused with 'Use letters, numbers, spaces and & ' . / - only.' and with the 30-character limit; nothing saved. Step 6: unchanged. Step 7: the other company still reads Department. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Group 1 (1.1 Company & branding › Our words)"
+                    ],
+                    "note": "Positive and negative (t2g e2e '84a renamed terms': saved and audited, read by everyone signed in, other company unchanged, markup / second line / 31 characters / entity scope refused 400, no settings key 403; API terms.spec (whole words, case, abbreviations, law's names, links); email.service.spec (subject and html text, never links); kit lib/terms.test (page and card titles, field labels, detail lists, table headers; none without a provider)). Route GET org/display (everyone signed in). Labels outside those shared parts (sentences inside a screen) keep YukthiX's words for now."
           }
 ]

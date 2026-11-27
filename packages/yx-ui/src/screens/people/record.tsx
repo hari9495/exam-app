@@ -21,6 +21,7 @@ import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR, formatMoney, formatPhone } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
+import { useTerm } from '../../lib/terms';
 import { errorText } from '../org/org-kit';
 import { canSeePay, daysBetween, fieldVisibility, ibanProblem, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_SEATS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
@@ -707,13 +708,14 @@ function OverviewTab({ persona, relation, name, today, about, personal, identity
 }
 
 function JobTab({ canChange, onStartChange, rows, tags, scheduled, past }: { canChange: boolean; onStartChange?: () => void; rows: [string, string][]; tags?: LiveRecord['tags']; scheduled: { title: string; body: string }[]; past: number }) {
+  const term = useTerm();
   return (
     <div className="yx-ppl__stack">
       <Card title="Current assignment" actions={canChange ? <Button size="sm" onClick={onStartChange}>Start change</Button> : undefined}>
         <dl className="yx-ppl__dl">
           {rows.map(([l, v]) => (
             <div key={l} className="yx-ppl__dl-row">
-              <dt>{l}</dt>
+              <dt>{term(l)}</dt>
               <dd>{v}</dd>
             </div>
           ))}

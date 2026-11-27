@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { ChevronDown, Eye, EyeOff, Lock } from 'lucide-react';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
 import { PlainTable } from '../../components/plain-table';
+import { useTerm } from '../../lib/terms';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { IconButton } from '../../components/button';
 import { useToast } from '../../components/notify';
@@ -131,6 +132,7 @@ export function MaskedValue({ value, masked, canReveal, onReveal, label }: { val
 
 /** Fields filtered by P02 class for the viewer: hidden fields are not rendered at all (never a blank). */
 export function FieldList({ rows, persona, relation, payGrant, onReveal }: { rows: FieldRow[]; persona: Persona; relation: Relation; payGrant?: boolean; onReveal?: (label: string) => void | Promise<string | void> }) {
+  const term = useTerm();
   const visible = rows.map((r) => ({ r, v: fieldVisibility(r.cls, persona, relation, payGrant) })).filter((x) => x.v !== 'hidden');
   const hidden = rows.length - visible.length;
   return (
@@ -139,7 +141,7 @@ export function FieldList({ rows, persona, relation, payGrant, onReveal }: { row
         {visible.map(({ r, v }) => (
           <div key={r.label} className="yx-ppl__dl-row">
             <dt>
-              {r.label} <ClassBadge cls={r.cls} />
+              {term(r.label)} <ClassBadge cls={r.cls} />
             </dt>
             <dd>
               {v === 'masked' && r.masked ? (

@@ -7,6 +7,8 @@ import { parseGuideShares } from '../performance/calibration-rules';
 import { ResolveSettingQueryDto, SettingDto } from './dto';
 import { asDate, isoDate, todayIst } from './org-validation';
 import { audit, CompanyContext, inCompany, Tx } from './org-structure.service';
+import { companyTerms, termProblem } from './terms';
+import { readerLocale } from './ui-locale';
 import { PAYROLL_APPROVAL_KEYS, ScopeContext, ScopeType, SECOND_PERSON_KEY, SETTINGS, SettingDef, SettingRow, resolveSetting } from './settings-registry';
 
 // P01 §4.6 scoped settings (YX-ORG-12, YX-ORG-18): overrides per scope, resolved most-specific first, every
@@ -199,6 +201,9 @@ export class OrgSettingsService {
       dto.value = dto.value.replace(/\r\n?/g, '\n').trim();
       if (!dto.value) throw new BadRequestException(`Write what goes in "${def.label}", one thing a line.`);
       if (dto.value.length > def.text.maxLength) throw new BadRequestException(`"${def.label}" is ${dto.value.length} characters. Keep it to ${def.text.maxLength} or fewer.`);
+      // T2-G 84a: a renamed term is one short line of plain words.
+      const termIssue = dto.key.startsWith('terms.') ? termProblem(dto.value) : null;
+      if (termIssue) throw new BadRequestException(`${def.label}: ${termIssue}`);
       if (dto.key === 'perf.calibration.guide_shares') {
         const g = parseGuideShares(dto.value);
         if ('problem' in g) throw new BadRequestException(g.problem);
@@ -272,6 +277,12 @@ export class OrgSettingsService {
         }),
       };
     });
+  }
+
+  /** T2-G 84a: the company's words for the renamed terms (everyone signed in: every screen shows them). */
+  display(ctx: TenantContext) {
+    // T2-G 84b: and the reader's screen language (Hindi or English).
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({ terms: await companyTerms(tx, c.organizationId), locale: await readerLocale(tx, c) }));
   }
 
   /** Saves the page: which modules are off and their order, each changed key audited as any setting. */

@@ -356,6 +356,12 @@ export class OrgStructureController {
     return this.settings.modules(ctx);
   }
 
+  /** T2-G 84 (answer 2743): how screens read for the signer-in: the company's own words for department, grade and the rest. */
+  @Get('display')
+  display(@CurrentTenant() ctx: TenantContext) {
+    return this.settings.display(ctx);
+  }
+
   @Put('modules')
   @RequirePermissions('org.settings.manage')
   saveModules(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ModulesDto) {

@@ -50,4 +50,6 @@ export * from './lib/format';
 export * from './lib/india-states';
 export * from './lib/validators';
 export * from './lib/table';
+// T2-G 84a: the company's own words for department, grade and the rest.
+export * from './lib/terms';
 export { cx } from './lib/cx';

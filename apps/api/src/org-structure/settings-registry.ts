@@ -1,4 +1,5 @@
 import { MODULES, MODULE_IDS, MODULES_OFF_KEY, MODULES_ORDER_KEY, SWITCHABLE_IDS, ownerKey } from './modules';
+import { TERM_SETTINGS } from './terms';
 
 // P01 §4.6 scoped settings. Every key is registered here with its allowed scopes, whether it is dated, its
 // values and its product default (a starter value, spec D17). Modules add their keys as they are built.
@@ -80,6 +81,8 @@ export const PAYROLL_APPROVAL_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
+  // T2-G 84a (answer 2743): the company's own words for department, grade and the rest (Settings 1.1 › Language and region).
+  ...TERM_SETTINGS,
   // T2-G 41 (answer 2746): modules switched off (People, Payroll and Compliance cannot be) and the rail's order (empty:
   // the designed order). Changed on Settings › Modules (org.settings.manage); the module list is in modules.ts.
   [MODULES_OFF_KEY]: { label: 'Modules switched off', scopes: ['tenant'], dated: false, values: SWITCHABLE_IDS, default: '', multi: true, labels: Object.fromEntries(MODULES.map((m) => [m.id, m.label])) },
@@ -221,6 +224,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'work.normal_week_hours': { label: 'Normal working week (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['pack', '35', '37.5', '38', '40', '42', '44', '45', '48'], default: 'pack' },
   // G1 (gap pass G1): the company value is the language its own words are typed in; an entity or a person may differ.
   'people.language': { label: 'Language', scopes: ['tenant', 'legal_entity', 'employee'], dated: false, values: ['en', 'hi', 'ta', 'te'], default: 'en' },
+  // T2-G 84b (answer 2743): people who choose Hindi see the self-service screens, notifications and emails in Hindi.
+  'people.language.hindi_screens': { label: 'Show the self-service screens in Hindi to people who choose Hindi', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // P06 YX-HIS-12: how far back a past-dated change may go without a System Admin override (Q5:
   // default the start of the current financial year; the company may widen it).
   // Widening it loosens a control (YX-HIS-12), so it is the access admin's (P02 §4.2, YX-SEC-02).

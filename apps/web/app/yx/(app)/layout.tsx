@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CalendarClock, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
-import { AccessibilityMenu, Button, CommandPalette, EmptyState, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
+import { AccessibilityMenu, applyTerms, Button, CommandPalette, EmptyState, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, TermsProvider, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast, type Terms } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { AvailabilityState, DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import { downForMaintenance } from '../../../lib/yx-availability';
@@ -133,9 +133,12 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Answer 992: a dot on Help while What's new has unread entries (null when the company turned What's new off).
   const news = useWhatsNew(!support);
   const employee = Boolean(team.data?.managerId);
+  // T2-G 84a (answer 2743): the company's own words for department, grade and the rest, on every screen and in the menu.
+  const display = useOrg<{ terms: Terms }>('/display');
+  const terms = display.data?.terms;
   const nav = useMemo(
     () =>
-      buildNav({
+      termedNav(terms, buildNav({
         has: (k) => perms.has(k as never),
         role,
         support,
@@ -160,10 +163,10 @@ function Frame({ children }: { children: React.ReactNode }) {
         trainer: Boolean(learningRoles.data?.trainer),
         modulesOff,
         moduleOrder,
-      }),
+      })),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data, modulesOff, moduleOrder],
+    [terms, perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data, modulesOff, moduleOrder],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support,
@@ -311,6 +314,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const profileHref = meHref('profile') ?? '/profile';
 
   return (
+    <TermsProvider terms={terms}>
     <DesktopFrame
       area={area.id}
       panelTitle={shown.title}
@@ -396,5 +400,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         )}
       </YxPageHelp>
     </DesktopFrame>
+    </TermsProvider>
   );
+}
+
+/** The menu in the company's own words (T2-G 84a). */
+function termedNav(terms: Terms | undefined, nav: NavArea[]): NavArea[] {
+  if (!terms) return nav;
+  return nav.map((a) => ({ ...a, sections: a.sections.map((s) => ({ ...s, ...(s.label ? { label: applyTerms(s.label, terms) } : {}), items: s.items.map((l) => ({ ...l, label: applyTerms(l.label, terms) })) })) }));
 }
