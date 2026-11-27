@@ -384,6 +384,8 @@
 @media (max-width: 599px) {
   .yx-topbar__search { flex: none; width: var(--yx-target-min); padding: 0; justify-content: center; }
   .yx-topbar__search-text { display: none; }
+  /* T2-F 81: "+ New" keeps only its icon, so the bar fits a 390 px phone. */
+  .yx-topbar__new .yx-button__label { display: none; }
 }
 
 /* Panel resize handle: a thin strip on the panel's right edge (founder review 30 Sep 2026). */

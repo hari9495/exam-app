@@ -85,6 +85,7 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   await expect(divya.getByText('Employment certificate ready').first()).toBeVisible();
   // The old My letters address opens the same page (PPL-30).
   await divya.goto('/yx/me/letters');
-  await expect(divya).toHaveURL(/\/yx\/me\/documents$/);
+  // T2-F 82: the moved-page stub opens the new page after 5 seconds.
+  await expect(divya).toHaveURL(/\/yx\/me\/documents$/, { timeout: 15_000 });
   await expect(divya.getByRole('table', { name: 'My documents' }).getByText(/Employment certificate/).first()).toBeVisible();
 });

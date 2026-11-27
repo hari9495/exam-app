@@ -564,7 +564,7 @@ export function TopBar({
       )}
       <div className="yx-topbar__end">
         {onNew && (
-          <Button size="sm" variant="primary" icon={Plus} onClick={onNew} aria-haspopup="dialog">
+          <Button size="sm" variant="primary" icon={Plus} onClick={onNew} aria-haspopup="dialog" aria-label="New" className="yx-topbar__new">
             New
           </Button>
         )}

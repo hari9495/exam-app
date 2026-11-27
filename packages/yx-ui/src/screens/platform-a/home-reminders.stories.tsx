@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { HomeReminderCards, type HomeReminder } from './home-reminders';
 
-const meta: Meta = { title: 'Screens/Platform/Home reminders (T2-E 51)', parameters: { layout: 'padded' } };
+const meta: Meta = { title: 'Screens/Platform/Home reminders (T2-E 51)', parameters: { layout: 'padded' }, excludeStories: ['REMINDERS'] };
 export default meta;
 type S = StoryObj;
 

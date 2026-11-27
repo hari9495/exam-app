@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type PushPreferences } from './preferences';
 
 // PLT-65 · Notification preferences (designed 15 Oct 2026, design audit step 2): Home › Me › Notification preferences.
-const meta: Meta = { title: 'Screens/Platform/PLT-65 · Notification preferences', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/Platform/PLT-65 · Notification preferences', parameters: { layout: 'fullscreen' }, excludeStories: ['PUSH_TYPES'] };
 export default meta;
 type S = StoryObj;
 
