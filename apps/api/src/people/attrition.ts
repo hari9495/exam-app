@@ -65,11 +65,17 @@ export function figures(days: readonly string[], heads: readonly HeadRow[], exit
 export type GroupFigures = { id: string | null; hidden: false } & Figures;
 export type HiddenGroup = { id: string | null; hidden: true };
 
-/** The split: each group's figures, or hidden when its average headcount is under MIN_GROUP. */
+/** The split: each group's figures, or hidden when its average headcount is under MIN_GROUP (and secondary suppression). */
 export function splitBy(split: Split, days: readonly string[], heads: readonly HeadRow[], exits: readonly ExitRow[]): (GroupFigures | HiddenGroup)[] {
   const ids = [...new Set([...heads.map((h) => h[split]), ...exits.map((e) => e[split])])];
-  return ids.map((id) => {
-    const f = figures(days, heads.filter((h) => h[split] === id), exits.filter((e) => e[split] === id));
-    return f.avgHeadcount < MIN_GROUP ? { id, hidden: true as const } : { id, hidden: false as const, ...f };
-  });
+  const all = ids.map((id) => ({ id, f: figures(days, heads.filter((h) => h[split] === id), exits.filter((e) => e[split] === id)) }));
+  const hide = new Set(all.filter((g) => g.f.avgHeadcount < MIN_GROUP).map((g) => g.id));
+  // Secondary suppression: one hidden group could be worked out as the total minus the shown ones, so while exactly one
+  // is hidden the smallest shown group is hidden too (hidden groups are always none or two and more).
+  while (hide.size === 1) {
+    const next = all.filter((g) => !hide.has(g.id)).sort((a, b) => a.f.avgHeadcount - b.f.avgHeadcount || a.f.exits - b.f.exits)[0];
+    if (!next) break;
+    hide.add(next.id);
+  }
+  return all.map(({ id, f }) => (hide.has(id) ? { id, hidden: true as const } : { id, hidden: false as const, ...f }));
 }
