@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PersonWorkspace } from './record';
-import { AboutMeDialog, AskDocumentDialog, ClearAboutMeDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk } from './record-dialogs';
+import { AboutMeDialog, AskDocumentDialog, ClearAboutMeDialog, PersonTagsDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk } from './record-dialogs';
 
 // PPL-03 record dialogs (work phone, ask for a document, send back, upload for the person): the stories are the live
 // dialogs; pressed too early they show the field error and focus it; a refusal stays in the open dialog.
@@ -32,6 +32,33 @@ describe('WorkPhoneDialog', () => {
     expect(workPhoneOk('+91 44 4012 3142')).toBe(true);
     expect(workPhoneOk('12345')).toBe(false);
     expect(workPhoneOk('+91 abc 1234567')).toBe(false);
+  });
+});
+
+describe('PersonTagsDialog and the Tags card (T2-G 2903)', () => {
+  const OPTIONS = [{ value: 't1', label: 'First aider' }, { value: 't2', label: 'Fire warden' }];
+  it('saves the picked tags; a refusal stays in the open dialog', async () => {
+    const onSave = vi.fn().mockRejectedValueOnce(new Error('Fire warden is archived; choose an active tag.')).mockResolvedValue(undefined);
+    render(<PersonTagsDialog name="Arjun" initial={['t1']} options={OPTIONS} onSave={onSave} onClose={vi.fn()} />);
+    await ue.click(screen.getByRole('combobox', { name: 'Tags' }));
+    await ue.click(await screen.findByRole('option', { name: 'Fire warden' }));
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(['t1', 't2']));
+    expect(await screen.findByText(/Fire warden is archived/)).toBeInTheDocument();
+  });
+  it('HR sees the tags with Edit on the Job tab; the person and their manager never see the card', () => {
+    const day = new Date(2026, 8, 30);
+    const hr = render(<PersonWorkspace persona="hr" relation="other" today={day} defaultTab="job" />);
+    const card = within(screen.getByRole('region', { name: 'Tags' }));
+    expect(card.getByText('First aider')).toBeInTheDocument();
+    expect(card.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    hr.unmount();
+    const self = render(<PersonWorkspace persona="emp" relation="self" today={day} defaultTab="job" />);
+    expect(screen.queryByRole('region', { name: 'Tags' })).toBeNull();
+    self.unmount();
+    render(<PersonWorkspace persona="mgr" relation="team" today={day} defaultTab="job" />);
+    expect(screen.queryByRole('region', { name: 'Tags' })).toBeNull();
   });
 });
 

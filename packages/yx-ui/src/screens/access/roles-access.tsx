@@ -384,6 +384,22 @@ function Effective({ userId, loadEffective }: { userId: string; loadEffective: R
   );
 }
 
+/**
+ * Answer 2905: Settings › People & Access › Groups, for HR's groups key (people.group.manage) without the access key:
+ * the same groups panel as Roles & access › Groups (one component, never a copy).
+ */
+export function GroupsScreen({ state, onRetry, groups }: { state: LoadState; onRetry?: () => void; groups?: UserGroupsPanelProps }) {
+  return (
+    <div className="yx-auth__page">
+      <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'Settings' }, { label: 'People & Access' }, { label: 'Groups' }]} />} title="Groups" description="Groups of people for announcements, surveys, learning rules and approvals." />
+      {state === 'loading' && <Skeleton height={240} />}
+      {state === 'error' && <ErrorState title="We couldn't load the groups." description="Check your connection and try again." onRetry={onRetry} />}
+      {state === 'no-access' && <NoAccessState grantedBy="your HR Admin or System Admin" what="groups" />}
+      {state === 'ready' && groups && <UserGroupsPanel {...groups} />}
+    </div>
+  );
+}
+
 export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const { state, onRetry, users, roles, templates, grants, meId, loadEffective } = props;
   const [view, setView] = useState<View>(props.initialView ?? 'people');

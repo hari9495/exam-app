@@ -210,6 +210,8 @@ export interface LiveRecord {
   /** Additional details: the company's own fields the viewer may see (none: no card); onEdit when one is theirs to change. */
   custom?: { rows: CustomField[]; onEdit?: () => void } | null;
   job: [string, string][] | null;
+  /** T2-G 2903: the person's tags, for HR who may open the record (null: no card); onEdit for employee.profile.edit. */
+  tags?: { names: string[]; onEdit?: () => void } | null;
   scheduled: { title: string; body: string }[];
   pastChanges: number;
   pay: LiveRecordPay;
@@ -560,9 +562,9 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               </TabsContent>
               <TabsContent value="job">
                 {live ? (
-                  live.job && <JobTab canChange={persona !== 'emp' && !!live.onStartChange} onStartChange={live.onStartChange} rows={live.job} scheduled={live.scheduled} past={live.pastChanges} />
+                  live.job && <JobTab canChange={persona !== 'emp' && !!live.onStartChange} onStartChange={live.onStartChange} rows={live.job} tags={live.tags ?? undefined} scheduled={live.scheduled} past={live.pastChanges} />
                 ) : (
-                  <JobTab canChange={persona !== 'emp'} rows={SAMPLE_JOB} scheduled={[{ title: 'Scheduled: promotion to Quality Lead from 1 Oct 2026', body: `Grade G6, CTC ${formatINR(780000)} a year. Approved by Karthik Subramanian on 24 Sep 2026. Letter KF/HR/2026/0418 accepted.` }]} past={ARJUN_HISTORY.filter((h) => h.state !== 'scheduled').length} />
+                  <JobTab canChange={persona !== 'emp'} rows={SAMPLE_JOB} tags={persona === 'hr' ? { names: ['First aider', 'Kannada speaker'], onEdit: () => {} } : undefined} scheduled={[{ title: 'Scheduled: promotion to Quality Lead from 1 Oct 2026', body: `Grade G6, CTC ${formatINR(780000)} a year. Approved by Karthik Subramanian on 24 Sep 2026. Letter KF/HR/2026/0418 accepted.` }]} past={ARJUN_HISTORY.filter((h) => h.state !== 'scheduled').length} />
                 )}
               </TabsContent>
               <TabsContent value="pay">
@@ -704,7 +706,7 @@ function OverviewTab({ persona, relation, name, today, about, personal, identity
   );
 }
 
-function JobTab({ canChange, onStartChange, rows, scheduled, past }: { canChange: boolean; onStartChange?: () => void; rows: [string, string][]; scheduled: { title: string; body: string }[]; past: number }) {
+function JobTab({ canChange, onStartChange, rows, tags, scheduled, past }: { canChange: boolean; onStartChange?: () => void; rows: [string, string][]; tags?: LiveRecord['tags']; scheduled: { title: string; body: string }[]; past: number }) {
   return (
     <div className="yx-ppl__stack">
       <Card title="Current assignment" actions={canChange ? <Button size="sm" onClick={onStartChange}>Start change</Button> : undefined}>
@@ -717,6 +719,15 @@ function JobTab({ canChange, onStartChange, rows, scheduled, past }: { canChange
           ))}
         </dl>
       </Card>
+      {tags && (
+        <Card title="Tags" actions={tags.onEdit ? <Button size="sm" onClick={tags.onEdit}>Edit</Button> : undefined}>
+          {tags.names.length ? (
+            <div className="yx-ppl__tags">{tags.names.map((n) => <Badge key={n} tone="neutral">{n}</Badge>)}</div>
+          ) : (
+            <Text size="sm" tone="secondary" as="p">No tags yet. HR adds tags such as First aider; groups can be worked out from them.</Text>
+          )}
+        </Card>
+      )}
       {scheduled.map((s) => (
         <InlineAlert key={s.title} tone="info" title={s.title}>
           {s.body}

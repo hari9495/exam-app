@@ -139,6 +139,7 @@ const MODEL = {
   grades: 'grade',
   'employment-types': 'employmentType',
   'cost-centres': 'costCentre',
+  tags: 'personTag',
 } as const;
 /** Audit entity type, and the settings scope type where one exists. */
 export const MASTER_ENTITY: Record<MasterKind, string> = {
@@ -147,6 +148,7 @@ export const MASTER_ENTITY: Record<MasterKind, string> = {
   grades: 'grade',
   'employment-types': 'employment_type',
   'cost-centres': 'cost_centre',
+  tags: 'person_tag',
 };
 
 interface MasterRow {

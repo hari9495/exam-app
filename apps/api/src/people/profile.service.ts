@@ -3,7 +3,7 @@ import { assertNotHeld } from '../platform/containment';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantContext, maskShaped, maskTail } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
-import { isCountry, isSubdivisionOf, isoDate, todayIst } from '../org-structure/org-validation';
+import { asDate, isCountry, isSubdivisionOf, isoDate, todayIst } from '../org-structure/org-validation';
 import { covers, has } from '../access/scope';
 import { serializeCustomFieldValues, upsertCustomFieldValues, type CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
 import type { CustomFieldDataClass } from '../custom-fields/dto/create-custom-field.dto';
@@ -370,6 +370,50 @@ export class ProfileService {
       await tx.employee.update({ where: { id: employeeId }, data: { aboutMe: null } });
       await audit(tx, c, 'employee.about_me.cleared', 'employee', employeeId, { reason: reason.trim() });
       return { aboutMe: null };
+    });
+  }
+
+  /**
+   * T2-G 2903: the person's tags (HR's grouping words). HR who may view or edit the record in scope read them; only
+   * employee.profile.edit changes them (the person cannot). canEdit tells the page whether to offer Edit.
+   */
+  tags(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      await this.history.access(tx, c, v, employeeId);
+      const canEdit = await this.can(tx, c, v, 'employee.profile.edit', employeeId);
+      if (!canEdit && !(await this.can(tx, c, v, 'employee.profile.view', employeeId))) throw new ForbiddenException('Tags are for HR who may open this record.');
+      return { tags: await this.tagsOf(tx, c, employeeId), canEdit };
+    });
+  }
+
+  private async tagsOf(tx: Tx, c: CompanyContext, employeeId: string) {
+    const rows = await tx.employeeTag.findMany({ where: { organizationId: c.organizationId, employeeId }, select: { tagId: true } });
+    if (!rows.length) return [];
+    const tags = await tx.personTag.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.tagId) } }, orderBy: { name: 'asc' }, select: { id: true, name: true, archivedAt: true } });
+    return tags.map((t) => ({ id: t.id, name: t.name, archived: t.archivedAt !== null }));
+  }
+
+  /** Sets the person's tags: the company's own, active (one already on the person may stay archived), open to the
+   * person's legal entity today; audited with what was added and removed. */
+  setTags(ctx: TenantContext, v: Viewer, employeeId: string, tagIds: string[]) {
+    return this.history.run(ctx, async (tx, c) => {
+      await this.history.access(tx, c, v, employeeId);
+      if (!(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Changing tags needs employee.profile.edit for this person.');
+      const want = [...new Set(tagIds)];
+      const now = new Set((await tx.employeeTag.findMany({ where: { organizationId: c.organizationId, employeeId }, select: { tagId: true } })).map((r) => r.tagId));
+      const added = want.filter((t) => !now.has(t));
+      const removed = [...now].filter((t) => !want.includes(t));
+      if (added.length) {
+        const job = await tx.employeeAssignment.findFirst({ where: { organizationId: c.organizationId, employeeId, supersededAt: null, validFrom: { lte: asDate(todayIst()) } }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } });
+        const tags = await tx.personTag.findMany({ where: { organizationId: c.organizationId, id: { in: added } } });
+        if (tags.length !== added.length) throw new BadRequestException("Choose the company's own tags.");
+        const shut = tags.find((t) => t.archivedAt || (job && ((t.ownerLegalEntityId && t.ownerLegalEntityId !== job.legalEntityId) || (!t.ownerLegalEntityId && t.appliesToEntities.length && !t.appliesToEntities.includes(job.legalEntityId)))));
+        if (shut) throw new BadRequestException(shut.archivedAt ? `${shut.name} is archived; choose an active tag.` : `${shut.name} is not open to this person's legal entity.`);
+        await tx.employeeTag.createMany({ data: added.map((tagId) => ({ organizationId: c.organizationId, employeeId, tagId, createdBy: c.userId ?? null })) });
+      }
+      if (removed.length) await tx.employeeTag.deleteMany({ where: { organizationId: c.organizationId, employeeId, tagId: { in: removed } } });
+      if (added.length || removed.length) await audit(tx, c, 'employee.tags.updated', 'employee', employeeId, { added, removed });
+      return { tags: await this.tagsOf(tx, c, employeeId), canEdit: true };
     });
   }
 

@@ -23,6 +23,7 @@ export const KINDS: { kind: MasterKind; label: string; one: string; description:
   { kind: 'grades', label: 'Grades', one: 'grade', description: 'Levels used by leave, expense and travel rules. Pay ranges are shown only to people with pay access.' },
   { kind: 'employment-types', label: 'Employment types', one: 'employment type', description: 'Each category carries the PF, ESI and gratuity rules the law sets.' },
   { kind: 'cost-centres', label: 'Cost centres', one: 'cost centre', description: 'Where cost is booked. Each belongs to one legal entity.' },
+  { kind: 'tags', label: 'Tags', one: 'tag', description: 'Short words HR puts on a person, such as First aider. Groups can be worked out from them.' },
 ];
 
 export const CATEGORY_LABEL: Record<EmploymentCategory, string> = {
@@ -413,6 +414,7 @@ export function StructureScreen(props: StructureScreenProps) {
     designations: [name, { key: 'family', header: 'Job family', value: (r) => r.jobFamily ?? '—', width: 160 }, ownership, status],
     grades: [name, { key: 'rank', header: 'Rank', type: 'number', value: (r) => r.rank, width: 90 }, ownership, status],
     'employment-types': [name, { key: 'category', header: 'Category', value: (r) => (r.category ? CATEGORY_LABEL[r.category] : '—'), width: 170 }, ownership, status],
+    tags: [name, ownership, status],
     'cost-centres': [name, { key: 'entity', header: 'Legal entity', value: (r) => entityName(props.entities, r.legalEntityId), width: 220 }, { key: 'parent', header: 'Parent', value: (r) => byId(r.parentId)?.name ?? '—', width: 170, optional: true }, status],
   };
 
@@ -421,7 +423,7 @@ export function StructureScreen(props: StructureScreenProps) {
     <OrgPage
       crumb="Structure"
       title="Structure"
-      description="Departments, designations, grades, employment types and cost centres. Each is shared across entities or kept to one."
+      description="Departments, designations, grades, employment types, cost centres and tags. Each is shared across entities or kept to one."
       state={props.state}
       onRetry={props.onRetry}
       what="the structure"

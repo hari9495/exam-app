@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { RolesAccessScreen } from './roles-access';
+import { GroupsScreen, RolesAccessScreen } from './roles-access';
 import { ProfileRequestsScreen } from './profile-requests';
 import { ACCESS_REQUESTS, EFFECTIVE, GRANTS, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
@@ -61,9 +61,13 @@ const RULE_CHOICES = {
   departmentIds: [{ value: 'd1', label: 'Operations' }, { value: 'd2', label: 'Quality' }],
   gradeIds: [{ value: 'gr1', label: 'M1' }, { value: 'gr2', label: 'S2' }],
   employmentTypeIds: [{ value: 'et1', label: 'Permanent' }, { value: 'et2', label: 'Fixed-term' }],
+  tagIds: [{ value: 'tg1', label: 'First aider' }, { value: 'tg2', label: 'Fire warden' }],
 };
-const RULE_GROUPS = { ...GROUPS, ruleChoices: RULE_CHOICES, groups: [...GROUPS.groups, { id: 'g3', name: 'Hosur shop floor', description: 'For safety notices', rules: { legalEntityIds: [], locationIds: ['l1'], departmentIds: ['d1', 'd2'], gradeIds: [], employmentTypeIds: [] }, members: [{ userId: 'u-other', name: 'Ramesh Iyer', email: 'admin@demo-org.test' }] }] };
+const RULE_GROUPS = { ...GROUPS, ruleChoices: RULE_CHOICES, groups: [...GROUPS.groups, { id: 'g3', name: 'Hosur shop floor', description: 'For safety notices', rules: { legalEntityIds: [], locationIds: ['l1'], departmentIds: ['d1', 'd2'], gradeIds: [], employmentTypeIds: [], tagIds: ['tg1'] }, members: [{ userId: 'u-other', name: 'Ramesh Iyer', email: 'admin@demo-org.test' }] }] };
 export const RolesAccessRuleGroups: S = { name: 'Roles & access · groups from rules (T2-G 42)', render: () => roles('u-admin', { initialView: 'groups', groups: RULE_GROUPS }) };
+// Answer 2905: Settings › People & Access › Groups for HR's groups key (the same panel).
+export const SettingsGroups: S = { name: 'Settings › Groups · HR (2905)', render: () => <GroupsScreen state="ready" groups={RULE_GROUPS} /> };
+export const SettingsGroupsNoAccess: S = { name: 'Settings › Groups · no access', render: () => <GroupsScreen state="no-access" /> };
 export const RolesAccessGroupsEmpty: S = { name: 'Roles & access · staff groups, none yet', render: () => roles('u-admin', { initialView: 'groups', groups: { ...GROUPS, groups: [] } }) };
 export const RolesAccessDelete: S = { name: 'Roles & access · delete a role nobody holds', render: () => roles('u-admin', { initialView: 'roles', deletingRoleId: 'r-recep' }) };
 

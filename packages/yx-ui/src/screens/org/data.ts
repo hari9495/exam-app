@@ -109,6 +109,12 @@ export const MASTERS: MasterLists = {
     { id: 'c-prd', name: 'Hosur production', code: 'CC-HSR-PRD', legalEntityId: 'le-tn', parentId: null, archivedAt: null },
     { id: 'c-qa', name: 'Hosur quality', code: 'CC-HSR-QA', legalEntityId: 'le-tn', parentId: 'c-prd', archivedAt: null },
   ],
+  tags: [
+    { id: 'tg-fa', name: 'First aider', code: 'FIRST-AIDER', ownerLegalEntityId: null, appliesToEntities: [], archivedAt: null },
+    { id: 'tg-fw', name: 'Fire warden', code: 'FIRE-WARDEN', ownerLegalEntityId: null, appliesToEntities: [], archivedAt: null },
+    { id: 'tg-ks', name: 'Kannada speaker', code: 'KANNADA', ownerLegalEntityId: null, appliesToEntities: [], archivedAt: null },
+    { id: 'tg-nb', name: 'Night bus user', code: 'NIGHT-BUS', ownerLegalEntityId: 'le-tn', appliesToEntities: [], archivedAt: null },
+  ],
 };
 
 export const PAY_RANGES: PayRange[] = [

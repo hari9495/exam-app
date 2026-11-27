@@ -30064,5 +30064,28 @@
                               "Screens/Compliance/CMP-09 › Committee member · annual report with Download PDF (2621)"
                     ],
                     "note": "Positive and negative: API e2e service-desk-hlp06 (404 for five outsiders, 400 for years, PDF text and audit); unit posh-report-pdf.spec (2); kit posh-live.test (2). PDFKit with writeText as the other printable PDFs. The format is the Act's Rule 14 list; a state-specific form is question 2904."
+          },
+          {
+                    "id": "MT-T2G-2903-TAGS",
+                    "area": "T2-G 2903 (answer 2745): tags on the person record and a Tags rule in rule-based groups",
+                    "screen": "Settings › Structure › Tags; People › a person › Job tab › Tags; Settings › Roles & access › Groups (Worked out from rules › Tags)",
+                    "url": "http://localhost:3000/yx/settings/structure",
+                    "account": "hr@demo-org.test (HR Admin - Lakshmi: settings key and employee.profile.edit); an employee (Arjun); panel@demo-org.test (manager Divya); another company's admin.",
+                    "steps": [
+                              "As HR open Settings › Structure, open the Tags tab and add the tags First aider and Fire warden.",
+                              "Open People › Directory › Arjun › Job tab. Press Edit on the Tags card, pick First aider and Save.",
+                              "Open Settings › Roles & access › Groups › New group: name it First aiders, choose Worked out from rules, pick First aider under Tags and press Make group.",
+                              "Back on Arjun's Job tab, Edit tags, remove First aider and Save. Wait for the nightly groups run (or press Work out again on the group).",
+                              "Negative: in Settings › Structure › Tags try to Delete First aider while someone has it; archive Fire warden and try to add it to Kavya.",
+                              "Negative: sign in as Arjun and open his own record's Job tab; sign in as Divya (manager) and open Arjun's Job tab.",
+                              "Negative: another company's admin calls PUT /api/v1/people/employees/<Arjun's id>/tags."
+                    ],
+                    "expected": "Step 1: both tags show as Active and Shared. Step 2: toast 'Arjun's tags saved'; the card shows the First aider badge. Step 3: the group row reads '1 person today · from rules: First aider'. Step 4: the group drops to 0 people after the run. Step 5: delete is refused ('It is in use, so it can only be archived'); adding the archived tag is refused inside the dialog ('Fire warden is archived; choose an active tag.'). Step 6: no Tags card for Arjun or Divya (tags are HR's). Step 7: 404. Each change is in the audit log (org.person_tag.created, employee.tags.updated). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-03 · Person record (Job tab; Tags · edit (HR); Tags · the server refuses)",
+                              "Screens/Org/Structure (Tags tab)",
+                              "Screens/Access (rule groups with Tags)"
+                    ],
+                    "note": "Positive and negative (t2g-company-control e2e '2903 tags': master by the settings key only (plain 403), another company 404, person/plain 403, other company's person 404, other company's tag 400, bad id 400, in use delete 409, archived tag not added anew 400 but kept, Tags rule group members, sweep drops untagged; kit record-dialogs and access tests). Migration 907 (person_tags, employee_tags with RLS; both in rls-isolation). Routes GET/PUT people/employees/:id/tags; masters kind 'tags'."
           }
 ]

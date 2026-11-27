@@ -3116,6 +3116,36 @@ model EmploymentType {
   @@map("employment_types")
 }
 
+/// T2-G 2903: the company's person tags (a structure master); rule groups may match them.
+model PersonTag {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("person_tags")
+}
+
+/// T2-G 2903: a tag on a person (HR edits; the person cannot).
+model EmployeeTag {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  tagId          String   @map("tag_id") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId, tagId])
+  @@index([organizationId, tagId], map: "employee_tags_tag_idx")
+  @@map("employee_tags")
+}
+
 model CostCentre {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid

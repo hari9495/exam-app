@@ -183,7 +183,8 @@ export class LocationDto {
 
 // ---- structure masters (YX-ORG-15) ----
 
-export const MASTER_KINDS = ['departments', 'designations', 'grades', 'employment-types', 'cost-centres'] as const;
+// T2-G 2903: 'tags' is the company's person tag list (shared or entity-only like the others).
+export const MASTER_KINDS = ['departments', 'designations', 'grades', 'employment-types', 'cost-centres', 'tags'] as const;
 export type MasterKind = (typeof MASTER_KINDS)[number];
 
 export const EMPLOYMENT_CATEGORIES = ['permanent', 'probation', 'fixed_term', 'intern', 'apprentice', 'consultant', 'deployed_contractor', 'retired_reemployed'] as const;
@@ -262,7 +263,9 @@ export class CostCentreDto extends MasterBaseDto {
   ownerUserId?: string | null;
 }
 
-export type AnyMasterDto = DepartmentDto | DesignationDto | GradeDto | EmploymentTypeDto | CostCentreDto;
+export class PersonTagDto extends ScopedMasterDto {}
+
+export type AnyMasterDto = DepartmentDto | DesignationDto | GradeDto | EmploymentTypeDto | CostCentreDto | PersonTagDto;
 
 const MASTER_DTO: Record<MasterKind, new () => AnyMasterDto> = {
   departments: DepartmentDto,
@@ -270,6 +273,7 @@ const MASTER_DTO: Record<MasterKind, new () => AnyMasterDto> = {
   grades: GradeDto,
   'employment-types': EmploymentTypeDto,
   'cost-centres': CostCentreDto,
+  tags: PersonTagDto,
 };
 
 /** The body for `kind`, validated exactly as the global ValidationPipe would (whitelist, no extras). */

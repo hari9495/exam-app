@@ -133,11 +133,13 @@ export const GROUP_RULE_KINDS = [
   ['departmentIds', 'Departments (with their sub-departments)'],
   ['gradeIds', 'Grades'],
   ['employmentTypeIds', 'Employment types'],
+  // T2-G 2903: HR's tags on the person (any of them).
+  ['tagIds', 'Tags'],
 ] as const;
 export type GroupRuleKind = (typeof GROUP_RULE_KINDS)[number][0];
 export type GroupRules = Record<GroupRuleKind, string[]>;
 export type GroupRuleChoices = Record<GroupRuleKind, { value: string; label: string }[]>;
-const NO_RULES: GroupRules = { legalEntityIds: [], locationIds: [], departmentIds: [], gradeIds: [], employmentTypeIds: [] };
+const NO_RULES: GroupRules = { legalEntityIds: [], locationIds: [], departmentIds: [], gradeIds: [], employmentTypeIds: [], tagIds: [] };
 
 export interface UserGroup {
   id: string;
