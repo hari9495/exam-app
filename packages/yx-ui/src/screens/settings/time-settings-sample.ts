@@ -3,6 +3,8 @@
 import type { RegistryDef } from './time-settings-live';
 
 export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
+  // T2-F 79 (answer 2884): Settings 2.2 Home page, who may personalise their own home.
+  "home.personalise_roles": { "label": "Roles that may personalise their own home", "values": ["employee", "manager", "hr", "finance"], "default": "", "multi": true, "labels": { "employee": "Employee", "manager": "Manager", "hr": "HR", "finance": "Finance" }, "scopes": ["tenant"] },
   // IT assets part 1 (answer 2712): Settings 2.8.
   "asset.ack_method": { "label": "Acknowledgement", "values": ["click", "none"], "default": "click", "labels": { "click": "Click to accept", "none": "None" }, "scopes": ["tenant"] },
   "asset.warranty_alert_days": { "label": "Warranty alert", "values": ["off", "7", "15", "30", "60", "90"], "default": "30", "labels": { "off": "Off", "7": "7 days before", "15": "15 days before", "30": "30 days before", "60": "60 days before", "90": "90 days before" }, "scopes": ["tenant"] },

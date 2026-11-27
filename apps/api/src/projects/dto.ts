@@ -296,3 +296,76 @@ export class HoursRangeQueryDto {
   @IsIn(['week', 'month', 'all'])
   range?: 'week' | 'month' | 'all';
 }
+
+/** T2-D 56 (2865): a task's new stage on the board. */
+export class TaskStageDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  stage!: string;
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
+
+/** T2-D 56 (2866): who a task is assigned to (none clears it). */
+export class TaskAssigneesDto {
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  employeeIds!: string[];
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
+
+/** T2-D 58 and 59 (answers 2869, 2870): a project's own settings ('company' follows the company rule). */
+export class ProjectOwnSettingsDto {
+  @IsIn(['company', 'allocated', 'named'])
+  bookingRule!: 'company' | 'allocated' | 'named';
+
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  bookingEmployeeIds!: string[];
+
+  @IsIn(['company', 'on', 'off'])
+  notesRequired!: 'company' | 'on' | 'off';
+
+  @IsIn(['company', 'on', 'off'])
+  billableDefault!: 'company' | 'on' | 'off';
+
+  @IsOptional()
+  @IsUUID()
+  secondApproverUserId?: string | null;
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
+
+/** T2-D 60 (2871): the hours reports' filters. */
+export class HoursReportQueryDto {
+  @IsIn(['person', 'task'])
+  kind!: 'person' | 'task';
+
+  @IsDateString({ strict: true })
+  from!: string;
+
+  @IsDateString({ strict: true })
+  to!: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  clientId?: string;
+
+  @IsOptional()
+  @IsIn(['csv'])
+  format?: 'csv';
+}

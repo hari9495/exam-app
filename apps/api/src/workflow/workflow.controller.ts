@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Transform } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
@@ -127,10 +127,12 @@ export class WorkflowController {
     return this.engine.inbox(m.ctx, m.userId);
   }
 
+  /** T2-E 50 (2873): ?days=30|90|365 for "Decided by me" (90 by default). */
   @Get('approvals/history')
-  history(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+  history(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query('days') days?: string) {
     const m = me(req, t);
-    return this.engine.history(m.ctx, m.userId);
+    if (days !== undefined && !['30', '90', '365'].includes(days)) throw new BadRequestException('days is 30, 90 or 365.');
+    return this.engine.history(m.ctx, m.userId, (days ? Number(days) : 90) as 30 | 90 | 365);
   }
 
   /** PLT-04 "Team history": decisions anyone made on requests I hold or held a task for (as approver or the one they act for). */

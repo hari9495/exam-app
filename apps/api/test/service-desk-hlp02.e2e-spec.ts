@@ -138,6 +138,31 @@ describe('Service Desk HLP-02 Agent desk: clocks, raised filter, who sees and ch
     expect((await list('agent', `viewId=${v.id}`)).map((x) => x.id)).toContain(ids.t);
   });
 
+  it('T2-F 77 satisfaction filter: low (1-2), neutral (3), high (4-5), not rated; only tickets the agent already sees', async () => {
+    const raise = async (subject: string) => (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `${subject} ${run}`, description: 'Please help.' }).expect(201)).body.id as string;
+    const [low, mid, high] = [await raise('Low'), await raise('Neutral'), await raise('High')];
+    await tenantPrisma.forTenant(asA(), async (tx) => {
+      const person = await tx.person.findFirstOrThrow({ where: { organizationId: org.A.id, primaryEmail: `divya-${run}@hlp02.test` } });
+      for (const [ticketId, score] of [[low, 2], [mid, 3], [high, 5]] as const) await tx.sdRating.create({ data: { organizationId: org.A.id, deskId: ids.desk, ticketId, personId: person.id, score, channel: 'portal' } });
+    });
+    const got = async (q: string) => (await list('agent', `satisfaction=${q}`)).map((x) => x.id);
+    expect(await got('low')).toEqual([low]);
+    expect(await got('neutral')).toEqual([mid]);
+    expect(await got('high')).toEqual([high]);
+    expect((await got('low,high')).sort()).toEqual([low, high].sort());
+    const none = await got('none');
+    expect(none).toContain(ids.t);
+    expect(none.some((x) => [low, mid, high].includes(x))).toBe(false);
+    expect((await got('none,neutral')).sort()).toEqual([...none, mid].sort());
+    // Bad bands are refused; another company's agent and an employee get nothing new.
+    await api('agent', 'get', '/desk/tickets?satisfaction=angry').expect(400);
+    expect((await list('agentB', 'satisfaction=low,neutral,high,none')).map((x) => x.id)).not.toContain(low);
+    await api('divya', 'get', '/desk/tickets?satisfaction=low').expect(403);
+    // A saved view keeps the band.
+    const v = (await api('agent', 'post', '/desk/views').send({ name: `Unhappy ${run}`, filters: { satisfaction: ['low'] } }).expect(201)).body;
+    expect((await list('agent', `viewId=${v.id}`)).map((x) => x.id)).toEqual([low]);
+  });
+
   it('an employee with no desk seat cannot list tickets', async () => {
     await api('divya', 'get', '/desk/tickets').expect(403);
   });

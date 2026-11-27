@@ -61,6 +61,8 @@ export interface NavInput {
   projects?: boolean;
   /** P-2 (1406): timesheet lines waiting for this person's decision (the server decides). */
   lineApprovals?: number;
+  /** T2-D 60: the hours reports (a project's manager, or the projects reporting key). */
+  projectReports?: boolean;
   /** Runs learning sessions as an internal trainer. */
   trainer?: boolean;
 }
@@ -636,7 +638,7 @@ export function buildNav(n: NavInput): NavArea[] {
   };
 
   // Projects P-1 (answer 1401): only once the company switched Projects on.
-  const projects: NavArea = { id: 'projects', title: 'Projects', sections: sec(undefined, [...when(!support && Boolean(n.projects), L('projects', 'Projects', '/yx/projects')), ...when(!support && Boolean(n.projects), L('capacity', 'Capacity & utilisation', '/yx/projects/capacity'), L('resource-requests', 'Resource requests', '/yx/projects/requests')), ...when(!support && Boolean(n.projects) && has('projects.finance'), L('costs', 'Costing & margin', '/yx/projects/costs')), ...when(!support && Boolean(n.projects) && any('projects.finance', 'ats.staffing.manage'), L('billing', 'Billing workbench', '/yx/projects/billing')), ...when(!support && (Boolean(n.projects) || Boolean(n.lineApprovals)), L('timesheet-approvals', 'Timesheet approvals', '/yx/projects/approvals'))]) };
+  const projects: NavArea = { id: 'projects', title: 'Projects', sections: sec(undefined, [...when(!support && Boolean(n.projects), L('projects', 'Projects', '/yx/projects')), ...when(!support && Boolean(n.projects), L('capacity', 'Capacity & utilisation', '/yx/projects/capacity'), L('resource-requests', 'Resource requests', '/yx/projects/requests')), ...when(!support && Boolean(n.projects) && has('projects.finance'), L('costs', 'Costing & margin', '/yx/projects/costs')), ...when(!support && Boolean(n.projects) && any('projects.finance', 'ats.staffing.manage'), L('billing', 'Billing workbench', '/yx/projects/billing')), ...when(!support && (Boolean(n.projects) || Boolean(n.lineApprovals)), L('timesheet-approvals', 'Timesheet approvals', '/yx/projects/approvals')), ...when(!support && Boolean(n.projectReports), L('hours-reports', 'Hours reports', '/yx/projects/reports'))]) };
 
   // Settings, pinned at the bottom of the rail, in the designed settings groups.
   const settings: NavArea = {

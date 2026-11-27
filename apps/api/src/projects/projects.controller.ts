@@ -1,11 +1,12 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import type { ScopeUser } from '../access/scope';
-import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskDto, VersionDto, HoursRangeQueryDto } from './dto';
+import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, ProjectOwnSettingsDto, HoursReportQueryDto, TaskAssigneesDto, TaskDto, TaskStageDto, VersionDto, HoursRangeQueryDto } from './dto';
 import { ProjectsService } from './projects.service';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420). Signed-in company people; the service checks the Projects keys
@@ -40,6 +41,19 @@ export class ProjectsController {
     return this.projects.list(ctx, this.user(req));
   }
 
+  /** T2-D 60 (2871): hours by person or by task; format=csv downloads it. PMs: their projects; projects.reporting: all. */
+  @Get('reports/hours')
+  @Header('Cache-Control', 'no-store')
+  async hoursReport(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: HoursReportQueryDto, @Res({ passthrough: true }) res: Response) {
+    const out = await this.projects.hoursReport(ctx, this.user(req), q);
+    if ('csv' in out) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="hours-by-${q.kind}-${q.from}-to-${q.to}.csv"`);
+      return out.csv;
+    }
+    return out;
+  }
+
   @Get('choices')
   choices(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.projects.choices(ctx, this.user(req));
@@ -57,6 +71,12 @@ export class ProjectsController {
     return this.projects.timesheets(ctx, this.user(req), id, week);
   }
 
+  /** T2-D 57 (2867, 2868): actions pending (the PM) and who on the project is away (the PM and the team). */
+  @Get(':id/glance')
+  glance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.projects.glance(ctx, this.user(req), id);
+  }
+
   @Get(':id')
   get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: HoursRangeQueryDto) {
     return this.projects.get(ctx, this.user(req), id, q.range ?? 'week');
@@ -65,6 +85,12 @@ export class ProjectsController {
   @Put(':id')
   update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProjectUpdateDto) {
     return this.projects.update(ctx, this.user(req), id, dto);
+  }
+
+  /** T2-D 58 and 59 (2869, 2870): the project's own settings, by its manager (or Projects manage). */
+  @Put(':id/settings')
+  saveOwnSettings(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProjectOwnSettingsDto) {
+    return this.projects.saveOwnSettings(ctx, this.user(req), id, dto);
   }
 
   @Post(':id/status')
@@ -97,6 +123,19 @@ export class ProjectsController {
   @Put(':id/tasks/:tid')
   updateTask(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('tid', ParseUUIDPipe) tid: string, @Body() dto: TaskDto) {
     return this.projects.updateTask(ctx, this.user(req), id, tid, dto);
+  }
+
+  /** T2-D 56 (2865): move a task on the board. */
+  @Post(':id/tasks/:tid/stage')
+  @HttpCode(200)
+  moveTask(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('tid', ParseUUIDPipe) tid: string, @Body() dto: TaskStageDto) {
+    return this.projects.moveTask(ctx, this.user(req), id, tid, dto);
+  }
+
+  /** T2-D 56 (2866): who a task is assigned to. */
+  @Put(':id/tasks/:tid/assignees')
+  assignTask(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('tid', ParseUUIDPipe) tid: string, @Body() dto: TaskAssigneesDto) {
+    return this.projects.assignTask(ctx, this.user(req), id, tid, dto);
   }
 
   @Post(':id/milestones')

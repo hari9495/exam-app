@@ -212,6 +212,8 @@ export interface TicketFilters {
   search?: string;
   snoozed?: 'show' | 'only';
   breaching?: boolean;
+  /** T2-F 77: the rating band after closing (any of them). */
+  satisfaction?: Satisfaction[];
   /** HLP-02 "Raised": days (yyyy-mm-dd), both included. */
   createdFrom?: string;
   createdTo?: string;
@@ -219,6 +221,8 @@ export interface TicketFilters {
   fieldKey?: string;
   fieldValues?: string[];
 }
+
+export type Satisfaction = 'low' | 'neutral' | 'high' | 'none';
 
 export interface SavedTicketView {
   id: string;

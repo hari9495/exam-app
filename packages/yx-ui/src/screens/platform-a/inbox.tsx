@@ -1,6 +1,6 @@
 // Notifications, approvals, request sheet, my requests, delegation (PLT-03…07; APX-D §1.1 Approvals).
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowLeftRight, BellOff, Briefcase, CalendarDays, CalendarPlus, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, FileText, Laptop, Mail, MailOpen, MoreHorizontal, Plus, Receipt, Settings as SettingsIcon, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, BellOff, Briefcase, CalendarDays, CalendarPlus, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, FileText, Laptop, LifeBuoy, Mail, MailOpen, MoreHorizontal, Plus, Receipt, Settings as SettingsIcon, UserPlus, Wallet } from 'lucide-react';
 import { Segment } from '../../components/segment';
 import { PageHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Button, IconButton, Link } from '../../components/button';
@@ -374,7 +374,7 @@ export function approvalKinds(rows: { type: string }[]): { kind: string; count: 
   return [...by.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind));
 }
 
-export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history' | 'everyone';
+export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history' | 'everyone' | 'decided';
 
 const APPROVAL_TYPES = ['Leave', 'Expense', 'Timesheet', 'Regularisation', 'Bank change', 'Access request', 'Offer'];
 
@@ -421,6 +421,26 @@ const approvalColumnsBase = (today: Date): TableColumn<ApprovalRow>[] => [
   },
   { key: 'due', header: 'Due', value: (r) => r.due?.getTime() ?? Infinity, render: (r) => <DueCell due={r.due} today={today} />, width: 146 },
 ];
+/** T2-E 49 (answer 2872): the Asked by and Status filters' values for a row. */
+const TEAM_DIRECT = '__direct';
+const TEAM_WHOLE = '__whole';
+export const STATUS_OPTIONS = [
+  { value: 'Waiting', label: 'Waiting' },
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Rejected', label: 'Not approved' },
+  { value: 'Sent back', label: 'Sent back' },
+  { value: 'Withdrawn', label: 'Withdrawn' },
+];
+export function askedByOptions(rows: ApprovalRow[]): { value: string; label: string }[] {
+  const people = [...new Set(rows.map((r) => r.requester).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return [{ value: TEAM_DIRECT, label: 'My direct team' }, { value: TEAM_WHOLE, label: 'My whole team' }, ...people.map((p) => ({ value: p, label: p }))];
+}
+export function approvalFilterValue(key: string, r: ApprovalRow): unknown {
+  if (key === 'askedBy') return [r.requester, ...(r.requesterTeam === 'direct' ? [TEAM_DIRECT, TEAM_WHOLE] : r.requesterTeam === 'whole' ? [TEAM_WHOLE] : [])];
+  if (key === 'requestStatus') return r.requestStatus ?? r.status;
+  return undefined;
+}
+
 /** Waiting tabs don't repeat "Waiting" on every row; sent and history keep Status. Live: no policy column (the engine has no policy check yet). */
 const approvalColumns = (withStatus: boolean, today = TODAY, live = false): TableColumn<ApprovalRow>[] => {
   const base = approvalColumnsBase(today).filter((c) => !live || c.key !== 'policy');
@@ -759,6 +779,9 @@ export interface LiveApprovals {
   footer?: ReactNode;
   /** Answers 2501 / 2502: move an approval to someone else (my own, and everyone's for HR). */
   reassign?: LiveReassign;
+  /** T2-E 50 (2873): the "Decided by me" period (days). */
+  decidedDays?: 30 | 90 | 365;
+  onDecidedDays?: (days: 30 | 90 | 365) => void;
 }
 
 export interface ApprovalsInboxScreenProps {
@@ -774,6 +797,8 @@ export interface ApprovalsInboxScreenProps {
   bulkRejectOpen?: boolean;
   /** Answer 2500: everyone's pending approvals (HR with workflow.approvals.oversee); the tab shows only when given. */
   everyone?: ApprovalRow[];
+  /** T2-E 50 (2873): what I approved, did not approve or sent back in the period; the tab shows only when given. */
+  decided?: ApprovalRow[];
   /** Answer 2504: the three-column desk (groups, list, request). By default from the screen: 1440 px or wider. */
   desk?: boolean;
   state?: 'ready' | 'loading' | 'error';
@@ -781,7 +806,7 @@ export interface ApprovalsInboxScreenProps {
 }
 
 // PLT-04 · Approvals inbox (tabs, filters, bulk, side panel). APX-D §1.1 Approvals. Manager page: no company button.
-export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, everyone, desk: deskProp, state = 'ready', live }: ApprovalsInboxScreenProps) {
+export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, everyone, decided, desk: deskProp, state = 'ready', live }: ApprovalsInboxScreenProps) {
   const wide = useMinWidth(1440);
   const desk = deskProp ?? wide;
   const [tab, setTab] = useState<string>(defaultTab);
@@ -803,13 +828,16 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
   const today = live?.today ?? TODAY;
   const mine = items.filter((r) => !r.onBehalfOf);
   const delegated = items.filter((r) => r.onBehalfOf);
-  const tabRows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : tab === 'everyone' ? everyone ?? [] : history;
+  const tabRows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : tab === 'everyone' ? everyone ?? [] : tab === 'decided' ? decided ?? [] : history;
+  // T2-E 50 (2873): the period of "Decided by me" (3 months by default; the live page asks the server for it).
+  const [ownDays, setOwnDays] = useState<30 | 90 | 365>(90);
+  const days = live?.decidedDays ?? ownDays;
   // Keka ideas (2026-11): the kinds waiting in this tab, with counts, as one pick-one control (All or one kind).
   const [kind, setKind] = useState<string>('all');
   const kinds = approvalKinds(tabRows);
   const shownKind = kinds.some((k) => k.kind === kind) ? kind : 'all';
   const rows = shownKind === 'all' ? tabRows : tabRows.filter((r) => r.type === shownKind);
-  const current = (tab === 'everyone' ? everyone ?? [] : [...items, ...sent, ...history]).find((r) => r.id === open) ?? null;
+  const current = (tab === 'everyone' ? everyone ?? [] : [...items, ...sent, ...history, ...(decided ?? [])]).find((r) => r.id === open) ?? null;
   const decide = (ids: string[], text: string) => {
     const next = rows.filter((r) => !ids.includes(r.id));
     if (!live) setItems((xs) => xs.filter((x) => !ids.includes(x.id)));
@@ -889,28 +917,50 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           { id: 'delegated', label: 'Delegated to me', count: delegated.length },
           { id: 'sent', label: 'Sent by me', count: sent.length },
           { id: 'history', label: 'Team history' },
+          ...(decided ? [{ id: 'decided', label: 'Decided by me' }] : []),
           ...(everyone ? [{ id: 'everyone', label: 'Everyone’s pending', count: everyone.length }] : []),
         ]}
         tab={tab}
         onTabChange={setTab}
         beforeTable={
-          !desk && kinds.length > 1 ? (
-            <Segment
-              label="Kind of request"
-              value={shownKind}
-              onChange={setKind}
-              options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
-            />
+          (!desk && kinds.length > 1) || tab === 'decided' ? (
+            <div className="yx-plt-row">
+              {tab === 'decided' && (
+                <Segment
+                  label="Decided in the last"
+                  value={String(days) as '30' | '90' | '365'}
+                  onChange={(v) => {
+                    const n = Number(v) as 30 | 90 | 365;
+                    setOwnDays(n);
+                    live?.onDecidedDays?.(n);
+                  }}
+                  options={[{ value: '30', label: '30 days' }, { value: '90', label: '3 months' }, { value: '365', label: '12 months' }]}
+                />
+              )}
+              {!desk && kinds.length > 1 && (
+                <Segment
+                  label="Kind of request"
+                  value={shownKind}
+                  onChange={setKind}
+                  options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+                />
+              )}
+            </div>
           ) : undefined
         }
         label="Approval requests"
         columns={tab === 'everyone' ? everyoneColumns(today, Boolean(live)) : approvalColumns(!actionable, today, Boolean(live))}
         rows={rows}
         getRowId={(r) => r.id}
+        key={tab}
         filters={[
           { key: 'type', label: 'Type', type: 'multi', options: (live ? [...new Set([...items, ...sent, ...history].map((r) => r.type))] : APPROVAL_TYPES).map((t) => ({ value: t, label: t })) },
-          { key: 'due', label: 'Due', type: 'date' },
+          ...(tab === 'sent' || tab === 'decided' ? [] : [{ key: 'due', label: 'Due', type: 'date' as const }]),
+          // T2-E 49 (answer 2872): who asked (a person, or my direct or whole team), and the request's status where it varies.
+          ...(tab === 'sent' ? [] : [{ key: 'askedBy', label: 'Asked by', type: 'multi' as const, options: askedByOptions(tabRows) }]),
+          ...(tab === 'sent' || tab === 'history' || tab === 'decided' ? [{ key: 'requestStatus', label: 'Status', type: 'multi' as const, options: STATUS_OPTIONS }] : []),
         ]}
+        filterValue={approvalFilterValue}
         searchPlaceholder="Search name or reference"
         state={state}
         onRetry={live?.onRetry}
@@ -1146,7 +1196,7 @@ export function ApprovalsInboxPhone({ waiting, openId, defaultDecision }: { wait
 
 /* ================================================================ PLT-05 Request sheet */
 
-export type RequestTypeId = 'leave' | 'wfh' | 'onduty' | 'compoff' | 'regularise' | 'shiftswap' | 'expense' | 'advance' | 'letter';
+export type RequestTypeId = 'leave' | 'wfh' | 'onduty' | 'compoff' | 'regularise' | 'shiftswap' | 'expense' | 'advance' | 'letter' | 'ticket' | 'job';
 interface RequestType {
   id: RequestTypeId;
   label: string;
@@ -1154,7 +1204,7 @@ interface RequestType {
   title: string;
   desc: string;
   icon: typeof CalendarDays;
-  group: 'Time off' | 'Attendance' | 'Money' | 'Documents';
+  group: (typeof TYPE_GROUPS)[number];
 }
 /** Every request an employee can raise, grouped (founder review 30 Sep 2026). */
 const REQUEST_TYPES: RequestType[] = [
@@ -1166,9 +1216,41 @@ const REQUEST_TYPES: RequestType[] = [
   { id: 'shiftswap', label: 'Shift swap', title: 'Swap a shift', desc: 'Exchange a shift with a colleague', icon: ArrowLeftRight, group: 'Attendance' },
   { id: 'expense', label: 'Expense claim', title: 'Claim an expense', desc: 'Travel, meals, internet, client visits', icon: Receipt, group: 'Money' },
   { id: 'advance', label: 'Salary advance', title: 'Ask for a salary advance', desc: 'Recovered from the next salaries', icon: Wallet, group: 'Money' },
-  { id: 'letter', label: 'Letter request', title: 'Request a letter', desc: 'Employment, address proof or salary letter', icon: FileText, group: 'Documents' },
+  { id: 'letter', label: 'Letter or certificate', title: 'Request a letter', desc: 'Employment, address proof, salary or bonafide', icon: FileText, group: 'Documents' },
+  // T2-F 81 (answer 2886): "+ New" also offers a helpdesk ticket and, for managers, a job request.
+  { id: 'ticket', label: 'Helpdesk ticket', title: 'Raise a ticket', desc: 'Ask HR, IT, payroll or admin for help', icon: LifeBuoy, group: 'Help' },
+  { id: 'job', label: 'Job request', title: 'Ask to hire', desc: 'A new or replacement position in your team', icon: UserPlus, group: 'Hiring' },
 ];
-const TYPE_GROUPS = ['Time off', 'Attendance', 'Money', 'Documents'] as const;
+const TYPE_GROUPS = ['Time off', 'Attendance', 'Money', 'Documents', 'Help', 'Hiring'] as const;
+
+/** The type buttons, grouped (PLT-05); the sample sheet and the live "+ New" both draw them. */
+function TypeGroups({ types, onPick }: { types: RequestType[]; onPick: (t: RequestTypeId) => void }) {
+  return (
+    <>
+      {TYPE_GROUPS.map((g) => {
+        const list = types.filter((t) => t.group === g);
+        return list.length === 0 ? null : (
+          <section key={g} className="yx-plt-stack" data-gap="sm" aria-label={g}>
+            <h3 className="yx-plt-h">{g}</h3>
+            <div className="yx-plt-types" role="group" aria-label={g}>
+              {list.map((t) => (
+                <button key={t.id} type="button" className="yx-plt-type" onClick={() => onPick(t.id)}>
+                  <Icon icon={t.icon} size="md" />
+                  <span className="yx-plt-type__text">
+                    <span>{t.label}</span>
+                    <span className="yx-plt-type__desc">{t.desc}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+const typeMatches = (q: string) => (t: RequestType) => !q || `${t.label} ${t.desc}`.toLowerCase().includes(q);
 
 const LEAVE_BALANCES: Record<string, number> = { casual: 4, sick: 5, earned: 9 };
 const LEAVE_OPTIONS = [
@@ -1303,7 +1385,7 @@ function useRequestSheet({ defaultType = null, defaultLeaveType = 'casual', defa
     );
   else if (!type) {
     const q = query.trim().toLowerCase();
-    const matches = REQUEST_TYPES.filter((t) => !q || `${t.label} ${t.desc}`.toLowerCase().includes(q));
+    const matches = REQUEST_TYPES.filter(typeMatches(q));
     body = (
       <div className="yx-plt-stack">
         {proxy && (
@@ -1324,25 +1406,7 @@ function useRequestSheet({ defaultType = null, defaultLeaveType = 'casual', defa
           </div>
         )}
         {matches.length === 0 && <EmptyState compact title="No request type matches." description="Try another word, or ask HR from Help." />}
-        {TYPE_GROUPS.map((g) => {
-          const list = matches.filter((t) => t.group === g);
-          return list.length === 0 ? null : (
-            <section key={g} className="yx-plt-stack" data-gap="sm" aria-label={g}>
-              <h3 className="yx-plt-h">{g}</h3>
-              <div className="yx-plt-types" role="group" aria-label={g}>
-                {list.map((t) => (
-                  <button key={t.id} type="button" className="yx-plt-type" onClick={() => pickType(t.id)}>
-                    <Icon icon={t.icon} size="md" />
-                    <span className="yx-plt-type__text">
-                      <span>{t.label}</span>
-                      <span className="yx-plt-type__desc">{t.desc}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        <TypeGroups types={matches} onPick={(t) => pickType(t)} />
       </div>
     );
   } else
@@ -1527,6 +1591,28 @@ function useRequestSheet({ defaultType = null, defaultLeaveType = 'casual', defa
             <EffectSummary rows={[['Ready in', 'About 1 working day, as a signed PDF in Documents & letters'], ['Approver', 'HR team']]} />
           </>
         )}
+        {type === 'ticket' && (
+          <>
+            <FormField label="Who can help" required>
+              <Select options={[{ value: 'hr', label: 'HR help desk' }, { value: 'it', label: 'IT help desk' }, { value: 'payroll', label: 'Payroll' }]} value={category === 'travel' ? 'hr' : category} onChange={setCategory} />
+            </FormField>
+            <FormField label="What do you need?" required>
+              <TextArea value={description} onChange={setDescription} rows={3} />
+            </FormField>
+            <EffectSummary rows={[['First reply', 'Within 4 working hours'], ['Follow it', 'Helpdesk › My tickets']]} />
+          </>
+        )}
+        {type === 'job' && (
+          <>
+            <FormField label="Job title" required>
+              <TextField value={description} onChange={setDescription} />
+            </FormField>
+            <FormField label="Why" required>
+              <Segment label="Why" value={category === 'replacement' ? 'replacement' : 'new'} onChange={setCategory} options={[{ value: 'new', label: 'A new position' }, { value: 'replacement', label: 'A replacement' }]} />
+            </FormField>
+            <EffectSummary rows={[['Approver', 'Karthik Subramanian, then HR'], ['Then', 'Recruiting opens the job']]} />
+          </>
+        )}
       </div>
     );
 
@@ -1552,8 +1638,47 @@ export function RequestSheetBody(props: RequestSheetProps) {
   );
 }
 
+/** T2-F 81 (answer 2886): "+ New" in the top bar: the drawn type picker with only the types this person may raise;
+ * picking one opens that type's live form (its own page). The inline forms wait for the approvals pass. */
+export interface LiveRequestSheet {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  types: { id: RequestTypeId; href: string }[];
+  onPick: (href: string) => void;
+}
+
+function LiveRequestPicker({ live }: { live: LiveRequestSheet }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const mine = REQUEST_TYPES.filter((t) => live.types.some((x) => x.id === t.id));
+  const matches = mine.filter(typeMatches(q));
+  const pick = (id: RequestTypeId) => {
+    live.onOpenChange(false);
+    live.onPick(live.types.find((x) => x.id === id)!.href);
+  };
+  return (
+    <Drawer open={live.open} onOpenChange={live.onOpenChange} title="What do you want to request?" size="lg" description="Pick a type. Its form opens.">
+      <div className="yx-plt-stack">
+        {mine.length > 0 && <TextField value={query} onChange={setQuery} aria-label="Search request types" placeholder="Search: leave, ticket, letter…" />}
+        {mine.length === 0 ? (
+          <EmptyState compact title="Nothing to request here yet." description="Your company has not set up requests you can raise. Ask HR from Help." />
+        ) : matches.length === 0 ? (
+          <EmptyState compact title="No request type matches." description="Try another word, or ask HR from Help." />
+        ) : (
+          <TypeGroups types={matches} onPick={pick} />
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
 // PLT-05 · Request sheet (desk: drawer over Home). Send lives in the drawer footer, always visible.
-export function RequestSheetScreen(props: RequestSheetProps) {
+export function RequestSheetScreen(props: RequestSheetProps & { live?: LiveRequestSheet }) {
+  if (props.live) return <LiveRequestPicker live={props.live} />;
+  return <DesignRequestSheet {...props} />;
+}
+
+function DesignRequestSheet(props: RequestSheetProps) {
   const [open, setOpen] = useState(true);
   const { title, changeType, body, footer } = useRequestSheet(props);
   return (

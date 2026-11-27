@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { AccessStateBody, RoleHomeScreen, SearchResultsScreen, explainedHits, paletteFor, searchableFor, type SearchHit } from './shell-home';
+import userEvent from '@testing-library/user-event';
+import { AccessStateBody, RoleHomeScreen, layoutIds, nextLayout, SearchResultsScreen, explainedHits, paletteFor, searchableFor, type SearchHit } from './shell-home';
 import { ToastProvider } from '../../components/notify';
 
 describe('Role home loading (founder review 30 Sep 2026)', () => {
@@ -338,5 +339,42 @@ describe('Needs your action on Home: one-click Approve and richer rows (PLT-02, 
     expect(screen.getByText('Not approved')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeInTheDocument();
     expect(screen.queryByText(/^Approved:/)).toBeNull();
+  });
+});
+
+describe('Edit home on the live Home (T2-F 79, answer 2884)', () => {
+  const live = {
+    firstName: 'Divya', company: 'Kaveri Foods', today: new Date(2026, 10, 27, 9, 0), approvalsHref: '/yx/approvals',
+    tasks: [{ text: 'Complete POSH refresher', href: '/yx/learning' }],
+    coming: [{ id: 'h1', kind: 'holiday' as const, name: 'Christmas', text: '25 Dec' }],
+  };
+  const titles = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent).filter((t) => t === 'My tasks' || t === 'Coming up');
+
+  it('layout rules: saved order first, new widgets join at the end unless removed; widgets not loaded keep their place', () => {
+    expect(layoutIds(['a', 'b', 'c'], null)).toEqual(['a', 'b', 'c']);
+    expect(layoutIds(['a', 'b', 'c', 'd'], { order: ['c', 'a'], hidden: ['b'] })).toEqual(['c', 'a', 'd']);
+    expect(nextLayout(['a', 'b'], ['b'], { order: ['b', 'x'], hidden: ['y'] })).toEqual({ order: ['b', 'x'], hidden: ['a', 'y'] });
+  });
+
+  it('no Edit home unless the company lets the role personalise', () => {
+    render(<RoleHomeScreen persona="employee" data={{ actions: [] }} live={live} />);
+    expect(screen.queryByRole('button', { name: 'Edit home' })).toBeNull();
+  });
+
+  it("follows the person's order; removing a widget saves it as hidden; Reset to company layout forgets theirs", async () => {
+    const ue = userEvent.setup({ pointerEventsCheck: 0 });
+    const onChange = vi.fn();
+    const onReset = vi.fn();
+    render(<ToastProvider><RoleHomeScreen persona="employee" data={{ actions: [] }} live={{ ...live, layout: { order: ['coming', 'tasks'], hidden: [], sizes: {}, onChange, onReset } }} /></ToastProvider>);
+    expect(titles()).toEqual(['Coming up', 'My tasks']);
+    await ue.click(screen.getByRole('button', { name: 'Edit home' }));
+    // Needs your action is pinned: it has no options menu at all.
+    expect(screen.queryByRole('button', { name: 'Options for Needs your action' })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Options for My tasks' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Remove widget' }));
+    expect(onChange).toHaveBeenLastCalledWith({ order: ['coming'], hidden: ['tasks'], sizes: {} });
+    await ue.click(screen.getByRole('button', { name: 'Reset to company layout' }));
+    expect(onReset).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });

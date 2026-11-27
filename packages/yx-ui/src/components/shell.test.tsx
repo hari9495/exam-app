@@ -13,6 +13,7 @@ import {
   PanelLink,
   RAIL_ITEMS,
   SideRail,
+  TopBar,
   Tabs,
   TabsContent,
   TabsList,
@@ -86,6 +87,28 @@ describe('SideRail', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus();
     await u.keyboard('{ArrowUp}');
     expect(screen.getByRole('button', { name: 'Time' })).toHaveFocus();
+  });
+});
+
+describe('SideRail last used (T2-F 80)', () => {
+  const items = RAIL_ITEMS.filter((i) => ['home', 'time', 'settings'].includes(i.id));
+  it('one slot under the areas, before the pinned Settings, opening the last page used there', async () => {
+    const u = userEvent.setup();
+    render(<SideRail items={items} activeId="time" lastUsed={{ ...RAIL_ITEMS.find((i) => i.id === 'hire')!, href: '/yx/hiring/internal-jobs' }} />);
+    const slot = screen.getByRole('link', { name: 'Last used: Hire' });
+    expect(slot).toHaveAttribute('href', '/yx/hiring/internal-jobs');
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Home', 'Time', 'Hire', 'Settings']);
+    screen.getByRole('button', { name: 'Time' }).focus();
+    await u.keyboard('{ArrowDown}');
+    expect(slot).toHaveFocus();
+  });
+  it('nothing until one is used, and never a copy of an area already on the rail', () => {
+    const { unmount } = render(<SideRail items={items} activeId="time" />);
+    expect(screen.queryByRole('link', { name: /^Last used/ })).toBeNull();
+    unmount();
+    render(<SideRail items={items} activeId="time" lastUsed={RAIL_ITEMS.find((i) => i.id === 'time')} />);
+    expect(screen.queryByRole('button', { name: /^Last used/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Time' })).toHaveLength(1);
   });
 });
 
@@ -345,5 +368,17 @@ describe('CommandPalette (founder review 30 Sep 2026)', () => {
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'field' }), { key: 'n' });
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'field' }), { key: 'l' });
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TopBar + New (T2-F 81)', () => {
+  it('shows New only with a handler, and it opens the picker', () => {
+    const onNew = vi.fn();
+    const { unmount } = render(<TopBar onNew={onNew} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    expect(onNew).toHaveBeenCalledTimes(1);
+    unmount();
+    render(<TopBar />);
+    expect(screen.queryByRole('button', { name: 'New' })).toBeNull();
   });
 });

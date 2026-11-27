@@ -18,7 +18,8 @@ import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, Tab
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { useToast } from '../../components/notify';
-import { AllocationDrawer, MilestoneDrawer, ProjectDrawer, TaskDrawer } from './projects-drawers';
+import { AllocationDrawer, MilestoneDrawer, ProjectDrawer, ProjectSettingsPanel, TaskAssigneesDrawer, TaskDrawer } from './projects-drawers';
+import { KanbanBoard } from '../../components/kanban';
 import { toAllocation, toMilestone, toProject, toTask, type AllocationInput, type LiveLoad, type LiveProjectDetail, type LiveProjectRow, type MilestoneInput, type ProjectChoices, type ProjectInput, type ProjectStatus, type TaskInput } from './projects-live';
 import { PhoneFrame } from '../_kit/frames';
 import { bulkEligible, burnState, costVisible, marginPct, milestoneSummary, suppressGroup, tmBilling, utilisation, type Milestone, type RateCardEntry, type WipLine } from './projects-logic';
@@ -210,6 +211,18 @@ export interface LiveProjectWorkspace {
   onChangeTask: (id: string, input: TaskInput) => Promise<void>;
   onAddMilestone: (input: MilestoneInput) => Promise<void>;
   onCompleteMilestone: (id: string, version: number) => Promise<void>;
+  /** T2-D 56 (2865): move a task on the board (by drag or the Move to menu). */
+  onMoveTask?: (id: string, stage: string, version: number) => Promise<void>;
+  /** T2-D 56 (2866): who a task is assigned to. */
+  onAssignTask?: (id: string, employeeIds: string[], version: number) => Promise<void>;
+  /** Stories: the Tasks tab as a board. */
+  defaultTaskView?: 'list' | 'board';
+  /** T2-D 57 (2867, 2868): GET /projects/:id/glance, actions pending (the PM only) and who is away (absent: no cards). */
+  glance?: LiveProjectGlance | null;
+  /** Opens a link of an action pending (an app path). */
+  onOpenLink?: (href: string) => void;
+  /** T2-D 58 and 59 (2869, 2870): saves the project's own settings (with the project's version). */
+  onSaveSettings?: (input: import('./projects-live').ProjectOwnSettingsInput, version: number) => Promise<void>;
   /** Answer 1412: GET /projects/:id/cost (absent: no cost shown; finance or the manager with enough people only). */
   cost?: { finance: boolean; hiddenMonths: number; provisional: boolean; total: string; months: { month: string; cost: string; expenses: string; basis: 'provisional' | 'final'; restatedFrom: string | null }[] } | null;
   /** Answer 1419: GET /projects/:id/expenses (absent: no Expenses tab). */
@@ -223,6 +236,71 @@ export interface LiveProjectWorkspace {
   onTimesheetWeek?: (week: string) => void;
   /** Stories: a drawer open. */
   defaultDrawer?: 'edit' | 'allocate' | 'task' | 'milestone';
+}
+
+/** T2-D 57: GET /projects/:id/glance. `pending` only for the project manager; `away` for the manager and the team. */
+export interface LiveProjectGlance {
+  pending: { kind: PendingKind; count: number; people?: string[]; href: string }[] | null;
+  /** Answer 2868: away only, never the leave type. */
+  away: { from: string; to: string; people: { employeeId: string; person: string; days: string[] }[] } | null;
+}
+type PendingKind = 'approvals' | 'not_sent' | 'requests' | 'billing';
+const PENDING_TEXT: Record<PendingKind, (n: number) => string> = {
+  approvals: (n) => `${n} ${n === 1 ? 'week is' : 'weeks are'} waiting for your approval`,
+  not_sent: (n) => `${n} ${n === 1 ? 'person has' : 'people have'} not sent last week`,
+  requests: (n) => `${n} resource ${n === 1 ? 'request is' : 'requests are'} waiting`,
+  billing: (n) => `${n} ${n === 1 ? 'item is' : 'items are'} ready to invoice`,
+};
+const shortDay = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+/** T2-D 57 (answers 2867, 2868): the project manager's actions pending, and who on the project is away in the next 14 days. */
+export function ProjectGlanceCards({ glance, onOpenLink }: { glance: LiveProjectGlance; onOpenLink?: (href: string) => void }) {
+  const pending = glance.pending?.filter((x) => x.count > 0) ?? null;
+  return (
+    <>
+      {pending && (
+        <Card title="Actions pending">
+          {pending.length === 0 ? (
+            <EmptyState compact title="Nothing waiting for you." description="Weeks to approve, weeks not sent, resource requests and work ready to invoice show here." />
+          ) : (
+            <ul className="yx-hire-list">
+              {pending.map((x) => (
+                <li key={x.kind} className="yx-hire-list__item">
+                  <div className="yx-hire-list__main">
+                    <Text weight="medium">{PENDING_TEXT[x.kind](x.count)}</Text>
+                    {x.people?.length ? <Text size="sm" tone="secondary">{x.people.join(', ')}</Text> : null}
+                  </div>
+                  {onOpenLink && (
+                    <Button size="sm" onClick={() => onOpenLink(x.href)}>
+                      Open
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+      {glance.away && (
+        <Card title="Away in the next 14 days">
+          {glance.away.people.length === 0 ? (
+            <EmptyState compact title="No one on the project is away." description={`From ${shortDay(glance.away.from)} to ${shortDay(glance.away.to)}.`} />
+          ) : (
+            <ul className="yx-hire-list">
+              {glance.away.people.map((x) => (
+                <li key={x.employeeId} className="yx-hire-list__item">
+                  <div className="yx-hire-list__main">
+                    <Text weight="medium">{x.person}</Text>
+                    <Text size="sm" tone="secondary">Away {x.days.map(shortDay).join(', ')}</Text>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+    </>
+  );
 }
 
 /** GET /projects/billing/project/:id (P-6): one project's unbilled work, waiting hours, billed to date and invoices. */
@@ -262,7 +340,7 @@ export interface ProjectWorkspaceProps {
   expenses?: ProjectExpense[];
   activity?: TimelineItem[];
   today?: Date;
-  defaultTab?: 'overview' | 'team' | 'tasks' | 'timesheets' | 'billing' | 'expenses';
+  defaultTab?: 'overview' | 'team' | 'tasks' | 'timesheets' | 'billing' | 'expenses' | 'settings';
   live?: LiveProjectWorkspace;
 }
 
@@ -275,7 +353,8 @@ const STATUS_MOVES: Record<ProjectStatus, { to: ProjectStatus; label: string; de
 
 // PRJ-01 (workspace)
 export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPersona = 'pm', allocations: drawnAllocations = [], tasks: drawnTasks = [], milestones: drawnMilestones = [], wip = [], rateCard = [], expenses = [], activity = [], today = new Date(), defaultTab = 'overview', live }: ProjectWorkspaceProps) {
-  const [drawer, setDrawer] = useState<{ kind: 'edit' | 'allocate' | 'task' | 'milestone'; id?: string } | null>(live?.defaultDrawer ? { kind: live.defaultDrawer } : null);
+  const [drawer, setDrawer] = useState<{ kind: 'edit' | 'allocate' | 'task' | 'milestone' | 'assign'; id?: string } | null>(live?.defaultDrawer ? { kind: live.defaultDrawer } : null);
+  const [taskView, setTaskView] = useState<'list' | 'board'>(live?.defaultTaskView ?? 'list');
   const [confirm, setConfirm] = useState<{ title: string; consequence: string; label: string; destructive?: boolean; action: () => Promise<void> } | null>(null);
   const [drawnRange, setDrawnRange] = useState<'week' | 'month' | 'all'>('week');
   const { toast } = useToast();
@@ -405,9 +484,26 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
                 Expenses
               </TabsTrigger>
             )}
+            {live && d!.settings && live.onSaveSettings && <TabsTrigger value="settings">Settings</TabsTrigger>}
           </TabsList>
+          {live && d!.settings && live.onSaveSettings && (
+            <TabsContent value="settings">
+              <ProjectSettingsPanel
+                key={d!.project.version}
+                settings={d!.settings}
+                team={d!.allocations}
+                people={live.choices?.managers ?? []}
+                readOnly={closed}
+                onSave={async (input) => {
+                  await live.onSaveSettings!(input, d!.project.version);
+                  toast({ tone: 'success', title: 'Project settings saved' });
+                }}
+              />
+            </TabsContent>
+          )}
           <TabsContent value="overview">
             <div className="yx-hire-stack">
+              {live?.glance && <ProjectGlanceCards glance={live.glance} onOpenLink={live.onOpenLink} />}
               {live && !p.budgetHours ? (
                 <InlineAlert tone="info" title="No hours budget yet">
                   Burn alerts need an hours budget. {d!.can.edit ? 'Add it in Edit details and budgets.' : 'Ask someone who manages projects to add it.'}
@@ -502,13 +598,36 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
           </TabsContent>
           <TabsContent value="tasks">
             <div className="yx-hire-stack">
-              {live && d!.can.run && !closed && (
-                <div>
-                  <Button icon={Plus} onClick={() => setDrawer({ kind: 'task' })}>
-                    Add task
-                  </Button>
+              {live && (d!.stages || (d!.can.run && !closed)) && (
+                <div className="yx-hire-actions">
+                  {d!.stages && <Segment label="Show tasks as" value={taskView} onChange={setTaskView} options={[{ value: 'list', label: 'List' }, { value: 'board', label: 'Board' }]} />}
+                  {d!.can.run && !closed && (
+                    <Button icon={Plus} onClick={() => setDrawer({ kind: 'task' })}>
+                      Add task
+                    </Button>
+                  )}
                 </div>
               )}
+              {/* T2-D 56 (answers 2865, 2866): the board of tasks in use by stage; the project manager moves them. */}
+              {live && d!.stages && taskView === 'board' ? (
+                <KanbanBoard
+                  aria-label={`Tasks of ${p.code} by stage`}
+                  noun="task"
+                  readOnly={!(d!.can.run && !closed && live.onMoveTask)}
+                  columns={d!.stages.map((s) => ({
+                    id: s.id,
+                    title: s.label,
+                    emptyText: 'No tasks',
+                    cards: d!.tasks
+                      .filter((t) => t.active && (t.stage ?? 'todo') === s.id)
+                      .map((t) => ({ id: t.id, name: t.name, facts: [t.assignees?.length ? t.assignees.map((a) => a.name).join(', ') : 'Not assigned', t.budgetHours ? `${t.usedHours} of ${t.budgetHours} h` : `${t.usedHours} h booked`] as [string, string] })),
+                  }))}
+                  onMove={(id, _from, to) => {
+                    const t = taskOf(id)!;
+                    void run(() => live.onMoveTask!(id, to, t.version ?? 1), `${t.name} moved to ${d!.stages!.find((s) => s.id === to)?.label ?? to}`)().catch((e: unknown) => toast({ tone: 'error', title: e instanceof Error ? e.message : 'The task did not move.' }));
+                  }}
+                />
+              ) : (
               <DataTable
                 label="Tasks"
                 rows={tasks}
@@ -520,10 +639,26 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
                   { key: 'used', header: 'Used hours', type: 'number', value: (r) => r.usedHours, total: 'sum' },
                   { key: 'burn', header: 'Burn', value: (r) => (r.budgetHours ? r.usedHours / r.budgetHours : 0), width: 160, render: (r) => (r.budgetHours ? <Meter value={r.usedHours} max={r.budgetHours} label={`${r.name} burn`} /> : <Text tone="muted">No budget</Text>) },
                   ...(live ? [{ key: 'active', header: 'In use', type: 'status', value: (r: Task) => (taskOf(r.id)?.active === false ? 'Not in use' : 'In use'), statusTone: (v: unknown) => (v === 'In use' ? 'success' : 'neutral') } as TableColumn<Task>] : []),
+                  ...(live && d!.stages
+                    ? ([
+                        { key: 'stage', header: 'Stage', value: (r: Task) => d!.stages!.find((s) => s.id === (taskOf(r.id)?.stage ?? 'todo'))?.label ?? 'To do' },
+                        { key: 'assignees', header: 'Assigned to', value: (r: Task) => taskOf(r.id)?.assignees?.map((a) => a.name).join(', ') || 'Not assigned' },
+                      ] as TableColumn<Task>[])
+                    : []),
                 ]}
-                rowActions={live && d!.can.run && !closed ? (r) => <MenuItem onSelect={() => setDrawer({ kind: 'task', id: r.id })}>Change task</MenuItem> : undefined}
+                rowActions={
+                  live && d!.can.run && !closed
+                    ? (r) => (
+                        <>
+                          <MenuItem onSelect={() => setDrawer({ kind: 'task', id: r.id })}>Change task</MenuItem>
+                          {live.onAssignTask && <MenuItem onSelect={() => setDrawer({ kind: 'assign', id: r.id })}>Assign people</MenuItem>}
+                        </>
+                      )
+                    : undefined
+                }
                 empty={live ? <EmptyState title="No tasks yet." description="People book their hours to a task (an activity on their timesheet)." /> : undefined}
               />
+              )}
               {(milestones.length > 0 || (live && p.model === 'Fixed fee')) && (
                 <Card
                   title="Milestones"
@@ -784,6 +919,18 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
           }}
         />
       )}
+      {live && d && drawer?.kind === 'assign' && taskOf(drawer.id) && (
+        <TaskAssigneesDrawer
+          task={{ name: taskOf(drawer.id)!.name, assignees: (taskOf(drawer.id)!.assignees ?? []).map((a) => a.employeeId) }}
+          team={d.allocations}
+          onClose={() => setDrawer(null)}
+          onSave={async (ids) => {
+            const t = taskOf(drawer.id)!;
+            await live.onAssignTask!(t.id, ids, t.version ?? 1);
+            toast({ tone: 'success', title: `${t.name}: assigned` });
+          }}
+        />
+      )}
       {live && d && drawer?.kind === 'milestone' && (
         <MilestoneDrawer
           onClose={() => setDrawer(null)}
@@ -812,7 +959,7 @@ export interface LiveApprovalsData {
     week: string;
     /** 1408: the client who approves this project's hours after the PM (null: none). */
     clientApproval: string | null;
-    items: { id: string; timesheetId: string; /** Batch D B1: the person (By person regroups these same lines). */ employeeId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; /** B1: hours Monday to Sunday. */ days?: number[]; version: number }[] }[];
+    items: { id: string; timesheetId: string; /** Batch D B1: the person (By person regroups these same lines). */ employeeId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; /** T2-D 59: waiting for me as the second approver. */ second?: { approvedHours: number; bookedHours: number } | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; /** B1: hours Monday to Sunday. */ days?: number[]; version: number }[] }[];
   }[];
 }
 export type LiveLineDecision = { lineId: string; status: 'approved' | 'reduced' | 'rejected'; hours?: number; reason?: string; version: number };
@@ -1050,6 +1197,11 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
                   {g.items.map((i) => (
                     <div key={i.id} className="yx-hire-stack">
                       {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
+                      {i.second && (
+                        <InlineAlert tone="info" title="Second approval">
+                          The project manager approved {i.second.approvedHours} h of the {i.second.bookedHours} h booked. You decide after them.
+                        </InlineAlert>
+                      )}
                       {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation{by === 'person' ? ` on ${i.code}` : ''}. Approve it on its own; it is never approved in bulk.</InlineAlert>}
                       <TimesheetApprovalCard
                         employee={{ name: i.employee, secondary: `${by === 'person' ? `${i.code} · ` : ''}${i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project'}` }}

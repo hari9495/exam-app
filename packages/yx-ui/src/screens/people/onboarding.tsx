@@ -71,7 +71,7 @@ export const BOARD: KanbanColumn[] = [
 // PPL-11
 const LOCATIONS = ['Bengaluru head office', 'Chennai office', 'Hosur plant'];
 const OWNERS: Owner[] = ['HR', 'IT', 'Manager', 'New hire'];
-const isLate = (c: KanbanCard, col: KanbanColumn) => Boolean(c.next?.overdue || (col.slaDays !== undefined && c.daysInStage > col.slaDays));
+const isLate = (c: KanbanCard, col: KanbanColumn) => Boolean(c.next?.overdue || (col.slaDays !== undefined && (c.daysInStage ?? 0) > col.slaDays));
 
 /** The live app's board (design audit step 3). Stages follow the dates, so cards are not moved by hand. */
 export interface LiveBoard {

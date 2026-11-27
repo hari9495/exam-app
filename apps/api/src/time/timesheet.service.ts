@@ -16,6 +16,7 @@ import { asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, myEmploye
 import { addDays } from './time-maths';
 import { settingFor } from '../people/probation';
 import { mondayOf } from './time-rules';
+import { doneTaskGrowth } from '../projects/task-stages';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 
@@ -67,6 +68,7 @@ export class TimesheetService implements OnModuleInit {
       const sheet = await tx.timesheet.findFirst({ where: { organizationId: org, employeeId: me, weekStart: asDate(week) } });
       const lines = sheet ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: sheet.id }, orderBy: { id: 'asc' } }) : [];
       const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, OR: [{ active: true }, { id: { in: lines.map((l) => l.projectId) } }] }, orderBy: { code: 'asc' } });
+      const myTasks = await tx.projectTask.findMany({ where: { organizationId: org, active: true, assigneeEmployeeIds: { has: me } }, select: { projectId: true, name: true } });
       const to = addDays(week, 6);
       const hol = (await holidaysFor(tx, org, f.locationId, week, to, me)).map;
       const leave = await leaveDays(tx, org, me, week, to);
@@ -80,7 +82,12 @@ export class TimesheetService implements OnModuleInit {
         sheet: sheet ? { id: sheet.id, status: sheet.status, totalMinutes: sheet.totalMinutes, submittedAt: sheet.submittedAt, decidedAt: sheet.decidedAt } : null,
         // Projects P-2 (1406): each line's decision with its reason, and the hours approved.
         lines: lines.map((l) => ({ id: l.id, projectId: l.projectId, activity: l.activity, billable: l.billable, minutes: l.minutes, comments: sevenComments(l.dayComments), decision: l.status, reason: l.reason, approvedMinutes: l.status ? lineApproved(l) : null, unallocated: l.unallocated, clientStatus: l.clientStatus, clientNote: l.clientNote })),
-        projects: projects.map((p) => ({ id: p.id, code: p.code, name: p.name, billable: p.billable, activities: p.activities, active: p.active })),
+        // T2-D 56 (answer 2866): the tasks assigned to me come first in the picker (anyone allocated may book to any task).
+        projects: projects.map((p) => {
+          const mine = myTasks.filter((t) => t.projectId === p.id && p.activities.includes(t.name)).map((t) => t.name);
+          // T2-D 58 (2869): a project's own "billable by default" for new rows.
+          return { id: p.id, code: p.code, name: p.name, billable: p.billableDefault ?? p.billable, activities: [...mine, ...p.activities.filter((a) => !mine.includes(a))], myTasks: mine, active: p.active };
+        }),
         days: Array.from({ length: 7 }, (_, k) => {
           const on = addDays(week, k);
           return { on, holiday: hol.get(on)?.name ?? null, leave: leave.get(on) ?? null, leaveRequested: !leave.has(on) && asked.has(on), locked: locked.has(on) };
@@ -369,10 +376,18 @@ export class TimesheetService implements OnModuleInit {
         if (l.activity && p.activities.length && !p.activities.includes(l.activity)) throw new BadRequestException(`Line ${i + 1}: choose one of the project's activities.`);
       }
       // Projects P-1 (answer 1404): with Projects on, only people allocated to a project book time to it, on the days
-      // of their (confirmed) allocation; a company may switch this off (projects.booking.allocated_only).
-      if (lines.length && (await settingFor(tx, c, 'projects.enabled', { legalEntityId: '' })) === 'on' && (await settingFor(tx, c, 'projects.booking.allocated_only', { legalEntityId: '' })) === 'on') {
+      // of their (confirmed) allocation; a company may switch this off (projects.booking.allocated_only). T2-D 58
+      // (2869): a project may set its own rule instead: everyone allocated, or only the people it names.
+      if (lines.length && (await settingFor(tx, c, 'projects.enabled', { legalEntityId: '' })) === 'on') {
+        const companyOn = (await settingFor(tx, c, 'projects.booking.allocated_only', { legalEntityId: '' })) === 'on';
         const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, employeeId: me, tentative: false, projectId: { in: lines.map((l) => l.projectId) }, fromOn: { lte: asDate(addDays(week, 6)) }, OR: [{ toOn: null }, { toOn: { gte: asDate(week) } }] } });
         for (const [i, l] of lines.entries()) {
+          const p = projects.get(l.projectId)!;
+          if (p.bookingRule === 'named') {
+            if (!p.bookingEmployeeIds.includes(me) && l.minutes.some((m) => m > 0)) throw new BadRequestException(`Line ${i + 1}: only the people ${p.code} names book time to it. Ask the project manager.`);
+            continue;
+          }
+          if (p.bookingRule !== 'allocated' && !companyOn) continue;
           for (let k = 0; k < 7; k++) {
             if (!l.minutes[k]) continue;
             const d = addDays(week, k);
@@ -380,6 +395,18 @@ export class TimesheetService implements OnModuleInit {
               throw new BadRequestException(`Line ${i + 1}: you are not allocated to ${projects.get(l.projectId)!.code} on ${fmt(d)}. Ask the project manager to add you to the team.`);
             }
           }
+        }
+      }
+      // T2-D 56 (answer 2865): a task in Done takes no new hours (hours already booked to it stay).
+      const done = await tx.projectTask.findMany({ where: { organizationId: org, projectId: { in: lines.map((l) => l.projectId) }, stage: 'done' }, select: { projectId: true, name: true } });
+      const onDone = lines.filter((l) => l.activity && done.some((t) => t.projectId === l.projectId && t.name === l.activity));
+      if (onDone.length) {
+        const prev = await tx.timesheet.findFirst({ where: { organizationId: org, employeeId: me, weekStart: asDate(week) }, select: { id: true } });
+        const was = prev ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: prev.id }, select: { projectId: true, activity: true, minutes: true } }) : [];
+        const daysOf = (xs: { projectId: string; activity?: string | null; minutes: number[] }[], pid: string, act: string) => Array.from({ length: 7 }, (_, k) => xs.filter((x) => x.projectId === pid && x.activity === act).reduce((t, x) => t + (x.minutes[k] ?? 0), 0));
+        for (const l of onDone) {
+          const grew = doneTaskGrowth(daysOf(was, l.projectId, l.activity!), daysOf(lines, l.projectId, l.activity!));
+          if (grew.length) throw new BadRequestException(`${projects.get(l.projectId)!.code} · ${l.activity} is done, so it takes no new hours (${fmt(addDays(week, grew[0]!))}). Ask the project manager to move it back if work goes on.`);
         }
       }
       const perDay = Array.from({ length: 7 }, (_, k) => lines.reduce((s, l) => s + l.minutes[k], 0));
@@ -420,7 +447,8 @@ export class TimesheetService implements OnModuleInit {
       const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, id: { in: lines.map((l) => l.projectId) } } });
       // Answer 1787: every day with hours has its comment of N words before the week goes (Save draft never asks).
       const rule = await TimesheetService.noteRule(tx, c);
-      const short = lines.flatMap((l) => dayCommentProblems(rule, l.minutes, l.dayComments).map((x) => `${projects.find((p) => p.id === l.projectId)?.code ?? 'A row'}${l.activity ? ` · ${l.activity}` : ''}, ${DAY_NAMES[x.day]} ${fmt(addDays(week, x.day))}: write at least ${rule.minWords} words (${x.words} so far)`));
+      // T2-D 58 (2869): a project may require daily comments, or not, whatever the company rule.
+      const short = lines.flatMap((l) => dayCommentProblems({ ...rule, required: projects.find((p) => p.id === l.projectId)?.notesRequired ?? rule.required }, l.minutes, l.dayComments).map((x) => `${projects.find((p) => p.id === l.projectId)?.code ?? 'A row'}${l.activity ? ` · ${l.activity}` : ''}, ${DAY_NAMES[x.day]} ${fmt(addDays(week, x.day))}: write at least ${rule.minWords} words (${x.words} so far)`));
       if (short.length) throw new BadRequestException({ statusCode: 400, code: 'NOTE_TOO_SHORT', message: short.join('; ') + '.' });
       // The person never approves their own hours, even as a project's manager.
       const pms = [...new Set(projects.map((p) => p.managerUserId).filter((x): x is string => Boolean(x) && x !== c.userId))];

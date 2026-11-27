@@ -708,6 +708,30 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('arjunU', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
       await api('adminB', 'put', `/people/employees/${ids.imran}/work-phone`).send({ workPhone: '044 4012 0000' }).expect(404);
       expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.work).toMatchObject({ phone: '+914440123142' });
+      // T2-F 87 About me: the person writes it (500 at most, no approval); anyone who opens the record reads it; HR clears it with a reason.
+      const about = `/people/employees/${ids.imran}/about-me`;
+      await api('imranU', 'put', about).send({ aboutMe: 'x'.repeat(501) }).expect(400);
+      expect((await api('imranU', 'put', about).send({ aboutMe: '  Quality inspector who bakes on weekends.  ' }).expect(200)).body).toEqual({ aboutMe: 'Quality inspector who bakes on weekends.' });
+      await api('imranU', 'put', about).send({ aboutMe: 'y'.repeat(500) }).expect(200);
+      await api('imranU', 'put', about).send({ aboutMe: 'Quality inspector who bakes on weekends.' }).expect(200);
+      await api('hrAll', 'put', about).send({ aboutMe: 'Written by HR' }).expect(403);
+      await api('lakshmiU', 'put', about).send({ aboutMe: 'Written by the manager' }).expect(403);
+      await api('adminB', 'put', about).send({ aboutMe: 'Other company' }).expect(404);
+      const mgrView = (await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body;
+      expect(mgrView.aboutMe).toBe('Quality inspector who bakes on weekends.');
+      expect(mgrView.can).toMatchObject({ editAbout: false, clearAbout: false });
+      expect((await api('imranU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.can).toMatchObject({ editAbout: true, clearAbout: false });
+      expect((await api('hrAll', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.can).toMatchObject({ editAbout: false, clearAbout: true });
+      await api('hrAll', 'post', `${about}/clear`).send({ reason: '' }).expect(400);
+      await api('lakshmiU', 'post', `${about}/clear`).send({ reason: 'Not suitable' }).expect(403);
+      await api('imranU', 'post', `${about}/clear`).send({ reason: 'Not suitable' }).expect(403);
+      await api('adminB', 'post', `${about}/clear`).send({ reason: 'Not suitable' }).expect(404);
+      expect((await api('hrAll', 'post', `${about}/clear`).send({ reason: 'Has a phone number in it' }).expect(200)).body).toEqual({ aboutMe: null });
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.imran}/profile`).expect(200)).body.aboutMe).toBeNull();
+      expect((await auditRows('employee.about_me.cleared')).map((a) => a.metadata)).toEqual([{ reason: 'Has a phone number in it' }]);
+      expect(JSON.stringify(await auditRows('employee.about_me.updated'))).not.toMatch(/bakes/);
+      // Never on exports: one's own data file leaves it out.
+      await api('imranU', 'put', about).send({ aboutMe: 'Back again.' }).expect(200);
       // Activity: identity requests only for the person and identity keys; nobody outside the record.
       const mine = (await api('imranU', 'get', `/people/employees/${ids.imran}/activity`).expect(200)).body.entries as { text: string; actor: string | null }[];
       expect(mine.some((e) => e.text === 'Asked to change the passport')).toBe(true);
@@ -791,6 +815,7 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       expect(json.headers['content-disposition']).toContain('my-data.json');
       expect(json.body).toMatchObject({ company: log.company, name: expect.any(String), personal: expect.any(Object), identity: expect.any(Object), viewedBy: expect.any(Array), documents: expect.any(Array) });
       expect(json.text).not.toContain('ABCPE1234F');
+      expect(json.text).not.toContain('Back again.'); // T2-F 87: About me is never on exports
       const pdf = await api('imranU', 'get', '/people/me/data?format=pdf').buffer(true).parse((res, cb) => {
         const parts: Buffer[] = [];
         res.on('data', (c: Buffer) => parts.push(c));

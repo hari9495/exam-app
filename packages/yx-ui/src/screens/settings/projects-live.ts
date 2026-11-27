@@ -39,6 +39,8 @@ const KEY = {
   'prj.nudge_from': 'timesheet.nudge.daily_from',
   'prj.cutoff_day': 'timesheet.reminder.cutoff_day',
   'prj.reminder_time': 'timesheet.reminder.time',
+  // T2-D 56 (answer 2865): the company's own task stages.
+  'prj.task_stages': 'projects.task.extra_stages',
 } as const;
 type Field = keyof typeof KEY;
 /** Settings S-5 (answers 1326, 1461): the company settings behind 3.11, for its change history. */
@@ -60,6 +62,7 @@ export function projectSettingsPage(design: SettingsPageDef, data: ProjectSettin
     if (d.key === 'prj.enabled' || d.key === 'prj.prefill_enabled' || d.key === 'prj.bulk_within_allocation' || d.key === 'prj.expenses_projects' || d.key === 'prj.am_approval' || d.key === 'prj.note_required') return { ...base, contributedBy: undefined, availability: undefined, value: data.values[k] === 'on' };
     if (d.key === 'prj.booking_rule') return { ...base, value: BOOKING[data.values[k]!]! };
     if (d.key === 'prj.billable_default' || d.key === 'prj.small_team' || d.key === 'prj.cost_min_people' || d.key === 'prj.pay_recovery' || d.key === 'prj.note_min_words' || d.key === 'prj.nudge_from' || d.key === 'prj.cutoff_day' || d.key === 'prj.reminder_time') return { ...base, value: data.values[k]! };
+    if (d.key === 'prj.task_stages') return { ...base, value: data.values[k] ?? '' };
     if (d.key === 'prj.utilisation_target') return { ...base, kind: 'select', options: data.choices[k] ?? [], optionLabels: Object.fromEntries((data.choices[k] ?? []).map((o) => [o, `${o}%`])), value: data.values[k]! };
     const options = data.choices[k] ?? [];
     return { ...base, kind: 'select', options, optionLabels: Object.fromEntries(options.map((o) => [o, `${o}% of the hours budget`])), unit: undefined, min: undefined, max: undefined, value: data.values[k]! };

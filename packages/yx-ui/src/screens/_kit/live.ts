@@ -2,13 +2,13 @@
 export { DesktopFrame, SCREEN_RAIL, type AreaId, type DesktopFrameProps, type LiveFrame, type PanelItem, type PanelSection } from './frames';
 export { DirectoryPhone, DirectoryScreen, type DirectoryMe, type DirectorySavedView, type DirectoryViewState, type LiveDirectory, type WorkforceFilter } from '../people/directory';
 export type { WorkforceRow } from '../people/people-data';
-export { PALETTE_PLACEHOLDER, RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '../platform-a/shell-home';
+export { PALETTE_PLACEHOLDER, RoleHomeScreen, type HomeLayout, type LiveHome, type RoleHomeScreenProps, layoutIds, nextLayout } from '../platform-a/shell-home';
 // The Home panel's pages (design audit step 2): notifications, search, my requests, delegation, notification preferences.
-export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, ApprovalsInboxScreen, type LiveInbox, type LiveMyRequests, type LiveDelegation, type LiveApprovals, type NotificationsInboxProps } from '../platform-a/inbox';
+export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, ApprovalsInboxScreen, RequestSheetScreen, type LiveRequestSheet, type RequestTypeId, type LiveInbox, type LiveMyRequests, type LiveDelegation, type LiveApprovals, type NotificationsInboxProps } from '../platform-a/inbox';
 export type { ApprovalRow } from '../platform-a/platform-data';
 export type { ApprovalStep } from '../../components/timeline';
 export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../platform-a/shell-home';
-export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps } from '../platform-a/preferences';
+export { NotificationPreferencesScreen, type DigestMode, type NotificationPreference, type NotificationPreferencesProps, type PushPreferences } from '../platform-a/preferences';
 export type { MyRequest, NotifCategory, PlatformNotification } from '../platform-a/platform-data';
 // People › person record (design audit step 3): PPL-03 with the live record.
 // PPL-36 / PPL-37: possible same person, merge and unmerge.
@@ -91,7 +91,7 @@ export { UnionRegister, type LiveUnionRegister } from '../people/relations';
 export { RestructureWizard } from '../people/changes';
 export { MassUpdateDrawer, PositionRecordScreen, PositionsScreen, PositionsSwitchOnScreen, SeatChangeDrawer, seatStatusBadge, type SeatChangeInput, type SeatList, type SeatOptions, type SeatRecord, type SeatRow, type SeatValues, type SwitchOnData } from '../people/positions';
 export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
-export { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
+export { AboutMeDialog, ClearAboutMeDialog, AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
 export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from '../people/exits';
 export { SetupHubScreen, type LiveSetupHub, type ModuleCard, type SetupHubProps } from '../platform-a/setup-admin';
 // Learning (the core): My learning and catalogue, the player, courses and the builder, assignment rules, compliance, the team.
@@ -152,3 +152,7 @@ export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } fro
 // G4 (2690-2692): scheduled report emails and the export log (ANL-08).
 export { SchedulesScreen } from '../proctoring/analytics';
 export type { LiveExportRow, LiveReportSchedules, LiveScheduleRow, ScheduleFrequency } from '../proctoring/report-schedules-live';
+// T2-E 51 (answer 2874): Home cards for a window that is closing.
+export { HomeReminderCards, dismissedToday, dismissForToday, type HomeReminder } from '../platform-a/home-reminders';
+// T2-F 82 (answer 2887): the stub an in-app moved page shows for 6 months.
+export { MovedPageState } from '../settings/help';

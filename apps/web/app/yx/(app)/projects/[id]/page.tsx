@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ProjectWorkspaceScreen, type LiveProjectDetail, type LiveProjectWorkspace, type LiveTimesheetRow, type ProjectChoices } from '@yukthix/ui/hiring';
+import { ProjectWorkspaceScreen, type LiveProjectGlance, type LiveProjectDetail, type LiveProjectWorkspace, type LiveTimesheetRow, type ProjectChoices } from '@yukthix/ui/hiring';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { useProjects, useProjectsWrite } from '../../../../../lib/yx-projects';
 
@@ -30,6 +30,8 @@ export default function YxProjectPage() {
   const cost = useProjects<NonNullable<LiveProjectWorkspace['cost']>>(detail.data && (can?.finance || can?.run) ? `${p}/cost` : null);
   const expenses = useProjects<NonNullable<LiveProjectWorkspace['expenses']>>(detail.data ? `${p}/expenses` : null);
   const ts = useProjects<{ week: string; rows: LiveTimesheetRow[] }>(detail.data ? `${p}/timesheets?week=${week}` : null);
+  // T2-D 57 (answers 2867, 2868): actions pending (the manager) and who on the project is away (the manager and the team).
+  const glance = useProjects<LiveProjectGlance>(detail.data ? `${p}/glance` : null);
   // P-6: the Billing tab for Projects finance and account managers (the API checks it again).
   const router = useRouter();
   const perms = useYxPermissions();
@@ -53,10 +55,17 @@ export default function YxProjectPage() {
         onEndAllocation: async (aid, version) => void (await write('POST', `${p}/allocations/${encodeURIComponent(aid)}/end`, { version })),
         onAddTask: async (input) => void (await write('POST', `${p}/tasks`, input)),
         onChangeTask: async (tid, input) => void (await write('PUT', `${p}/tasks/${encodeURIComponent(tid)}`, input)),
+        // T2-D 56 (answers 2865, 2866): the tasks board and who a task is assigned to.
+        onMoveTask: async (tid, stage, version) => void (await write('POST', `${p}/tasks/${encodeURIComponent(tid)}/stage`, { stage, version })),
+        onAssignTask: async (tid, employeeIds, version) => void (await write('PUT', `${p}/tasks/${encodeURIComponent(tid)}/assignees`, { employeeIds, version })),
         onAddMilestone: async (input) => void (await write('POST', `${p}/milestones`, input)),
         cost: cost.isError || !(can?.finance || can?.run) ? undefined : (cost.data ?? null),
         expenses: expenses.isError ? undefined : (expenses.data ?? null),
         timesheets: ts.data ?? null,
+        glance: glance.data ?? null,
+        onOpenLink: (href) => router.push(href),
+        // T2-D 58 and 59 (answers 2869, 2870): the project's own settings and its second approver.
+        onSaveSettings: async (input, version) => void (await write('PUT', `${p}/settings`, { ...input, version })),
         billing: !mayBill || billing.isError ? undefined : (billing.data ?? null),
         onOpenInvoice: (iid) => router.push(`/yx/staffing/invoices/${encodeURIComponent(iid)}`),
         onTimesheetWeek: setWeek,

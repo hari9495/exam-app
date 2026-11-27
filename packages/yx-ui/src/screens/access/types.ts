@@ -154,12 +154,14 @@ export interface ProfileView {
   identity: IdentityView | null;
   /** Internal class: the work phone. */
   work?: { phone: string | null; email?: string | null } | null;
+  /** T2-F 87: the person's own About me (null: none written); undefined from older servers. */
+  aboutMe?: string | null;
   /** Internal: the birthday as MM-DD (null when hidden or unknown). */
   birthday?: string | null;
   personId?: string;
   /** PPL-03 family, nominations and emergency contacts (Personal class; null without it). */
   family?: FamilyView | null;
-  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean; editFamily?: boolean };
+  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean; editFamily?: boolean; editAbout?: boolean; clearAbout?: boolean };
 }
 
 export interface FamilyView {

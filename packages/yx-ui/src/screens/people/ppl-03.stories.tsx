@@ -6,7 +6,7 @@ import { ContactsDrawer, FamilyDrawer } from './family';
 import { CancelDialog, ChangeDialog, PERSONAL_REQUIRED_DEFAULT, PersonalDialog } from '../access';
 import { PROFILE_SELF, REQUESTS } from '../access/data';
 import { fails, ok, pick, play, press, type } from './popup-play';
-import { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog } from './record-dialogs';
+import { AboutMeDialog, AskDocumentDialog, ClearAboutMeDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog } from './record-dialogs';
 
 const meta: Meta = { title: 'Screens/People/PPL-03 · Person record', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -100,6 +100,14 @@ const workPhone = (onSave: (p: string | null) => Promise<void> = ok) => <WorkPho
 export const WorkPhone: S = { name: 'Work phone · open (HR)', render: () => workPhone() };
 export const WorkPhoneWrong: S = { name: 'Work phone · Save pressed with a wrong number', render: () => workPhone(), play: play(type(/^Work phone/, 'abc'), press('Save')) };
 export const WorkPhoneFailed: S = { name: 'Work phone · the server refuses', render: () => workPhone(fails('You can change the work phone only for people in your scope.')), play: play(press('Save')) };
+// T2-F 87 (answer 2888): the person writes their About me; HR may clear it with a reason.
+const aboutMe = (initial: string | null = null, onSave: (t: string) => Promise<void> = ok) => <AboutMeDialog initial={initial} onSave={onSave} onClose={() => undefined} />;
+export const AboutMe: S = { name: 'About me · write (the person)', render: () => aboutMe() };
+export const AboutMeTooLong: S = { name: 'About me · Save pressed with more than 500 characters', render: () => aboutMe('Quality '.repeat(70)), play: play(press('Save')) };
+export const AboutMeFailed: S = { name: 'About me · the server refuses', render: () => aboutMe('Hello', fails('Only the person writes their About me.')), play: play(press('Save')) };
+const clearAbout = (onClear: (r: string) => Promise<void> = ok) => <ClearAboutMeDialog name="Arjun" onClear={onClear} onClose={() => undefined} />;
+export const ClearAboutMe: S = { name: 'About me · HR clears it', render: () => clearAbout() };
+export const ClearAboutMeMissing: S = { name: 'About me · Clear pressed with no reason', render: () => clearAbout(), play: play(press('Clear')) };
 const ask = (onRequest: (k: string, n: string) => Promise<void> = ok) => <AskDocumentDialog name="Arjun" types={DOC_TYPES} onRequest={onRequest} onClose={() => undefined} />;
 export const AskDocument: S = { name: 'Ask for a document · open', render: () => ask() };
 export const AskDocumentMissing: S = { name: 'Ask for a document · Send pressed with no document chosen', render: () => ask(), play: play(press('Send request')) };

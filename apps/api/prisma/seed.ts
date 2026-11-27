@@ -98,6 +98,7 @@ export const PERMISSIONS = [
   { key: 'projects.manage', description: 'Create and change projects, budgets, team, tasks and milestones' },
   { key: 'projects.finance', description: 'Projects finance: see and set fees, cost and margin' },
   { key: 'projects.resource', description: 'Resource manager: allocate people across projects' },
+  { key: 'projects.reporting', description: 'Projects reports: hours by person and by task for every project, with CSV export' },
   { key: 'platform.maintenance.view', description: 'See the planned maintenance windows (YukthiX staff)' },
   { key: 'platform.customers.success', description: 'Customer success: tenant health, churn alerts and messages to company System Admins (YukthiX staff)' },
   // Help H-4 (answer 943): What's new entries (also in the help_whats_new migration).
@@ -142,6 +143,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'projects.manage',
     'projects.finance',
     'projects.resource',
+    'projects.reporting',
     'org:manage_users',
     'org:manage_settings',
     'org:view',

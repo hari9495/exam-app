@@ -101,14 +101,12 @@ const nextConfig = {
     return [
       ...Object.entries(v2Moved).map(([source, destination]) => ({ source, destination, permanent: false })),
       ...[
-      // PPL-30 (founder 26 Oct 2026): My letters is part of Me › Documents and letters.
-      { source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false },
+      // T2-F 82 (answer 2887): YukthiX's own moved pages (e.g. /yx/me/letters, /yx/hiring/scorecards) are pages that show
+      // a moved-page stub for 6 months (lib/yx-moved.ts), not redirects here.
       // M10 AT1 / AT5 (founder D1): the jobs list and each job's workspace are YukthiX Hiring pages.
       { source: '/jobs', destination: '/yx/hiring/jobs', permanent: false },
       { source: '/v2/jobs', destination: '/yx/hiring/jobs', permanent: false },
       { source: '/v2/jobs/:jobId', destination: '/yx/hiring/jobs/:jobId', permanent: false },
-      // Founder answer 345: scorecard templates moved to Settings 6.1 Hiring; the old stand-in page is gone.
-      { source: '/yx/hiring/scorecards', destination: '/yx/settings/hiring', permanent: true },
       // HIR-13: internal jobs are the designed YukthiX page now; the older Internal Mobility screen is gone.
       { source: '/internal-mobility', destination: '/yx/hiring/internal-jobs', permanent: false },
       { source: '/v2/internal-mobility', destination: '/yx/hiring/internal-jobs', permanent: false },

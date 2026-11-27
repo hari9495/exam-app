@@ -798,7 +798,8 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             status={st}
             lines={lines}
             onLinesChange={setLines}
-            projects={d.projects.map((x) => ({ id: x.id, code: x.code, name: x.name, billable: x.billable, tasks: x.activities.map((a) => ({ id: a, name: a })) }))}
+            // T2-D 56 (answer 2866): the tasks assigned to me come first (the API orders them) and say so.
+            projects={d.projects.map((x) => ({ id: x.id, code: x.code, name: x.name, billable: x.billable, tasks: x.activities.map((a) => ({ id: a, name: x.myTasks?.includes(a) ? `${a} (assigned to you)` : a })) }))}
             onPrevWeek={() => go(isoPlus(d.week, -7))}
             // At this week the arrow stays and says why.
             onNextWeek={() => (d.week >= thisWeek ? toast({ title: 'Next week opens on Monday.' }) : go(isoPlus(d.week, 7)))}

@@ -50,6 +50,7 @@ export class TicketListsService {
     if (f.categoryIds?.length) and.push({ categoryId: { in: f.categoryIds } });
     if (f.tags?.length) and.push({ tags: { hasSome: f.tags } });
     if (f.vip !== undefined) and.push({ vip: f.vip });
+    if (f.satisfaction?.length) and.push(await this.satisfactionWhere(tx, a, f.satisfaction));
     const snoozed = await MeService.snoozedIds(tx, a.ctx.organizationId, a.userId);
     if (f.snoozed === 'only') and.push({ id: { in: snoozed } });
     else if (f.snoozed !== 'show' && snoozed.length) and.push({ id: { notIn: snoozed } });
@@ -91,6 +92,18 @@ export class TicketListsService {
       and.push({ OR: [{ id: { in: ids } }, { number: { equals: f.search, mode: 'insensitive' } }] });
     }
     return { AND: and };
+  }
+
+  /** T2-F 77 (answer 2890): tickets by their rating band; on top of visibility, so nothing new is exposed. */
+  private async satisfactionWhere(tx: Tx, a: DeskActor, bands: string[]): Promise<Prisma.SdTicketWhereInput> {
+    const range: Record<string, { gte: number; lte: number }> = { low: { gte: 1, lte: 2 }, neutral: { gte: 3, lte: 3 }, high: { gte: 4, lte: 5 } };
+    const scored = bands.filter((b) => b in range);
+    const rated = (where: Prisma.SdRatingWhereInput) => tx.sdRating.findMany({ where: { organizationId: a.ctx.organizationId, ...where }, select: { ticketId: true } }).then((r) => r.map((x) => x.ticketId));
+    const or: Prisma.SdTicketWhereInput[] = [];
+    if (scored.length) or.push({ id: { in: await rated({ OR: scored.map((b) => ({ score: range[b] })) }) } });
+    // shortcut: "Not rated" sends every rated ticket id to the query; past ~50k ratings use a relation or NOT EXISTS.
+    if (bands.includes('none')) or.push({ id: { notIn: await rated({}) } });
+    return { OR: or };
   }
 
   private async viewFilters(tx: Tx, a: DeskActor, viewId: string): Promise<{ filters: TicketFiltersDto; sort: string | null }> {

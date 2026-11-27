@@ -294,6 +294,8 @@ export interface InboxItem {
   note?: string | null;
   /** Answer 2500: who holds the task now (the overseer's list). */
   approver?: string;
+  /** T2-E 49 (2872): the requester is in my direct team or my whole team (for the Asked by filter). */
+  requesterTeam?: 'direct' | 'whole' | null;
 }
 
 /**
@@ -913,7 +915,10 @@ export class ApprovalsEngine {
       const org = ctx.organizationId;
       const tasks = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: userId, status: 'open' }, orderBy: { createdAt: 'asc' }, take: 200 });
       const items = await this.items(tx, org, tasks);
-      return [...items, ...(await this.sourceItems(tx, ctx, userId))];
+      // T2-E 49 (2872): who asked, against my team, for the Asked by filter (never who is in it).
+      const team = await this.teamOf(tx, org, userId);
+      const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: items.map((i) => i.requestId) } }, select: { id: true, requesterUserId: true } })).map((r) => [r.id, r.requesterUserId]));
+      return [...items.map((i) => ({ ...i, requesterTeam: team.get(reqs.get(i.requestId) ?? '') ?? null })), ...(await this.sourceItems(tx, ctx, userId))];
     });
   }
 
@@ -1059,15 +1064,42 @@ export class ApprovalsEngine {
     };
   }
 
-  /** My recent decisions and the requests I sent. */
-  async history(ctx: CompanyContext, userId: string) {
+  /** T2-E 49 (2872): the people under me today (user id → 'direct' for my direct reports, 'whole' below them). */
+  private async teamOf(tx: Tx, org: string, userId: string): Promise<Map<string, 'direct' | 'whole'>> {
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    const rows = await tx.$queryRaw<{ user_id: string; depth: number }[]>`
+      WITH RECURSIVE down(id, depth) AS (
+        SELECT a.employee_id, 1 FROM employee_assignments a JOIN employees m ON m.organization_id = a.organization_id AND m.id = a.manager_employee_id
+        WHERE a.organization_id = ${org}::uuid AND m.user_id = ${userId}::uuid AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+        UNION
+        SELECT a.employee_id, down.depth + 1 FROM down JOIN employee_assignments a
+          ON a.organization_id = ${org}::uuid AND a.manager_employee_id = down.id AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+        WHERE down.depth < 50
+      )
+      SELECT e.user_id::text AS user_id, min(d.depth)::int AS depth FROM down d JOIN employees e ON e.organization_id = ${org}::uuid AND e.id = d.id
+      WHERE e.user_id IS NOT NULL AND e.user_id <> ${userId}::uuid GROUP BY e.user_id`;
+    return new Map(rows.map((r) => [r.user_id, r.depth === 1 ? 'direct' : 'whole']));
+  }
+
+  /**
+   * My decisions and the requests I sent. T2-E 50 (answer 2873): "Decided by me" lists every request I approved, did not
+   * approve or sent back in the period (30, 90 or 365 days; 90 by default), newest first, with the request's present
+   * status; decisions I made for someone else (delegation) are included and say for whom.
+   */
+  async history(ctx: CompanyContext, userId: string, days: 30 | 90 | 365 = 90) {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId;
-      const decided = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: userId, status: { in: ['approved', 'rejected', 'sent_back'] } }, orderBy: { decidedAt: 'desc' }, take: 50 });
+      const decided = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: userId, status: { in: ['approved', 'rejected', 'sent_back'] }, decidedAt: { gte: new Date(Date.now() - days * 86_400_000) } }, orderBy: { decidedAt: 'desc' }, take: 500 });
       const mine = await tx.wfRequest.findMany({ where: { organizationId: org, OR: [{ requesterUserId: userId }, { raisedByUserId: userId }] }, orderBy: { submittedAt: 'desc' }, take: 50 });
-      const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: decided.map((t) => t.requestId) } }, select: { id: true, title: true, requestType: true, status: true } })).map((r) => [r.id, r]));
+      const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: decided.map((t) => t.requestId) } }, select: { id: true, title: true, requestType: true, status: true, requesterUserId: true, submittedAt: true } })).map((r) => [r.id, r]));
+      const names = await this.names(tx, org, [...decided.map((t) => t.onBehalfOfUserId), ...[...reqs.values()].map((r) => r.requesterUserId)]);
+      const team = await this.teamOf(tx, org, userId);
       return {
-        decided: decided.map((t) => ({ requestId: t.requestId, title: reqs.get(t.requestId)?.title ?? '', type: this.types.get(reqs.get(t.requestId)?.requestType ?? '')?.label ?? '', decision: t.status, at: t.decidedAt, requestStatus: reqs.get(t.requestId)?.status ?? '' })),
+        days,
+        decided: decided.map((t) => {
+          const r = reqs.get(t.requestId);
+          return { taskId: t.id, requestId: t.requestId, title: r?.title ?? '', type: this.types.get(r?.requestType ?? '')?.label ?? '', decision: t.status, at: t.decidedAt, requestStatus: r?.status ?? '', requester: r?.requesterUserId ? (names.get(r.requesterUserId) ?? '') : '', requesterTeam: team.get(r?.requesterUserId ?? '') ?? null, submittedAt: r?.submittedAt ?? null, onBehalfOf: t.onBehalfOfUserId ? (names.get(t.onBehalfOfUserId) ?? '') : null };
+        }),
         sent: mine.map((r) => ({ requestId: r.id, title: r.title, type: this.types.get(r.requestType)?.label ?? r.requestType, status: r.status, submittedAt: r.submittedAt, decidedAt: r.decidedAt })),
       };
     });
@@ -1085,9 +1117,11 @@ export class ApprovalsEngine {
       const actions = await tx.wfAction.findMany({ where: { organizationId: org, requestId: { in: held.map((h) => h.requestId) }, action: { in: ['approved', 'self_approved', 'rejected', 'sent_back'] } }, orderBy: { createdAt: 'desc' }, take: 200 });
       const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: [...new Set(actions.map((a) => a.requestId))] } } })).map((r) => [r.id, r]));
       const names = await this.names(tx, org, [...actions.flatMap((a) => [a.actorUserId, a.onBehalfOfUserId]), ...[...reqs.values()].map((r) => r.requesterUserId)]);
+      const team = await this.teamOf(tx, org, userId);
       return actions.map((a) => {
         const r = reqs.get(a.requestId)!;
         return {
+          requesterTeam: team.get(r.requesterUserId ?? '') ?? null,
           id: a.id,
           requestId: a.requestId,
           title: r.title,

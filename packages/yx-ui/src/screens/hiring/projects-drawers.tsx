@@ -8,7 +8,9 @@ import { NumberField, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { EditorDrawer, useRun } from '../org/org-kit';
-import { isoOf, projectProblems, type AllocationInput, type BillingModel, type LiveAllocation, type LiveProjectRow, type MilestoneInput, type ProjectChoices, type ProjectInput, type TaskInput } from './projects-live';
+import { Button } from '../../components/button';
+import { InlineAlert } from '../../components/feedback';
+import { isoOf, projectProblems, type ProjectOwnSettings, type ProjectOwnSettingsInput, type AllocationInput, type BillingModel, type LiveAllocation, type LiveProjectRow, type MilestoneInput, type ProjectChoices, type ProjectInput, type TaskInput } from './projects-live';
 
 const dateOf = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00`) : null);
 const MODELS: { value: BillingModel; label: string }[] = [
@@ -256,5 +258,126 @@ export function MilestoneDrawer({ onClose, onSave }: { onClose: () => void; onSa
         </FormField>
       </FormSection>
     </EditorDrawer>
+  );
+}
+
+/** T2-D 56 (answer 2866): who a task is assigned to, from the project's team. Anyone on the team may still book to it. */
+export function TaskAssigneesDrawer({ task, team, onClose, onSave }: { task: { name: string; assignees: string[] }; team: { employeeId: string; person: string }[]; onClose: () => void; onSave: (employeeIds: string[]) => Promise<void> }) {
+  const [ids, setIds] = useState<string[]>(task.assignees);
+  const [dirty, setDirty] = useState(false);
+  const { busy, error, run } = useRun();
+  const people = team.filter((p, i) => team.findIndex((x) => x.employeeId === p.employeeId) === i);
+  return (
+    <EditorDrawer
+      open
+      onClose={onClose}
+      dirty={dirty}
+      title={`Assign ${task.name}`}
+      subtitle="The task shows first on their timesheet. Anyone on the team can still book hours to it."
+      errors={[]}
+      saving={busy === 'save'}
+      failed={error}
+      saveLabel="Save"
+      onSave={() => void run('save', () => onSave(ids)).then((ok) => ok && onClose())}
+    >
+      <FormSection title="Assigned to">
+        {people.map((p) => (
+          <Checkbox
+            key={p.employeeId}
+            checked={ids.includes(p.employeeId)}
+            onChange={(on) => {
+              setIds((x) => (on ? [...x, p.employeeId] : x.filter((y) => y !== p.employeeId)));
+              setDirty(true);
+            }}
+            label={p.person}
+          />
+        ))}
+      </FormSection>
+    </EditorDrawer>
+  );
+}
+
+const COMPANY_BOOKING: Record<string, string> = { on: 'only people allocated', off: 'anyone', approval: 'anyone, outside an allocation with your approval' };
+
+/**
+ * T2-D 58 and 59 (answers 2869, 2870): the project's Settings tab, for its manager. Each choice starts on the company
+ * rule; the second approval is off by default and names one person who approves each line after the project manager.
+ */
+export function ProjectSettingsPanel({ settings, team, people, readOnly, onSave }: { settings: ProjectOwnSettings; team: { employeeId: string; person: string }[]; people: { id: string; name: string }[]; readOnly?: boolean; onSave: (input: ProjectOwnSettingsInput) => Promise<void> }) {
+  const start: ProjectOwnSettingsInput = { bookingRule: settings.bookingRule, bookingEmployeeIds: settings.bookingEmployeeIds, notesRequired: settings.notesRequired, billableDefault: settings.billableDefault, secondApproverUserId: settings.secondApproverUserId };
+  const [v, setV] = useState(start);
+  const [second, setSecond] = useState(Boolean(settings.secondApproverUserId));
+  const [dirty, setDirty] = useState(false);
+  const [tried, setTried] = useState(false);
+  const { busy, error, run } = useRun();
+  const set = (p: Partial<ProjectOwnSettingsInput>) => {
+    setV((x) => ({ ...x, ...p }));
+    setDirty(true);
+  };
+  const members = team.filter((p, i) => team.findIndex((x) => x.employeeId === p.employeeId) === i);
+  const c = settings.company;
+  const noNamed = v.bookingRule === 'named' && !v.bookingEmployeeIds.length;
+  const noSecond = second && !v.secondApproverUserId;
+  return (
+    <div className="yx-hire-stack">
+      {error && (
+        <InlineAlert tone="danger" title="Not saved">
+          {error}
+        </InlineAlert>
+      )}
+      <FormSection title="Booking time">
+        <FormField id="ps-booking" label="Who may book time to this project" helper={v.bookingRule === 'company' ? `The company rule: ${COMPANY_BOOKING[c.booking] ?? c.booking}.` : undefined}>
+          <Segment label="Who may book time to this project" value={v.bookingRule} disabled={readOnly} onChange={(bookingRule) => set({ bookingRule })} options={[{ value: 'company', label: 'Company rule' }, { value: 'allocated', label: 'Everyone allocated' }, { value: 'named', label: 'Named people' }]} />
+        </FormField>
+        {v.bookingRule === 'named' && (
+          <FormField id="ps-named" label="Named people" error={tried && noNamed ? 'Name at least one person who may book time.' : undefined}>
+            <div className="yx-hire-stack">
+              {members.map((p) => (
+                <Checkbox key={p.employeeId} disabled={readOnly} checked={v.bookingEmployeeIds.includes(p.employeeId)} onChange={(on) => set({ bookingEmployeeIds: on ? [...v.bookingEmployeeIds, p.employeeId] : v.bookingEmployeeIds.filter((x) => x !== p.employeeId) })} label={p.person} />
+              ))}
+            </div>
+          </FormField>
+        )}
+        <FormField id="ps-notes" label="Daily comments" helper={v.notesRequired === 'company' ? `The company rule: ${c.notesRequired ? 'required' : 'not required'}.` : undefined}>
+          <Segment label="Daily comments" value={v.notesRequired} disabled={readOnly} onChange={(notesRequired) => set({ notesRequired })} options={[{ value: 'company', label: 'Company rule' }, { value: 'on', label: 'Required' }, { value: 'off', label: 'Not required' }]} />
+        </FormField>
+        <FormField id="ps-billable" label="New timesheet rows are" helper={v.billableDefault === 'company' ? `From the billing model: ${c.billable ? 'billable' : 'not billable'}.` : undefined}>
+          <Segment label="New timesheet rows are" value={v.billableDefault} disabled={readOnly} onChange={(billableDefault) => set({ billableDefault })} options={[{ value: 'company', label: 'Billing model' }, { value: 'on', label: 'Billable' }, { value: 'off', label: 'Not billable' }]} />
+        </FormField>
+      </FormSection>
+      <FormSection title="Approval">
+        <Switch
+          checked={second}
+          disabled={readOnly}
+          onChange={(on) => {
+            setSecond(on);
+            if (!on) set({ secondApproverUserId: null });
+            else setDirty(true);
+          }}
+          label="A second approval after the project manager"
+          description="Each line goes to this person once the project manager approves it, then to the client if the client approves hours. Nobody approves their own hours."
+        />
+        {second && (
+          <FormField id="ps-second" label="Second approver" error={tried && noSecond ? 'Choose the second approver.' : undefined}>
+            <Select value={v.secondApproverUserId} disabled={readOnly} onChange={(secondApproverUserId) => set({ secondApproverUserId })} placeholder="Choose" options={people.map((p) => ({ value: p.id, label: p.name }))} />
+          </FormField>
+        )}
+      </FormSection>
+      {!readOnly && (
+        <div className="yx-hire-actions">
+          <Button
+            variant="primary"
+            disabled={!dirty || busy === 'save'}
+            onClick={() => {
+              setTried(true);
+              if (noNamed || noSecond) return;
+              void run('save', () => onSave(v)).then((ok) => ok && setDirty(false));
+            }}
+          >
+            Save project settings
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

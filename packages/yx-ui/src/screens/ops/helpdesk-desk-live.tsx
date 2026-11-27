@@ -25,8 +25,8 @@ import { PageBanner } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { useRun } from '../org/org-kit';
-import { OPEN_STATES, PRIORITY_LABEL, PriorityBadge, STATE_LABEL, StatusBadge, TicketFlags, when } from '../desk/desk-kit';
-import type { DeskDetail, DeskSummary, LoadState, Person, SavedTicketView, SystemState, TicketFilters, TicketPage, TicketRow } from '../desk/types';
+import { OPEN_STATES, PRIORITY_LABEL, PriorityBadge, SATISFACTION_FILTER, STATE_LABEL, StatusBadge, TicketFlags, when } from '../desk/desk-kit';
+import type { DeskDetail, DeskSummary, LoadState, Person, Satisfaction, SavedTicketView, SystemState, TicketFilters, TicketPage, TicketRow } from '../desk/types';
 import { FirstResponseBadge, OpsDesk, SlaBadge, useSay } from './ops-kit';
 import { ReferenceLookupDialog, type NotFoundLookup } from './reference-lookup';
 
@@ -91,6 +91,7 @@ const fromFilters = (f: TicketFilters, defs: FilterFieldDef[] = []): FilterValue
     : []),
   ...(f.priorities?.length ? [{ key: 'priority', type: 'multi' as const, values: f.priorities.map(String) }] : []),
   ...(f.states?.length ? [{ key: 'status', type: 'multi' as const, values: f.states }] : []),
+  ...(f.satisfaction?.length ? [{ key: 'satisfaction', type: 'multi' as const, values: f.satisfaction }] : []),
   ...(f.createdFrom || f.createdTo ? [{ key: 'created', type: 'date' as const, from: f.createdFrom ?? null, to: f.createdTo ?? null }] : []),
 ];
 /** The filter bar's values as the server's filters, on top of the view's own. */
@@ -98,7 +99,7 @@ export const toFilters = (base: TicketFilters, v: FilterValue[], search: string)
   const multi = (k: string) => (v.find((x) => x.key === k && x.type === 'multi') as { values: string[] } | undefined)?.values ?? [];
   const date = v.find((x) => x.key === 'created' && x.type === 'date') as { from: string | null; to: string | null } | undefined;
   const { fieldKey, fieldValues } = fieldFilterOf(v);
-  return { ...base, deskIds: multi('queue'), priorities: multi('priority').map(Number), states: multi('status') as SystemState[], createdFrom: date?.from || undefined, createdTo: date?.to || undefined, search: search || undefined, fieldKey: fieldKey ?? base.fieldKey, fieldValues: fieldValues ?? base.fieldValues };
+  return { ...base, deskIds: multi('queue'), priorities: multi('priority').map(Number), states: multi('status') as SystemState[], satisfaction: multi('satisfaction').length ? (multi('satisfaction') as Satisfaction[]) : undefined, createdFrom: date?.from || undefined, createdTo: date?.to || undefined, search: search || undefined, fieldKey: fieldKey ?? base.fieldKey, fieldValues: fieldValues ?? base.fieldValues };
 };
 
 /** The design's columns with the real record. */
@@ -192,6 +193,7 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
     { key: 'priority', label: 'Priority', type: 'multi', options: [1, 2, 3, 4].map((p) => ({ value: String(p), label: PRIORITY_LABEL[p] })) },
     { key: 'status', label: 'Status', type: 'multi', options: (Object.keys(STATE_LABEL) as SystemState[]).map((s) => ({ value: s, label: STATE_LABEL[s] })) },
     { key: 'created', label: 'Raised', type: 'date' },
+    SATISFACTION_FILTER,
     ...fieldFilters(live.details.flatMap((d) => d.fields ?? [])),
   ];
   const toolbar = <FilterBar fields={fields} value={fromFilters(query.filters, fields)} onChange={(v) => setFilters(v)} search={search} onSearchChange={(s) => (setSearch(s), setFilters(fromFilters(query.filters, fields), s))} searchPlaceholder="Search ticket, subject or person" />;

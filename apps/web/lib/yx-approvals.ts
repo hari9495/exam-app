@@ -21,6 +21,8 @@ export interface TeamDecision {
   at: string;
   submittedAt: string;
   requestStatus: string;
+  /** T2-E 49: the requester is in my direct or whole team. */
+  requesterTeam?: 'direct' | 'whole' | null;
 }
 
 const STATUS: Record<string, ApprovalRow['status']> = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', cancelled: 'Withdrawn', sent_back: 'Sent back' };
@@ -58,6 +60,7 @@ export function waitingRow(t: ApprovalTask, mine = true): ApprovalRow {
     decideAt: t.decideAt ?? null,
     canSendBack: Boolean(t.canSendBack),
     ...(t.approver ? { approver: t.approver } : {}),
+    requesterTeam: t.requesterTeam ?? null,
     timeline: [
       { id: 's', label: t.raisedBy ? `Submitted by ${t.raisedBy} for ${t.requester}` : 'Submitted', status: 'done', approver: t.raisedBy ?? t.requester, at: new Date(t.submittedAt) },
       { id: 'c', label: `${t.step.name} (step ${t.step.index} of ${t.step.of})`, status: 'current', approver: mine ? (t.onBehalfOf ? `You (for ${t.onBehalfOf})` : 'You') : t.approver || '' },
@@ -105,6 +108,9 @@ export function teamRow(h: TeamDecision): ApprovalRow {
     lowRisk: false,
     policy: { ok: true },
     status: h.decision === 'approved' ? 'Approved' : h.decision === 'sent_back' ? 'Sent back' : 'Rejected',
+    // T2-E 49 (2872): Status filters on where the request is now; Asked by on my team.
+    requestStatus: STATUS[h.requestStatus] ?? 'Waiting',
+    requesterTeam: h.requesterTeam ?? null,
     context: h.reason ? [`Reason: ${h.reason}`] : [],
     timeline: [
       { id: 's', label: 'Submitted', status: 'done', approver: h.requester, at: new Date(h.submittedAt) },
@@ -142,4 +148,33 @@ export function profileRows(rows: ProfileRequest[]): ApprovalRow[] {
       decideAt: '/yx/people/profile-requests',
       canSendBack: false,
     }));
+}
+
+/** T2-E 50 (answer 2873): one of my decisions in "Decided by me" (row id is the task id), with where the request is now. */
+export function decidedRow(d: ApprovalHistory['decided'][number]): ApprovalRow {
+  const verb = d.decision === 'approved' ? 'You approved' : d.decision === 'sent_back' ? 'You sent it back' : 'You did not approve';
+  const status = STATUS[d.requestStatus] ?? 'Waiting';
+  return {
+    id: `decided:${d.taskId ?? d.requestId}`,
+    ref: ref(d.requestId),
+    type: d.type,
+    requester: d.requester ?? '',
+    requesterRole: '',
+    summary: d.title,
+    detail: `${verb} on ${formatDate(new Date(d.at))}${d.onBehalfOf ? ` · for ${d.onBehalfOf}` : ''} · now ${status === 'Rejected' ? 'not approved' : status.toLowerCase()}`,
+    submitted: new Date(d.submittedAt ?? d.at),
+    due: null,
+    step: '',
+    lowRisk: false,
+    policy: { ok: true },
+    status,
+    requestStatus: status,
+    requesterTeam: d.requesterTeam ?? null,
+    ...(d.onBehalfOf ? { onBehalfOf: d.onBehalfOf } : {}),
+    context: [],
+    timeline: [
+      ...(d.submittedAt ? [{ id: 's', label: 'Submitted', status: 'done' as const, approver: d.requester ?? '', at: new Date(d.submittedAt) }] : []),
+      { id: 'd', label: d.onBehalfOf ? `${verb} (for ${d.onBehalfOf})` : verb, status: d.decision === 'rejected' ? ('rejected' as const) : ('done' as const), approver: 'You', at: new Date(d.at) },
+    ],
+  };
 }

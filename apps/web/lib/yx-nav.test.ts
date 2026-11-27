@@ -546,6 +546,10 @@ describe('buildNav: Projects (P-1, answer 1401)', () => {
   it('Projects shows only when the server says it is on and this person may open it; never on a support session', () => {
     expect(areas(nav(['projects.manage']))).not.toContain('projects');
     expect(labels(nav([], { projects: true }), 'projects')).toEqual(['Projects', 'Capacity & utilisation', 'Resource requests', 'Timesheet approvals']);
+    // T2-D 60: Hours reports for a project manager or the reporting key (alone it opens only the reports).
+    expect(labels(nav([], { projects: true, projectReports: true }), 'projects')).toContain('Hours reports');
+    expect(labels(nav(['projects.reporting'], { projectReports: true }), 'projects')).toEqual(['Hours reports']);
+    expect(labels(nav([], { lineApprovals: 1 }), 'projects')).not.toContain('Hours reports');
     expect(areas(nav([], { projects: true, support: true }))).not.toContain('projects');
     const n = nav(['pipeline:manage'], { projects: true });
     expect(areas(n).indexOf('projects')).toBe(areas(n).indexOf('hire') + 1);

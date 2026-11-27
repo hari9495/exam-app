@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
@@ -149,13 +149,22 @@ describe('/yx/settings/structure', () => {
 });
 
 // Settings S-7 (answer 1321): the three retired pages send their old addresses to the pages that hold their settings now.
-describe('retired settings pages redirect (S-7)', () => {
+describe('retired settings pages redirect (S-7; T2-F 82 through the moved-page stub)', () => {
   it('Company rules opens Settings; Access and privacy opens 2.2; Payroll rules opens 4.6', () => {
-    const go = jest.requireMock('next/navigation').redirect as jest.Mock;
-    YxCompanyRulesPage();
-    YxAccessSettingsPage();
-    YxPayrollRulesPage();
-    expect(go.mock.calls.map((c) => c[0])).toEqual(['/yx/settings', '/yx/settings/people/directory-and-privacy', '/yx/settings/payroll/loans-and-advances']);
+    const replace = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace });
+    jest.useFakeTimers({ now: new Date('2026-11-27T06:00:00Z') });
+    try {
+      for (const Page of [YxCompanyRulesPage, YxAccessSettingsPage, YxPayrollRulesPage]) {
+        const view = render(<Page />);
+        expect(screen.getByText('This page has moved')).toBeInTheDocument();
+        act(() => jest.advanceTimersByTime(5000));
+        view.unmount();
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(replace.mock.calls.map((c) => c[0])).toEqual(['/yx/settings', '/yx/settings/people/directory-and-privacy', '/yx/settings/payroll/loans-and-advances']);
   });
 });
 

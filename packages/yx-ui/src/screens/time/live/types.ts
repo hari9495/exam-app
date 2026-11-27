@@ -792,7 +792,8 @@ export interface MyTimesheet {
   sheet: { id: string; status: 'draft' | 'pending' | 'approved' | 'rejected'; totalMinutes: number } | null;
   /** Projects P-2 (1406): each line's decision, its reason (the person sees it) and the hours approved; 1408: the client's decision. */
   lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; /** Answer 1787: a comment per day, Monday to Sunday. */ comments?: string[]; decision?: 'pending' | 'approved' | 'reduced' | 'rejected' | null; reason?: string | null; approvedMinutes?: number[] | null; unallocated?: boolean; clientStatus?: 'waiting' | 'approved' | 'sent_back' | null; clientNote?: string | null }[];
-  projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
+  /** T2-D 56 (2866): `myTasks` are the activities assigned to me (the API lists them first). */
+  projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; myTasks?: string[]; active: boolean }[];
   /** `leaveRequested` (batch D A8): leave asked for that day, not decided yet. */
   days: { on: string; holiday: string | null; leave: string | null; leaveRequested?: boolean; locked: boolean }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];

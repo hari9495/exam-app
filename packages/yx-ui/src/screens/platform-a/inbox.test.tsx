@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen, type LiveApprovals } from './inbox';
 import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME, type ApprovalRow } from './platform-data';
@@ -315,5 +315,85 @@ describe('PLT-03 notifications inbox, live on a phone', () => {
   it('the desktop page stays the desktop layout on a wide screen', () => {
     render(<NotificationsInboxScreen items={NOTIFICATIONS} live={{ onOpen: vi.fn(), onMarkRead: vi.fn(), onMarkAllRead: vi.fn(), preferencesHref: '/yx/me/notifications' }} />);
     expect(document.querySelector('.yx-phone')).toBeNull();
+  });
+});
+
+describe('T2-E 49 and 50 Asked by, Status and Decided by me (2872, 2873)', () => {
+  const today = new Date(2026, 10, 3);
+  const r = (id: string, o: Partial<ApprovalRow>): ApprovalRow => ({ id, ref: id, type: 'Leave', requester: '', requesterRole: '', summary: id, detail: '', submitted: today, due: null, step: '', lowRisk: false, policy: { ok: true }, status: 'Waiting', context: [], ...o });
+  const live: LiveApprovals = { today, onDecide: vi.fn(), onBulkApprove: vi.fn(async () => []), delegation: { meId: 'me', meName: 'Me', today, people: [], onFindPeople: () => undefined, current: null, waiting: 0, onSave: vi.fn(), onEnd: vi.fn(), delegatedToYou: [], approvalsHref: '#', onDone: () => undefined }, onDone: vi.fn() };
+  const waiting = [r('w1', { requester: 'Direct Dev', requesterTeam: 'direct', summary: 'Leave of Direct' }), r('w2', { requester: 'Deep Dev', requesterTeam: 'whole', summary: 'Leave of Deep' }), r('w3', { requester: 'Other Dev', summary: 'Leave of Other' })];
+  const decided = [r('d1', { requester: 'Direct Dev', summary: 'Approved one', status: 'Approved', requestStatus: 'Approved' }), r('d2', { requester: 'Deep Dev', summary: 'Sent back one', status: 'Sent back', requestStatus: 'Waiting', onBehalfOf: 'Meena', detail: 'You sent it back · for Meena' })];
+  const ue = userEvent.setup({ pointerEventsCheck: 0 });
+  const pick = async (filter: string, option: string) => {
+    await ue.click(screen.getByRole('button', { name: 'Filter' }));
+    await ue.click(await screen.findByRole('menuitem', { name: filter }));
+    await ue.click(await screen.findByRole('checkbox', { name: option }));
+    await ue.keyboard('{Escape}');
+  };
+  const fields = async () => {
+    await ue.click(screen.getByRole('button', { name: 'Filter' }));
+    const out = (await screen.findAllByRole('menuitem')).map((m) => m.textContent);
+    await ue.keyboard('{Escape}');
+    return out;
+  };
+
+  it('Asked by: my direct team, then my whole team, then one person', async () => {
+    render(<ApprovalsInboxScreen waiting={waiting} sent={[]} history={[]} decided={decided} live={live} desk={false} />);
+    await pick('Asked by', 'My direct team');
+    expect(screen.getByText('Leave of Direct')).toBeInTheDocument();
+    expect(screen.queryByText('Leave of Deep')).toBeNull();
+    expect(screen.queryByText('Leave of Other')).toBeNull();
+  });
+
+  it('negative: Waiting for me has no Status filter; Sent by me has no Asked by filter', async () => {
+    render(<ApprovalsInboxScreen waiting={waiting} sent={[r('s1', { requester: 'You', status: 'Approved' })]} history={[]} decided={decided} live={live} desk={false} />);
+    expect(await fields()).toEqual(['Type', 'Due', 'Asked by']);
+    await ue.click(screen.getByRole('tab', { name: /Sent by me/ }));
+    expect(await fields()).toEqual(['Type', 'Status']);
+  });
+
+  it('Decided by me: the period Segment asks for another period; the Status filter uses the present status; delegation is marked', async () => {
+    const onDecidedDays = vi.fn();
+    render(<ApprovalsInboxScreen waiting={waiting} sent={[]} history={[]} decided={decided} defaultTab="decided" live={{ ...live, decidedDays: 90, onDecidedDays }} desk={false} />);
+    expect(screen.getByRole('radio', { name: '3 months' })).toBeChecked();
+    expect(screen.getByText(/for Meena/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: '12 months' }));
+    expect(onDecidedDays).toHaveBeenCalledWith(365);
+    await pick('Status', 'Waiting');
+    expect(screen.getByText('Sent back one')).toBeInTheDocument();
+    expect(screen.queryByText('Approved one')).toBeNull();
+  });
+
+  it('negative: without decided rows there is no Decided by me tab', () => {
+    render(<ApprovalsInboxScreen waiting={waiting} sent={[]} history={[]} live={live} desk={false} />);
+    expect(screen.queryByRole('tab', { name: /Decided by me/ })).toBeNull();
+  });
+});
+
+describe('PLT-05 "+ New" (T2-F 81, answer 2886)', () => {
+  const types = [{ id: 'leave' as const, href: '/yx/time/leave?apply=1' }, { id: 'ticket' as const, href: '/yx/desk/help?new=1' }];
+  it('offers only the types the person may raise, grouped; picking one closes the sheet and opens its form', () => {
+    const onPick = vi.fn();
+    const onOpenChange = vi.fn();
+    render(<RequestSheetScreen live={{ open: true, onOpenChange, onPick, types }} />);
+    expect(screen.getByRole('dialog', { name: 'What do you want to request?' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Time off' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Help' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Expense claim/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Job request/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Helpdesk ticket/ }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onPick).toHaveBeenCalledWith('/yx/desk/help?new=1');
+  });
+  it('search narrows the types; nothing to raise says so', () => {
+    const { unmount } = render(<RequestSheetScreen live={{ open: true, onOpenChange: vi.fn(), onPick: vi.fn(), types }} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search request types' }), { target: { value: 'visa' } });
+    expect(screen.getByText('No request type matches.')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search request types' }), { target: { value: 'ticket' } });
+    expect(screen.queryByRole('button', { name: /^Leave/ })).toBeNull();
+    unmount();
+    render(<RequestSheetScreen live={{ open: true, onOpenChange: vi.fn(), onPick: vi.fn(), types: [] }} />);
+    expect(screen.getByText('Nothing to request here yet.')).toBeInTheDocument();
   });
 });

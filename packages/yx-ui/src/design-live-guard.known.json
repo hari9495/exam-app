@@ -45,7 +45,6 @@
     "platform-a: PartnersScreen",
     "platform-a: PoliciesPageScreen",
     "platform-a: RequestSheetPhone",
-    "platform-a: RequestSheetScreen",
     "platform-a: RequestTypeBuilderScreen",
     "platform-b: AgentActionsLogScreen",
     "platform-b: AgentPlanDesk",

@@ -29597,5 +29597,266 @@
                               "Screens/People/Me and set-up · My assets, first 30 days, checklists and signatories (Checklists · joining, applies to an employment type)"
                     ],
                     "note": "Grade is not offered yet: a joiner has no grade until they join (question 2891)."
+          },
+          {
+                    "id": "MT-T2D-56-TASK-BOARD",
+                    "area": "T2-D 56 (answers 2865, 2866): project tasks with stages, assignees and a board",
+                    "screen": "Projects › a project › Tasks & milestones (List / Board); Settings › Projects & timesheets (Task stages of your own); Me › My timesheet",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "The project's manager (no Projects key needed); a person on the project team; a Projects view holder who is not the manager; a System Admin.",
+                    "steps": [
+                              "As the System Admin open Settings › Projects & timesheets and type 'A, B, C, D' in Task stages of your own; save. Then type 'Review' and save.",
+                              "As the project manager open the project, Tasks & milestones, and switch Show tasks as to Board.",
+                              "Drag a task from To do to Review; then use the card's menu to move it to Done.",
+                              "Back on List, open a task's menu › Assign people, tick one team member and save.",
+                              "As that team member open Me › My timesheet and open the task picker on the project's row.",
+                              "With the task in Done, as the team member add an hour to it on a day and save the week. Then save the week with the same hours as before.",
+                              "As the Projects view holder (not the manager) open the board."
+                    ],
+                    "expected": "Step 1: 'Task stages: At most 3 stages of your own.' and nothing saved; then saved. Step 2: columns To do, In progress, Review, Done; each card shows who it is assigned to ('Not assigned' when no one) and hours used of the budget; tasks not in use are not on the board. Step 3: toast '<task> moved to Review', then '... moved to Done'. Step 4: toast '<task>: assigned'; the list shows the stage and Assigned to. Step 5: the assigned task comes first and says '(assigned to you)'; the other tasks are still there. Step 6: '<code> · <task> is done, so it takes no new hours (<date>)...' and nothing saved; the same hours save fine. Step 7: the board shows, with no drag and no Move menu. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-01 · Projects and project workspace (Live · tasks board by stage, view only, tasks list with stage and assignees, assign a task drawer)",
+                              "Screens/Time/TIM-15 · Timesheets (Live · my assigned task first)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 56: 4 stages refused 400, moves and assigns audited, stale version 409, unknown stage 400, team member 404, viewer 403, other company 404, assignee off the team 400; my tasks first; Done task refuses new hours, keeps the same; task-stages unit 4; kit prj-t2d2 6, timesheet-t2d 2). Migration 900 (stage, assignee_employee_ids, version on project_tasks); setting projects.task.extra_stages; routes POST projects/:id/tasks/:tid/stage, PUT projects/:id/tasks/:tid/assignees."
+          },
+          {
+                    "id": "MT-T2D-57-PENDING-AND-AWAY",
+                    "area": "T2-D 57 (answers 2867, 2868): the project page's actions pending and who is away",
+                    "screen": "Projects › a project › Overview (Actions pending, Away in the next 14 days)",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "The project's manager; a team member who also holds Projects view; someone with Projects manage who is not the manager; another company's admin.",
+                    "steps": [
+                              "As a team member send last week's timesheet with hours on the project; leave another member's week as a draft. Raise a resource request for the project. Approve a leave for a team member three days from now.",
+                              "As the project manager open the project's Overview. Press Open on 'weeks waiting for your approval'.",
+                              "As the team member who holds Projects view open the same project.",
+                              "As someone with Projects manage who is not the manager open the project.",
+                              "As another company's admin open /yx/projects/<that id>."
+                    ],
+                    "expected": "Step 2: Actions pending lists '1 week is waiting for your approval', '1 person has not sent last week' with the name, '1 resource request is waiting' (a line with nothing to do is left out); Open goes to Projects › Timesheet approvals. Away in the next 14 days shows the member with 'Away <day>' and never the leave type. Step 3: only Away in the next 14 days. Step 4: neither card. Step 5: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-01 · Projects and project workspace (Live · actions pending and who is away (PM), who is away only (a team member), nothing pending, no one away)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 57: approvals 1, not sent 1 with the name, requests 1, billing 0 on an internal project, away with the day and no leave type, Projects manage and a viewer get neither, a member without a key 404, other company 404; kit prj-t2d2 3). Route GET projects/:id/glance. A team member without a Projects key still cannot open the project page (unchanged), so they see Away only if they hold Projects view (question 2900)."
+          },
+          {
+                    "id": "MT-T2D-58-59-PROJECT-SETTINGS",
+                    "area": "T2-D 58 and 59 (answers 2869, 2870): a project's own settings and the second approval level",
+                    "screen": "Projects › a project › Settings; Me › My timesheet; Projects › Timesheet approvals",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "The project's manager; two team members; a delivery head (any active person, no Projects key needed); a Projects view holder who is not the manager; another company's admin.",
+                    "steps": [
+                              "As the project manager open the project › Settings. Choose Named people and save with nobody ticked. Then tick one member, set Daily comments to Required and New timesheet rows to Billable; save.",
+                              "As the member who is not named, add hours to the project on My timesheet and save. As the named member, add a new row for the project and look at Billable; send the week without comments.",
+                              "As the project manager turn on A second approval after the project manager, save without choosing anyone, then choose the delivery head and save. Set everything else back to Company rule.",
+                              "As a member send a week with two rows on the project. As the project manager approve one row and reduce the other with a reason.",
+                              "As the member open the week and try to recall it. As the delivery head open Projects › Timesheet approvals; reduce a row to more than the manager approved; then approve both.",
+                              "Allocate the delivery head to the project and send their own week; the project manager approves it.",
+                              "As the Projects view holder open the project; as another company's admin open it."
+                    ],
+                    "expected": "Step 1: 'Name at least one person who may book time.' and nothing saved; then toast 'Project settings saved'. Step 2: 'Line 1: only the people <code> names book time to it. Ask the project manager.'; the named member's new row starts Billable; the week is refused until each day has its comment. Step 3: 'Choose the second approver.'; then saved. Step 4: the week stays waiting. Step 5: the week can no longer be recalled; the head sees the lines with 'Second approval: The project manager approved <h> h of the <h> h booked.'; the larger reduction is refused; after both are approved the week is approved and the reduced row keeps the manager's hours and reason. Step 6: the head's own week is approved by the manager alone (nobody approves their own hours). Step 7: no Settings tab for the viewer; not found for the other company. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-01 · Projects and project workspace (Live · project settings, named people and a second approver; all on the company rule; timesheet lines waiting for the second approver)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 58: settings for the PM only, viewer 403, other company 404, named with none or off the team 400, PM as second approver 400, stale 409, named refuses the peer, billable default, comments required on the project, audited; 59: level 2 waits for the head, the PM gets 403 at level 2, a reduction above the PM's refused 400, recall 409, week approved after the head, the head's own lines stop at the PM; kit prj-t2d2 4). Migration 901 (booking_rule, booking_employee_ids, notes_required, billable_default, second_approver_user_id on timesheet_projects; level on timesheet_lines). Route PUT projects/:id/settings. The client step still comes last."
+          },
+          {
+                    "id": "MT-T2D-60-HOURS-REPORTS",
+                    "area": "T2-D 60 (answer 2871): two hours reports with CSV export",
+                    "screen": "Projects › Hours reports (Hours by person, Hours by task)",
+                    "url": "http://localhost:3000/yx/projects/reports",
+                    "account": "A project manager (no Projects key); someone with only the Projects reporting key; a Projects view holder who manages no project; a team member; another company's admin.",
+                    "steps": [
+                              "As the project manager open Projects › Hours reports. Look at Hours by person for the last 12 weeks; then switch to Hours by task.",
+                              "Filter by one project, then by a client; change the dates. Press Download CSV and open the file.",
+                              "Choose Weeks to before Weeks from.",
+                              "As the reporting key holder open the menu and the report; filter by a project you do not manage.",
+                              "As the Projects view holder who manages nothing, and as a team member, open /yx/projects/reports. As another company's admin open it with ?projectId=<a project of this company>."
+                    ],
+                    "expected": "Step 1: 'The hours of the projects you manage...'; each person's weeks per project with billable, non-billable and approved hours; by task each task with its budget ('No budget' when none), booked and approved. Step 2: the rows follow the filters; the CSV has the same columns and rows (a name starting with = is written as text). Step 3: the date pickers do not allow it (the API refuses it, 400). Step 4: the menu shows only Hours reports; every project is in the list. Step 5: no access (no menu entry, the page says so); the other company gets not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-09 · Hours reports (by person, by task, own projects only, none, loading, error, no access)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 60: PM scope mine, rows with booked and approved hours (a line reduced at the second level counts the reduced hours), reporting key all with a project filter, CSV header and audit, viewer 403, member 403, other company 404, another PM's project 404, dates reversed 400, unknown kind 400, status.reports for the menu; hours-reports unit 3; kit prj-09 4; nav test). Migration 902 adds the projects.reporting key (System Admin holds it). Route GET projects/reports/hours (format=csv). The payroll feed is unchanged."
+          },
+          {
+                    "id": "MT-T2E-49-50-APPROVAL-FILTERS",
+                    "area": "T2-E 49 and 50 (answers 2872, 2873): Asked by and Status filters, and Decided by me",
+                    "screen": "Approvals (Waiting for me, Sent by me, Team history, Decided by me)",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "A manager with a direct report who has their own report (two levels), and someone outside the team; the manager also acts as a delegate for a colleague.",
+                    "steps": [
+                              "Have the direct report, their report and the outsider each raise a request the manager approves. As the manager open Approvals › Waiting for me, press Filter › Asked by and tick My direct team; then My whole team; then one person.",
+                              "Open Filter on Waiting for me and on Sent by me and look at the fields offered.",
+                              "Approve one request, do not approve one with a reason, and as the colleague's delegate approve one. Open Decided by me.",
+                              "Switch the period to 30 days, 3 months and 12 months. Filter Status to Approved. Open a row.",
+                              "Open Team history and filter Status."
+                    ],
+                    "expected": "Step 1: My direct team shows only the direct report's request; My whole team shows both levels; one person shows only theirs. Step 2: Waiting for me offers Type, Due and Asked by (no Status); Sent by me offers Type and Status (no Asked by). Step 3: Decided by me lists the three, newest first, 'You approved on <date>', 'You did not approve on <date>' and the delegated one with '· for <colleague>', each with the request's present status. Step 4: 3 months is chosen first; 30 days drops older decisions; the side panel shows the trail. Step 5: Status filters on the request's present status. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 with real data (Decided by me · 3 months, Decided by me · 12 months none, Waiting for me · Asked by filter with my teams)"
+                    ],
+                    "note": "Positive and negative (approvals-t2e e2e: direct, whole and none team flags, another person sees no tasks, decided with present status and delegation marked, 60-day decision in 90 and 365 but not 30, days=7 refused 400, others see none, team history flag; kit inbox 4). Routes: GET workflow/approvals/history?days=30|90|365; requesterTeam on the inbox and team-history rows."
+          },
+          {
+                    "id": "MT-T2E-51-HOME-REMINDERS",
+                    "area": "T2-E 51 (answer 2874): Home cards for a window that is closing",
+                    "screen": "Home (reminder cards); Settings › Notifications (Home reminders)",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee with a request sent back to them, a survey invitation closing tomorrow and a self-review due in 3 days; a colleague; a System Admin.",
+                    "steps": [
+                              "As the employee open Home.",
+                              "Press Not today on one card; reload Home. Come back the next day (or clear the browser's site data).",
+                              "As the System Admin open Settings › Notifications › Home reminders and switch off surveys; as the employee reload Home.",
+                              "As the colleague open Home.",
+                              "Near the tax proof cut-off (7 days before) and the regime cut-off, open Home as an employee with a current employment."
+                    ],
+                    "expected": "Step 1: at most 2 cards: 'A request of yours was sent back' (Open my requests) first, then the soonest to close (e.g. 'Your self-review is due on <date>' or 'A survey closes on <date>'), each with its action button and Not today. Step 2: the dismissed card stays hidden today and comes back the next day; the next card takes its place. Step 3: no survey card. Step 4: none of the employee's cards. Step 5: 'Tax proofs are due by <date>' / 'Choose your tax regime by <date>' (Declarations page). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/Home reminders (T2-E 51) (two cards, a self-review, a survey, nothing closing)"
+                    ],
+                    "note": "Positive and negative (approvals-t2e e2e 51: sent back and the survey closing tomorrow shown in that order, the one closing in 5 days not, the colleague gets none, survey switched off by the company; home-reminders unit 3 (lead days 7/3/2, closed windows never, sent back first, at most 2, switched-off kinds); kit home-reminders 3 incl. blocked storage; settings-s8 5.4 keys). Six company settings home.reminders.* (on by default) on Settings › Notifications. Route GET notifications/home-reminders."
+          },
+          {
+                    "id": "MT-T2E-52-WEB-PUSH",
+                    "area": "T2-E 52 (answers 2875 to 2878): push through the installable web app",
+                    "screen": "Me › Notification preferences (Push on this device, Pause push, quiet hours, a Push column per kind); Settings › Notifications (push switch)",
+                    "url": "http://localhost:3000/yx/me/notifications",
+                    "account": "An employee who approves requests (Chrome or Edge on a laptop, and an iPhone); a colleague on the same laptop; a System Admin. The API has WEB_PUSH_PUBLIC_KEY, WEB_PUSH_PRIVATE_KEY and WEB_PUSH_SUBJECT set (test values made for the test server only).",
+                    "steps": [
+                              "Without the three values in the API config, open Me › Notification preferences.",
+                              "With them set, turn on Push on this device and allow the browser prompt. Look at the Push column: approvals on, the rest off.",
+                              "Have a colleague send a request for approval to you at 12:00. Tap the push.",
+                              "Set quiet hours to cover now, then send another request; then Pause push and send another; then turn Push off for one kind.",
+                              "Sign out; have a request sent to you. Sign in as the colleague on the same browser and turn push on.",
+                              "On an iPhone in Safari open the page; then add YukthiX to the Home Screen and open it from there.",
+                              "As the System Admin switch Notifications › push off; reload the page as the employee. Block notifications for the site in the browser and reload."
+                    ],
+                    "expected": "Step 1: 'Push is switched off for your company. Email and the bell still work.' and no Push column. Step 2: toast 'Push is on for this device.'. Step 3: a push titled 'A request needs your approval' with no names or figures; tapping it opens Approvals (sign-in first if the session ended). Step 4: no push in quiet hours or while paused (the bell still shows it); none for the kind turned off. Step 5: no push after sign-out; the colleague's device now gets the colleague's pushes only. Step 6: 'Add YukthiX to your Home Screen to get push'; from the Home Screen app the switch shows and works. Step 7: the company-off text; 'Notifications are blocked' with what to do. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/PLT-65 · Notification preferences (Push · on for this device, not yet on, iPhone add to the Home Screen first, blocked in the browser, switched off for the company)"
+                    ],
+                    "note": "Positive and negative (approvals-t2e e2e 52 with keys made for the run only: no keys = not available and subscribe 400, http endpoint 400, one subscription per device moving to who signed in, neutral title and link, off-by-default kind, quiet hours 22:30, pause, company switch, the bell path pushes, 410 removes the subscription, sign-out removes mine only; push-rules unit 3; notifications service and controller specs; kit preferences-push 4; rls-isolation push_subscriptions). Migration 903 (push_subscriptions with RLS; push_enabled on preferences; push_paused and quiet hours on users); web-push 3.6.7 (MIT); setting notify.push.enabled; service worker /yx-sw.js caches nothing; web manifest; GO-LIVE item 49 names the env values. WhatsApp (2879): nothing built."
+          },
+          {
+                    "id": "MT-T2F-87",
+                    "area": "People (T2-F item 87, answer 2888): About me on the person record",
+                    "screen": "People › Profile (my record) and People › Directory › a person (PPL-03 Overview: About me card)",
+                    "url": "http://localhost:3000/yx/people/profile",
+                    "account": "An employee (their own record); their manager (panel@, Divya); HR Admin with employee.profile.edit; another company's admin.",
+                    "steps": [
+                              "As the employee open People › Profile. On Overview the About me card says to write a little about yourself; press Write.",
+                              "Paste more than 500 characters and press Save.",
+                              "Write 'I look after incoming quality. Best reached on Teams before 4 pm.' and press Save.",
+                              "As the manager open the employee from My team: read the About me card; look for an Edit or Clear button.",
+                              "As HR open the same person from the Directory; press Clear, then press Clear again with no reason; then give the reason 'Has a phone number in it' and press Clear.",
+                              "As the employee open My data (People › Privacy, download my data as JSON) and search the file for the text.",
+                              "As another company's admin call PUT /people/employees/<id>/about-me."
+                    ],
+                    "expected": "Step 1: the dialog 'About me' with a count '0 of 500 characters'. Step 2: 'Keep it to 500 characters.' under the field, nothing saved. Step 3: toast 'About me saved'; the card shows the text with line breaks kept. Step 4: the manager reads the text and has no button on the card. Step 5: 'Say why in a few words.' first; then toast '<first name>'s About me cleared' and the card is gone for HR and the manager; the audit log has employee.about_me.cleared with the reason. Step 6: the About me text is not in the file. Step 7: 404. No page scroll at 1278 x 635 beyond what the record had before.",
+                    "stories": [
+                              "Screens/People/PPL-03 · Person record (Employee · own record, HR · overview, Manager · team member, About me · write, too long, server refuses, HR clears it, no reason)"
+                    ],
+                    "note": "Positive and negative (access-privacy e2e: 501 characters 400, trimmed save, 500 exactly ok, HR / manager write 403, other company 404, manager reads it, can.editAbout / clearAbout per viewer, clear without reason 400, manager or the person clear 403, cleared with the reason audited, update audit without the text, not in my-data export; kit record-dialogs 10; web access pages 15). Migration 940 (employees.about_me VARCHAR(500)); routes PUT people/employees/:id/about-me (the person only, service-checked) and POST people/employees/:id/about-me/clear (employee.profile.edit, in scope)."
+          },
+          {
+                    "id": "MT-T2F-77",
+                    "area": "Helpdesk (T2-F item 77, answer 2890): satisfaction filter on the ticket list",
+                    "screen": "Helpdesk › Tickets (HLP-02 Agent desk): Filter › Satisfaction",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "A desk agent and a desk lead of the IT desk (demo org); an employee without a desk seat; another company's agent.",
+                    "steps": [
+                              "As the employee raise three IT tickets; as the agent solve them; as the employee rate them 2, 3 and 5 stars.",
+                              "As the agent open Tickets › All in my queues, press Filter › Satisfaction and tick Low (1-2).",
+                              "Tick also High (4-5); then untick both and tick Not rated.",
+                              "Save the view with Low (1-2) as 'Unhappy' and open it again later.",
+                              "As the employee open /yx/desk/tickets?satisfaction=low; as another company's agent pick all four bands."
+                    ],
+                    "expected": "Step 2: only the ticket rated 2. Step 3: the tickets rated 2 and 5; then every ticket nobody rated yet (none of the three). Step 4: the view keeps the band and shows the ticket rated 2. Step 5: the employee has no access (403); the other company's agent never sees these tickets. The requester shown is as before; the rating comment stays in the ticket report. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-02 · Agent desk (filter bar: Satisfaction)"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp02 e2e 9: low / neutral / high / two bands / not rated / not rated + neutral, bad band 400, other company none, employee 403, saved view keeps it; kit helpdesk-desk-live 17; web yx-desk 1). No migration; GET desk/tickets?satisfaction=low,neutral,high,none on top of the visibility filter (export follows the same filter)."
+          },
+          {
+                    "id": "MT-T2F-82",
+                    "area": "Platform (T2-F item 82, answer 2887): moved-page stubs",
+                    "screen": "Any old YukthiX address of a page that moved (Settings 6.3 Moved page)",
+                    "url": "http://localhost:3000/yx/settings/payroll-rules",
+                    "account": "HR Admin (demo org), signed in.",
+                    "steps": [
+                              "Open /yx/settings/payroll-rules and wait without pressing anything.",
+                              "Open /yx/me/letters and press 'Open Me › Documents and letters now' at once.",
+                              "Open each of /yx/settings/company-rules, /yx/settings/access-settings, /yx/settings/performance, /yx/hiring/scorecards, /yx/hiring/duplicates, /yx/performance/cycles, /yx/performance/reviews.",
+                              "Open an old /v2 address, e.g. /v2/users, and an outside old link, e.g. /login.",
+                              "Open a /yx address that never existed, e.g. /yx/settings/nothing-here."
+                    ],
+                    "expected": "Step 1: 'This page has moved' with 'It is now Settings › Loans and advances (/yx/settings/payroll/loans-and-advances). We open it in 5 seconds.'; after 5 seconds the new page opens (the old address is replaced in history, so Back does not loop). Step 2: the new page opens at once. Step 3: each shows the stub naming its new page, then opens it. Step 4: these redirect at once, no stub. Step 5: the not-found page, not a stub. From 6 months after each move (e.g. 12 May 2027 for payroll rules) the old address opens the new page at once. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Help (6.3 Moved page, 6.3 Moved page · phone)"
+                    ],
+                    "note": "Positive and negative (web lib/yx-moved 4: last stub day vs the day after, no double hop, 4.9 s not yet / 5 s opens, Open now, after 6 months straight through; org pages S-7 and performance reviews through the stub; next.config: no /yx redirects left; kit settings 36). The two /yx redirects in next.config (/yx/me/letters, /yx/hiring/scorecards) became stub pages; the list with the move dates is apps/web/lib/yx-moved.ts."
+          },
+          {
+                    "id": "MT-T2F-80",
+                    "area": "Platform (T2-F item 80, answer 2885): the rail's \"last used\" slot",
+                    "screen": "Every YukthiX page: the left rail (Shell › Side rail · last used slot)",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee (demo org) whose rail has no Projects or Hire area; a second person on the same browser.",
+                    "steps": [
+                              "Sign in as the employee and look at the rail on Home.",
+                              "Open a page in an area that is not on your rail from a link (e.g. a project page from a notification, /yx/projects/<id>), then go back to Home.",
+                              "Press the new slot under the areas; use the arrow keys through the rail.",
+                              "Open a page in an area that is on your rail (Time › Leave); look at the slot.",
+                              "Sign out, sign in as the second person on the same browser."
+                    ],
+                    "expected": "Step 1: no slot (nothing shown until one is used). Step 2: under the areas, set off by a line and above Settings, one slot with the area's icon and name; its screen-reader name is 'Last used: Projects'. Step 3: it opens the page last opened there; arrow keys reach it between the areas and Settings. Step 4: the slot stays as it was (areas on the rail never fill it). Step 5: no slot for the second person (kept per person and company in this browser, cleared on sign-out like Ctrl K Recent).",
+                    "stories": [
+                              "Shell/… · Side rail · employee with the \"last used\" slot"
+                    ],
+                    "note": "Positive and negative (kit shell 23: the slot's place, link and keyboard order, nothing until used, never a copy of a rail area; web access pages 17: an off-rail page fills it and it stays on the next page, nothing on first use, a tampered stored link outside the app never shows). Kept under yx-recent:last-area:<user>:<company> in localStorage; no server change."
+          },
+          {
+                    "id": "MT-T2F-79",
+                    "area": "Home (T2-F item 79, answer 2884): Edit home on the live Home",
+                    "screen": "Home (PLT-02 role home: Edit home, Reset to company layout) and Settings › 2.2 Directory and privacy › Home page",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "HR Admin (settings); an employee (demo org); the same employee on a second browser; a manager while only Employee is allowed.",
+                    "steps": [
+                              "As the employee open Home: look for Edit home.",
+                              "As HR open Settings › Directory and privacy › Home page and tick Employee under 'Roles that may personalise their own home'; save.",
+                              "As the employee reload Home and press Edit home. Open ⋯ on My tasks › Remove widget; on Coming up choose Wide (full row); move Coming up up; press Done.",
+                              "Open Home on a second browser or after signing in again.",
+                              "Press Edit home › Reset to company layout; then Undo; then Reset to company layout again and Done.",
+                              "In Edit home look for a menu on Needs your action and Attendance today.",
+                              "As the manager open Home."
+                    ],
+                    "expected": "Step 1: no Edit home (off for every role by default). Step 2: toast that the setting was saved. Step 3: the bar 'Editing your home… Changes are saved for you only.'; My tasks leaves (with Undo), Coming up fills the row and moves up. Step 4: the same layout (kept in YukthiX per person, not per browser). Step 5: the company layout comes back; Undo restores theirs; reset again gives the company layout on every device. Step 6: no menu; they show 'Always shown' and stay first. Step 7: no Edit home (only Employee is allowed). No page scroll at 1278 x 635 beyond the widgets' own.",
+                    "stories": [
+                              "Dashboards/… DashboardGrid (Edit home, editing bar, Add widget, Reset to company layout)",
+                              "Screens/Platform/PLT-02 · Role homes"
+                    ],
+                    "note": "Positive and negative (small-features e2e 16: off by default and saving refused 403, setting only by a settings manager and only known roles, persona not allowed 403, pinned widget hidden or ordered 400, a widget twice 400, size 5 400, bad id 400, unknown persona 400, saved and read back, another person and another company never see it, one row per person, reset removes it, audit saved/saved/reset, signed out 401; API unit home-layout 3; kit shell-home 34 and settings 175; web pages 'Edit home' 2). Migration 941 (home_layouts, RLS + support-session exclusion, in the rls-isolation list); setting home.personalise_roles (multi, default none); routes GET/PUT/DELETE workspace/home/layout (the caller's own row only)."
+          },
+          {
+                    "id": "MT-T2F-81",
+                    "area": "Platform (T2-F item 81, answer 2886): \"+ New\" quick create in the top bar",
+                    "screen": "Every YukthiX page: top bar › New (PLT-05 request type picker)",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee (demo org); a manager who may raise requisitions (panel@, Divya); HR Admin without an employee record; a YukthiX support session.",
+                    "steps": [
+                              "As the employee press New in the top bar.",
+                              "Type 'ticket' in the search, then 'visa'.",
+                              "Pick Leave; come back, press New › Regularise attendance, then Expense claim, Helpdesk ticket, Letter or certificate.",
+                              "As the manager press New and pick Job request.",
+                              "As HR without an employee record press New.",
+                              "In a support session look for New."
+                    ],
+                    "expected": "Step 1: the drawer 'What do you want to request?' with groups Time off (Leave), Attendance (Regularise attendance), Money (Expense claim), Documents (Letter or certificate), Help (Helpdesk ticket); no Job request. Step 2: only Helpdesk ticket; then 'No request type matches.'. Step 3: the drawer closes and each opens its live form: the leave request sheet, the regularise sheet on attendance, the new expense claim, the new ticket form, the certificate request. Step 4: Job request is listed and opens the new-requisition sheet on Requisitions. Step 5: only what HR may raise (a helpdesk ticket). Step 6: no New button. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/PLT-05 · Request sheet (\"+ New\" · an employee, a manager, nothing to raise; helpdesk ticket; job request)",
+                              "Shell/… · Top bar · with + New"
+                    ],
+                    "note": "Positive and negative (kit inbox 'PLT-05 + New' 2 and shell 24: only allowed types, grouped, pick closes and opens, search, nothing to raise, New only with a handler; web palette 'newRequestTypes' 2: employee list and hrefs, none without a record, job only with ats.requisition.raise; requisitions ?new=1 opens the sheet only with the key (2); layout + New opens the picker and the pick navigates (1)). No API change: each form keeps its own checks."
           }
 ]

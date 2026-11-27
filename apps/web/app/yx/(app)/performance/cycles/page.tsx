@@ -1,11 +1,7 @@
-'use client';
+import { MovedPage } from '../../moved-page';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-
-// The cycles list lives on the PRF-01 HR home ("Review cycles"); old links go there.
+// The cycles list lives on the PRF-01 HR home ("Review cycles").
+// T2-F 82 (answer 2887): the old address shows the moved-page stub for 6 months, then opens the new page.
 export default function YxReviewCyclesPage() {
-  const router = useRouter();
-  useEffect(() => router.replace('/yx/performance#cycles'), [router]);
-  return null;
+  return <MovedPage from="/yx/performance/cycles" />;
 }

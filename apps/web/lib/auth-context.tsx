@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, setUnauthorizedHandler, signInPath, STAFF_SESSION_KEY } from './api-client';
 import { decodeJwtPayload } from './jwt';
 import { clearAllRecent } from './yx-recent';
+import { removePushOnSignOut } from './yx-push';
 
 interface AuthContextValue {
   accessToken: string | null;
@@ -258,6 +259,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout(): Promise<string> {
     const target = signInPath();
+    // T2-E 52: this device's push subscription goes first, while the session can still remove it.
+    await removePushOnSignOut();
     await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
     setSignedOut(true);
     applyToken(null);

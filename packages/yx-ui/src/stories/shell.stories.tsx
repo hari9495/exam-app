@@ -331,6 +331,27 @@ export const RailRoleFiltered: S = {
   ),
 };
 
+// T2-F 80 (answer 2885): the last area opened that is not on the person's rail, in one slot under the areas.
+export const RailLastUsed: S = {
+  name: 'Side rail · employee with the "last used" slot',
+  render: () => (
+    <div style={{ display: 'flex', height: 560 }}>
+      <SideRail
+        items={RAIL_ITEMS.filter((i) => ['home', 'time', 'pay', 'learning', 'helpdesk', 'settings'].includes(i.id))}
+        lastUsed={{ ...RAIL_ITEMS.find((i) => i.id === 'hire')!, href: '/yx/hiring/internal-jobs' }}
+        activeId="time"
+        logo={<Monogram />}
+      />
+    </div>
+  ),
+};
+
+// T2-F 81 (answer 2886): "+ New" opens the PLT-05 type picker; left out when the person has nothing to raise.
+export const TopBarWithNew: S = {
+  name: 'Top bar · with + New',
+  render: () => <TopBar onNew={() => {}} onSearch={() => {}} onHelp={() => {}} profile={<ProfileMenu name="Divya Raghunathan" email="divya.r@kaverifoods.in" />} />,
+};
+
 export const TopBarAlone: S = {
   name: 'Top bar',
   render: () => (
