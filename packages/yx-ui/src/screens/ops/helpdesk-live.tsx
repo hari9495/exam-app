@@ -34,6 +34,7 @@ import type { Answers } from '../../lib/forms';
 import type { PickOption } from '../desk/esm-types';
 import type { LoadState, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from '../desk/types';
 import { Actions, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
+import { useYxT } from '../../i18n';
 
 export interface LiveHelp {
   state: LoadState;
@@ -95,6 +96,8 @@ export function rateCandidate(tickets: MyTicketRow[], now = new Date()): MyTicke
 }
 
 export function LiveHelpCentre({ live }: { live: LiveHelp }) {
+  // T2-G 84b: the page's words in the reader's language.
+  const t = useYxT('helpCentre');
   const phone = useNarrow();
   const [aids, setAids] = useReadingAids();
   const [raising, setRaising] = useState(Boolean(live.startRaise));
@@ -198,11 +201,11 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
     <ReadingAidsFrame value={aids}>
       <OpsDesk area="helpdesk" active="Help centre" member={false}>
         <PageHeader
-          title="Help centre"
-          description="Search answers, ask the assistant, or raise a ticket with the right team."
+          title={t('title')}
+          description={t('description')}
           actions={
             <Button variant="primary" icon={Plus} onClick={() => raise()}>
-              Raise a ticket
+              {t('raise')}
             </Button>
           }
         />
@@ -211,15 +214,15 @@ export function LiveHelpCentre({ live }: { live: LiveHelp }) {
             <>
               {offer}
               {issues}
-              <Card title="Find an answer">{search}</Card>
+              <Card title={t('find')}>{search}</Card>
               {rating}
-              <Card title="My tickets">{tickets}</Card>
+              <Card title={t('tickets')}>{tickets}</Card>
             </>
           }
           rail={
             <>
-              <Card title="Ask the assistant">
-                <EmptyState compact title="The assistant is not switched on yet." description="Until then, search the articles or raise a ticket." />
+              <Card title={t('assistant')}>
+                <EmptyState compact title={t('assistantOff')} description={t('assistantOffText')} />
               </Card>
               {live.channels && <MyChannelsCard {...live.channels} />}
               <ReadingAidsCard value={aids} onChange={setAids} />
@@ -243,20 +246,21 @@ function ArticleSearch({ home, query, onQuery, onSearch, onOpen, hrefOf }: { hom
   }, [home]);
   const popular = home ? (home.featured.length ? home.featured : home.articles).slice(0, 4) : [];
   const results = searching ? found : popular;
+  const t = useYxT('helpCentre');
   return (
     <div className="yx-ops-stack" data-gap="sm">
-      <TextField value={query} onChange={onQuery} placeholder="Search help articles, e.g. payslip LOP" aria-label="Search help articles" prefix={<Search aria-hidden size={16} />} maxLength={100} />
-      <section aria-label={searching ? 'Search results' : 'Popular articles'} className="yx-ops-stack" data-gap="sm">
+      <TextField value={query} onChange={onQuery} placeholder={t('search')} aria-label={t('searchLabel')} prefix={<Search aria-hidden size={16} />} maxLength={100} />
+      <section aria-label={searching ? t('results') : t('popular')} className="yx-ops-stack" data-gap="sm">
         {searching ? (
-          <p className="yx-ops-muted">{`${results.length} ${results.length === 1 ? 'article' : 'articles'} for “${query.trim()}”`}</p>
+          <p className="yx-ops-muted">{t('found', { n: results.length, q: query.trim() })}</p>
         ) : popular.length ? (
-          <p className="yx-ops-muted">Popular articles</p>
+          <p className="yx-ops-muted">{t('popular')}</p>
         ) : null}
         {results.length === 0 ? (
           searching ? (
-            <EmptyState compact title="No articles match these words." description="Try other words, or raise a ticket." />
+            <EmptyState compact title={t('noMatch')} description={t('noMatchText')} />
           ) : (
-            <EmptyState compact title="No help articles yet." description="Raise a ticket and the team will help." />
+            <EmptyState compact title={t('noArticles')} description={t('noArticlesText')} />
           )
         ) : (
           <ul className="yx-ops-list">
@@ -279,35 +283,36 @@ function ArticleSearch({ home, query, onQuery, onSearch, onOpen, hrefOf }: { hom
 }
 
 function MyTickets({ live }: { live: LiveHelp }) {
+  const t = useYxT('helpCentre');
   if (live.state === 'loading')
     return (
-      <div className="yx-ops-stack" role="status" aria-busy="true" aria-label="Loading your tickets">
+      <div className="yx-ops-stack" role="status" aria-busy="true" aria-label={t('loading')}>
         <Skeleton height={48} />
         <Skeleton height={48} />
         <Skeleton height={48} />
       </div>
     );
-  if (live.state === 'error') return <ErrorState title="We couldn't load your tickets." description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />;
-  if (!live.tickets.length) return <EmptyState compact title="You have no tickets." description="When you raise a ticket, you can follow it and its response time here." />;
+  if (live.state === 'error') return <ErrorState title={t('loadError')} description={t('loadErrorText')} onRetry={live.onRetry} />;
+  if (!live.tickets.length) return <EmptyState compact title={t('none')} description={t('noneText')} />;
   return (
-    <ul className="yx-ops-stack yx-ops-plain" data-gap="sm" aria-label="My tickets">
-      {live.tickets.map((t) => (
-        <li key={t.id} className="yx-ops-tile">
+    <ul className="yx-ops-stack yx-ops-plain" data-gap="sm" aria-label={t('tickets')}>
+      {live.tickets.map((tk) => (
+        <li key={tk.id} className="yx-ops-tile">
           <div className="yx-ops-tile__row">
-            <Link className="yx-ops-tile__title" href={`/yx/desk/help/${encodeURIComponent(t.id)}`} onClick={(e) => (e.preventDefault(), live.onOpen(t.id))}>
-              {t.subject}
+            <Link className="yx-ops-tile__title" href={`/yx/desk/help/${encodeURIComponent(tk.id)}`} onClick={(e) => (e.preventDefault(), live.onOpen(tk.id))}>
+              {tk.subject}
             </Link>
-            <StatusBadge label={t.status} state={t.systemState} />
+            <StatusBadge label={tk.status} state={tk.systemState} />
           </div>
           <div className="yx-ops-tile__row">
             <span className="yx-ops-muted">
-              <span className="yx-ops-mono">{t.number}</span> · {t.desk} · raised {day(t.createdAt)}
-              {t.role === 'requested_for' ? ' · raised for you' : t.role === 'watcher' ? ' · you follow it' : ''}
+              <span className="yx-ops-mono">{tk.number}</span> · {tk.desk} · {t('raised', { date: day(tk.createdAt) })}
+              {tk.role === 'requested_for' ? t('raisedFor') : tk.role === 'watcher' ? t('follow') : ''}
             </span>
-            {!DONE.includes(t.systemState) && t.clock && <SlaBadge label="Resolve" elapsedMin={t.clock.usedMinutes} targetMin={t.clock.targetMinutes} paused={t.clock.paused} atRiskPercent={t.clock.atRiskPercent} />}
-            {t.private ? (
+            {!DONE.includes(tk.systemState) && tk.clock && <SlaBadge label={t('resolve')} elapsedMin={tk.clock.usedMinutes} targetMin={tk.clock.targetMinutes} paused={tk.clock.paused} atRiskPercent={tk.clock.atRiskPercent} />}
+            {tk.private ? (
               <Badge tone="neutral">
-                <Lock aria-hidden size={12} /> Private
+                <Lock aria-hidden size={12} /> {t('private')}
               </Badge>
             ) : null}
           </div>
