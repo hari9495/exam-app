@@ -6,6 +6,7 @@ import { Badge, type BadgeTone } from '../../components/display';
 import { ErrorState, NoAccessState, Skeleton } from '../../components/feedback';
 import { PageHeader } from '../../components/shell';
 import { formatDate } from '../../lib/format';
+import type { FilterFieldDef } from '../../components/filters';
 import type { LoadState, SystemState } from './types';
 
 // Pieces shared by the Service Desk screens: plain words for states and priorities, the page frame, small helpers.
@@ -118,3 +119,16 @@ export function DeskPage({ title, description, actions, state, onRetry, what, gr
 export function MessageBody({ html }: { html: string }) {
   return <div className="yx-desk-body" dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+/** T2-F 77 (answer 2890): the requester's rating after closing, in bands (the comment stays in the report). */
+export const SATISFACTION_FILTER: FilterFieldDef = {
+  key: 'satisfaction',
+  label: 'Satisfaction',
+  type: 'multi',
+  options: [
+    { value: 'low', label: 'Low (1-2)' },
+    { value: 'neutral', label: 'Neutral (3)' },
+    { value: 'high', label: 'High (4-5)' },
+    { value: 'none', label: 'Not rated' },
+  ],
+};

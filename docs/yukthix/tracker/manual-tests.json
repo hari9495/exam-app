@@ -29618,5 +29618,24 @@
                               "Screens/People/PPL-03 · Person record (Employee · own record, HR · overview, Manager · team member, About me · write, too long, server refuses, HR clears it, no reason)"
                     ],
                     "note": "Positive and negative (access-privacy e2e: 501 characters 400, trimmed save, 500 exactly ok, HR / manager write 403, other company 404, manager reads it, can.editAbout / clearAbout per viewer, clear without reason 400, manager or the person clear 403, cleared with the reason audited, update audit without the text, not in my-data export; kit record-dialogs 10; web access pages 15). Migration 940 (employees.about_me VARCHAR(500)); routes PUT people/employees/:id/about-me (the person only, service-checked) and POST people/employees/:id/about-me/clear (employee.profile.edit, in scope)."
+          },
+          {
+                    "id": "MT-T2F-77",
+                    "area": "Helpdesk (T2-F item 77, answer 2890): satisfaction filter on the ticket list",
+                    "screen": "Helpdesk › Tickets (HLP-02 Agent desk): Filter › Satisfaction",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "A desk agent and a desk lead of the IT desk (demo org); an employee without a desk seat; another company's agent.",
+                    "steps": [
+                              "As the employee raise three IT tickets; as the agent solve them; as the employee rate them 2, 3 and 5 stars.",
+                              "As the agent open Tickets › All in my queues, press Filter › Satisfaction and tick Low (1-2).",
+                              "Tick also High (4-5); then untick both and tick Not rated.",
+                              "Save the view with Low (1-2) as 'Unhappy' and open it again later.",
+                              "As the employee open /yx/desk/tickets?satisfaction=low; as another company's agent pick all four bands."
+                    ],
+                    "expected": "Step 2: only the ticket rated 2. Step 3: the tickets rated 2 and 5; then every ticket nobody rated yet (none of the three). Step 4: the view keeps the band and shows the ticket rated 2. Step 5: the employee has no access (403); the other company's agent never sees these tickets. The requester shown is as before; the rating comment stays in the ticket report. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-02 · Agent desk (filter bar: Satisfaction)"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp02 e2e 9: low / neutral / high / two bands / not rated / not rated + neutral, bad band 400, other company none, employee 403, saved view keeps it; kit helpdesk-desk-live 17; web yx-desk 1). No migration; GET desk/tickets?satisfaction=low,neutral,high,none on top of the visibility filter (export follows the same filter)."
           }
 ]

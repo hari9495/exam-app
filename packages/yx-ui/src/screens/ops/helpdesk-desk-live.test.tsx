@@ -19,6 +19,20 @@ describe('HLP-02 rules', () => {
     expect(f).toEqual({ assignee: 'me', deskIds: ['d-it'], priorities: [1, 2], states: ['open'], createdFrom: '2026-10-01', createdTo: undefined, search: 'vpn' });
   });
 
+  it('T2-F 77: the satisfaction bands go to the server; none chosen sends none', () => {
+    expect(toFilters({}, [{ key: 'satisfaction', type: 'multi', values: ['low', 'none'] }], '').satisfaction).toEqual(['low', 'none']);
+    expect(toFilters({}, [], '').satisfaction).toBeUndefined();
+  });
+
+  it('T2-F 77: the filter bar offers Satisfaction; a saved band shows as its chip', async () => {
+    const { unmount } = render(<AgentDeskScreen live={liveDesk()} />);
+    await ue.click(screen.getByRole('button', { name: 'Filter' }));
+    expect(await screen.findByRole('menuitem', { name: 'Satisfaction' })).toBeInTheDocument();
+    unmount();
+    render(<AgentDeskScreen live={liveDesk({ query: { viewId: 'all', filters: { satisfaction: ['low'] }, layout: 'list' } })} />);
+    expect(screen.getByText('Low (1-2)')).toBeInTheDocument();
+  });
+
   it('built-in views carry the design names', () => {
     expect(BUILT_IN_VIEWS.map((v) => v.name)).toEqual(['My open tickets', 'Unassigned', 'At risk or breached', 'Waiting on employee', 'All open', 'Snoozed by me', 'All in my queues']);
   });

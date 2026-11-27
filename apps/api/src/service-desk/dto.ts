@@ -987,6 +987,8 @@ export const SORTS = ['updated_desc', 'created_desc', 'created_asc', 'priority_a
 const csv = () => Transform(({ value }) => (typeof value === 'string' ? value.split(',').map((v) => v.trim()).filter(Boolean) : value));
 
 /** The filters a list, board, saved view and CSV export share. */
+export const SATISFACTION = ['low', 'neutral', 'high', 'none'] as const;
+
 export class TicketFiltersDto {
   @IsOptional()
   @csv()
@@ -1051,6 +1053,14 @@ export class TicketFiltersDto {
   @IsOptional()
   @IsIn(['show', 'only'])
   snoozed?: 'show' | 'only';
+
+  /** T2-F 77 (answer 2890): the requester's rating after closing: low (1-2), neutral (3), high (4-5), none (not rated). */
+  @IsOptional()
+  @csv()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @IsIn(SATISFACTION, { each: true })
+  satisfaction?: (typeof SATISFACTION)[number][];
 
   /** Breaching soon: a response target missed or due within 4 hours. */
   @IsOptional()
