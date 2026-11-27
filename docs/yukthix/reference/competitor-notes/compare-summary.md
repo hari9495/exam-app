@@ -1020,3 +1020,4 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2921: T2-F 79 the recruiter home has no option in that setting (the design lists Employee, Manager, HR, Finance). Suggested answer: add Recruiter when the setting is next touched.
 - 2922: T2-F 81 "+ New" links to each type's existing form; the inline form per type waits for the approvals pass. Suggested answer: keep it so (as 2886).
 - Also on merge (27 Nov 2026, lead): push endpoints are accepted only on the browsers' push services (FCM, Mozilla, Apple, Windows), because the server posts to them; any other address is refused.
+- Founder answers (27 Nov 2026, "ok for all"): 2900-2902 and 2920-2922 approved exactly as suggested; 2900, 2901 and 2921 go into the next builder pass (T2-G), 2920 the demo company turns Edit home on for Employee and Manager.
