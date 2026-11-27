@@ -192,7 +192,29 @@ export const EXPORT_ACTIONS: Record<string, { what: string; sensitivity: 'Intern
   'audit.exported': { what: 'Audit log', sensitivity: 'Confidential' },
   'audit.export': { what: 'Audit log', sensitivity: 'Confidential' },
   'account.export.downloaded': { what: 'Company data export', sensitivity: 'Confidential' },
+  // T2-G 45: each scheduled export to the company's storage, sent or not.
+  'account.export.sent': { what: 'Scheduled company data export', sensitivity: 'Confidential' },
+  'account.export.failed': { what: 'Scheduled company data export (not sent)', sensitivity: 'Confidential' },
   'exports.log.downloaded': { what: 'Export log', sensitivity: 'Internal' },
+};
+
+const num = (m: Record<string, unknown>, k: string) => (typeof m[k] === 'number' ? (m[k] as number) : 0);
+
+/** T2-G 46: the audit actions that are one import of a file, with its rows that went in and the rows that did not. */
+export const IMPORT_ACTIONS: Record<string, { what: string; ok: (m: Record<string, unknown>) => number; failed: (m: Record<string, unknown>) => number }> = {
+  'employee.import': { what: 'Employees', ok: (m) => num(m, 'created'), failed: (m) => num(m, 'skipped') },
+  'payroll.import.staged': { what: 'Payroll inputs (checked)', ok: (m) => num(m, 'rows') - num(m, 'errors'), failed: (m) => num(m, 'errors') },
+  'payroll.import.committed': { what: 'Payroll inputs (applied)', ok: (m) => num(m, 'rows'), failed: () => 0 },
+  'tax.part_a.imported': { what: 'Form 16 Part A', ok: (m) => num(m, 'matched'), failed: (m) => num(m, 'unmatched') },
+  'consultant.certificates.imported': { what: 'Consultant TDS certificates', ok: (m) => num(m, 'matched'), failed: (m) => num(m, 'unmatched') },
+  'perf.goals.imported': { what: 'Goals', ok: (m) => num(m, 'rows'), failed: () => 0 },
+  'perf.competencies.imported': { what: 'Competencies', ok: (m) => num(m, 'rows'), failed: () => 0 },
+  'expense.card.statement.imported': { what: 'Card statement', ok: (m) => num(m, 'rows'), failed: () => 0 },
+  'expense.fx.imported': { what: 'Exchange rates', ok: (m) => num(m, 'added') + num(m, 'changed'), failed: () => 0 },
+  'desk.people.imported': { what: 'Helpdesk people', ok: (m) => num(m, 'rows'), failed: () => 0 },
+  'desk.shift.imported': { what: 'Helpdesk shifts', ok: (m) => num(m, 'added'), failed: () => 0 },
+  'desk.setup.imported': { what: 'Helpdesk set-up', ok: (m) => num(m, 'added'), failed: (m) => num(m, 'failed') },
+  'institution.imported': { what: 'Colleges', ok: (m) => num(m, 'added'), failed: () => 0 },
 };
 
 @Injectable()
@@ -222,6 +244,24 @@ export class ExportLogService {
         const a = EXPORT_ACTIONS[r.action]!;
         const rows_ = typeof meta.rows === 'number' ? meta.rows : typeof meta.count === 'number' ? meta.count : null;
         return { id: r.id, at: r.createdAt.toISOString(), who: r.actorName ?? r.actorEmail ?? 'System', what: a.what, detail: typeof meta.kind === 'string' ? meta.kind : typeof meta.report === 'string' ? meta.report : null, rows: rows_, sensitivity: a.sensitivity };
+      });
+    });
+  }
+
+  /** T2-G 46: the last 500 imports (newest first): who, when, what, rows in and rows not in. Same key as the export log. */
+  async imports(ctx: TenantContext, user: ScopeUser, from?: string) {
+    await this.must(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const rows = await tx.auditLog.findMany({ where: { organizationId: c.organizationId, action: { in: Object.keys(IMPORT_ACTIONS) }, ...(from ? { createdAt: { gte: new Date(`${from}T00:00:00+05:30`) } } : {}) }, orderBy: { createdAt: 'desc' }, take: 500, select: { id: true, action: true, actorName: true, actorEmail: true, metadataJson: true, createdAt: true } });
+      return rows.map((r) => {
+        let meta: Record<string, unknown> = {};
+        try {
+          meta = r.metadataJson ? (JSON.parse(r.metadataJson) as Record<string, unknown>) : {};
+        } catch {
+          meta = {};
+        }
+        const a = IMPORT_ACTIONS[r.action]!;
+        return { id: r.id, at: r.createdAt.toISOString(), who: r.actorName ?? r.actorEmail ?? 'System', what: a.what, detail: typeof meta.fileName === 'string' ? meta.fileName : typeof meta.kind === 'string' ? meta.kind : null, ok: Math.max(0, a.ok(meta)), failed: Math.max(0, a.failed(meta)) };
       });
     });
   }

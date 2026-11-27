@@ -287,6 +287,9 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       expect((await api('emp', 'put', '/workspace/home/layout').send(layout).expect(403)).body.message).toMatch(/same home for your role/);
       await api('emp', 'put', '/org/settings').send({ key: 'home.personalise_roles', scopeType: 'tenant', value: 'employee' }).expect(403);
       await api('adminA', 'put', '/org/settings').send({ key: 'home.personalise_roles', scopeType: 'tenant', value: 'everyone' }).expect(400);
+      // Answer 2921: Recruiter is one of the roles too.
+      await api('adminA', 'put', '/org/settings').send({ key: 'home.personalise_roles', scopeType: 'tenant', value: 'recruiter' }).expect(200);
+      expect((await api('emp', 'get', '/workspace/home/layout').expect(200)).body.personaliseRoles).toEqual(['recruiter']);
       await api('adminA', 'put', '/org/settings').send({ key: 'home.personalise_roles', scopeType: 'tenant', value: 'employee,manager' }).expect(200);
     });
 

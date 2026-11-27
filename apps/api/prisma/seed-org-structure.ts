@@ -191,6 +191,8 @@ export async function seedOrgStructure(tx: Tx, organizationId: string, passwordH
   await setting('tenant', organizationId, 'attendance.mode', 'punch', FROM);
   await setting('location', blr.id, 'attendance.mode', 'assumed_present', FROM);
   await setting('location', hosur.id, 'attendance.missing_punch_effect', 'block_payroll_approval', FROM);
+  // Answer 2920: the demo company lets employees and managers personalise their Home (off for every real company).
+  await setting('tenant', organizationId, 'home.personalise_roles', 'employee,manager', null);
 
   // ---- a Payroll Admin (P02 §4.2) holding the Confidential and pay grants the System Admin lacks ----
   const profile = await ensure(

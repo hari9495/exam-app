@@ -21,6 +21,9 @@ describe('T2-D 55 My projects', () => {
     expect(rows[0]).toHaveTextContent('420 h');
     expect(rows[0]).toHaveTextContent('380 h');
     expect(rows[1]).toHaveTextContent('Project closed');
+    // Answer 2900: who is away on the project I am on now; a past project shows none.
+    expect(rows[0]).toHaveTextContent('Priya Nair (1 Dec 2026, 2 Dec 2026)');
+    expect(rows[1]).toHaveTextContent('—');
   });
 
   it('negative: no projects says so, with no table', () => {

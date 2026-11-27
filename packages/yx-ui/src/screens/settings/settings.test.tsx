@@ -25,7 +25,7 @@ import {
   validateSetting,
 } from './settings-logic';
 import { SettingsHomeScreen, SettingsPageScreen } from './settings-screens';
-import { AccessDeniedState, MovedPageState, TOURS, TourCard, accessVerdict, shouldShowTour } from './help';
+import { AccessDeniedState, AvailabilityState, MovedPageState, NotFoundState, TOURS, TourCard, accessVerdict, shouldShowTour } from './help';
 import type { SettingDef } from './settings-types';
 
 const G = SETTINGS_GROUPS;
@@ -171,6 +171,20 @@ describe('help and onboarding (APX-D §6)', () => {
     render(<AccessDeniedState recordType="salary history" ownerRole="Payroll Manager" defaultRequesting />);
     fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(screen.getByText(/Say why you need access/)).toBeTruthy();
+  });
+  // T2-G: the app's own states. Live, Request access comes only from the app's rules (none here), never the sample.
+  it('live access denied, not found and maintenance', () => {
+    const { unmount } = render(<AccessDeniedState live recordType="client" ownerRole="Staffing account manager" />);
+    expect(screen.getByText("You don't have access to this client")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Request access/ })).toBeNull();
+    unmount();
+    const nf = render(<NotFoundState reference={null} actions={<a href="/yx/home">Go to Home</a>} />);
+    expect(screen.getByRole('link', { name: 'Go to Home' })).toBeTruthy();
+    expect(screen.queryByText(/Reference/)).toBeNull();
+    nf.unmount();
+    render(<AvailabilityState kind="maintenance" feature="YukthiX" until="1:00 am" action={null} />);
+    expect(screen.getByRole('heading', { name: 'YukthiX is down for maintenance' })).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
   });
   // Irreversible actions: the kit's IrreversibleSheet and its tests (pay.test.tsx) are the one version (answer 945).
 });

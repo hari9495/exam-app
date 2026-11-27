@@ -204,6 +204,13 @@ describe('Projects T2-D part 2', () => {
     expect((await api('viewer', 'get', `/projects/${ids.int}/glance`).expect(want(200))).body).toEqual({ pending: null, away: null });
     await api('emp', 'get', `/projects/${ids.int}/glance`).expect(404); // a team member without a key cannot open the project page
     await api('adminB', 'get', `/projects/${ids.int}/glance`).expect(404);
+    // Answer 2900: so the team member sees who is away on their My projects tab instead (never the leave type, never themselves).
+    type Mine = { id: string; away: { people: { person: string; days: string[] }[] } | null };
+    const mine = (await api('emp', 'get', '/time/me/timesheet/projects').expect(want(200))).body as Mine[];
+    expect(mine.find((p) => p.id === ids.int)!.away!.people).toEqual([{ person: `peer ${run}`, days: [inThree] }]);
+    expect(JSON.stringify(mine)).not.toMatch(/Sick/i);
+    const peers = (await api('peer', 'get', '/time/me/timesheet/projects').expect(want(200))).body as Mine[];
+    expect(peers.find((p) => p.id === ids.int)!.away!.people).toEqual([]);
   });
   type Line = { id: string; version: number };
   const linesOf = async (who: Who) => ((await api(who, 'get', '/time/line-approvals').expect(want(200))).body.groups as { projectId: string; items: { employeeId: string; second: { approvedHours: number } | null; lines: Line[] }[] }[]).filter((g) => g.projectId === ids.int).flatMap((g) => g.items);

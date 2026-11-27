@@ -556,7 +556,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', platform: { feature: 'white_label' } },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // T2-F 79 (answer 2884; the drawn 2.2 Home page setting): roles that may personalise their own Home. Off for everyone.
-  'home.personalise_roles': { label: 'Roles that may personalise their own home', scopes: ['tenant'], dated: false, multi: true, values: ['employee', 'manager', 'hr', 'finance'], default: '', labels: { employee: 'Employee', manager: 'Manager', hr: 'HR', finance: 'Finance' } },
+  'home.personalise_roles': { label: 'Roles that may personalise their own home', scopes: ['tenant'], dated: false, multi: true, values: ['employee', 'manager', 'hr', 'finance', 'recruiter'], default: '', labels: { employee: 'Employee', manager: 'Manager', hr: 'HR', finance: 'Finance', recruiter: 'Recruiter' } },
+  // T2-G 45 (answer 2744): how often the company's data goes to its own storage (once a System Admin connects one).
+  'account.scheduled_export.frequency': { label: 'Send the company data export to your storage', scopes: ['tenant'], dated: false, values: ['daily', 'weekly', 'monthly', 'off'], default: 'weekly', labels: { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', off: 'Off' } },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
   // PPL-43: the day each financial year's BFSI declarations are due (designated persons).

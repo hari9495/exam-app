@@ -246,4 +246,30 @@ describe('G4 reports library and company documents', () => {
     expect((await api('adminA', 'get', '/library/exports').expect(200)).body[0].what).toBe('Export log');
     expect((await api('adminB', 'get', '/library/exports').expect(200)).body).toEqual([]);
   });
+
+  it('T2-G 46: the import log lists each import with who, what, rows in and rows not in, for export-log key holders of the company only', async () => {
+    await inA((tx) =>
+      tx.auditLog.createMany({
+        data: [
+          { organizationId: org.A.id, actorUserId: users.hr, actorName: 'HR Person', action: 'employee.import', entityType: 'legal_entity', entityId: ids.entityA, metadataJson: JSON.stringify({ fileName: 'joiners.csv', rows: 12, created: 10, skipped: 2 }) },
+          { organizationId: org.A.id, actorUserId: users.hr, actorName: 'HR Person', action: 'payroll.import.staged', entityType: 'pay_import_batch', metadataJson: JSON.stringify({ kind: 'variable_pay', rows: 5, errors: 1 }) },
+          { organizationId: org.A.id, actorUserId: users.hr, actorName: 'HR Person', action: 'perf.goal.imported', entityType: 'goal', metadataJson: JSON.stringify({ line: 2 }) },
+          { organizationId: org.A.id, action: 'employee.import', entityType: 'legal_entity', metadataJson: 'not json' },
+        ],
+      }),
+    );
+    await api('emp1', 'get', '/library/imports').expect(403);
+    await api('hr', 'get', '/library/imports').expect(403);
+    await api('adminA', 'get', '/library/imports?from=26-11-2026').expect(400);
+    const log = (await api('adminA', 'get', '/library/imports').expect(200)).body as { who: string; what: string; detail: string | null; ok: number; failed: number }[];
+    expect(log).toHaveLength(3);
+    expect(log).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ who: 'HR Person', what: 'Employees', detail: 'joiners.csv', ok: 10, failed: 2 }),
+        expect.objectContaining({ what: 'Payroll inputs (checked)', detail: 'variable_pay', ok: 4, failed: 1 }),
+        expect.objectContaining({ who: 'System', what: 'Employees', ok: 0, failed: 0 }),
+      ]),
+    );
+    expect((await api('adminB', 'get', '/library/imports').expect(200)).body).toEqual([]);
+  });
 });

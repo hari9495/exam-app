@@ -36,6 +36,7 @@ import { AssetAlertsService } from '../lifecycle/asset-alerts.service';
 import { ProjectsModule } from '../projects/projects.module';
 import { QuestionsModule } from '../questions/questions.module';
 import { InternalApplicationsModule } from '../internal-applications/internal-applications.module';
+import { AccountModule } from '../account/account.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { InternalApplicationsModule } from '../internal-applications/internal-ap
     PlatformModule,
     OrgStructureModule,
     InternalApplicationsModule,
+    AccountModule,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

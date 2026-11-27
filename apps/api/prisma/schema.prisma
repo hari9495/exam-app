@@ -16342,3 +16342,23 @@ model HomeLayout {
   @@unique([organizationId, userId], map: "home_layouts_org_user_key")
   @@map("home_layouts")
 }
+
+/// T2-G 45 (answer 2744): where the company's scheduled data export goes. Secrets are encrypted by the API.
+model CompanyExportDestination {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  /// s3 | azure_blob | google_drive
+  kind                 String    @db.VarChar(16)
+  /// Not secret: { bucket, region, prefix } | { accountUrl, container, prefix } | { folderId }
+  target               Json
+  secretEncrypted      String    @map("secret_encrypted")
+  zipPasswordEncrypted String    @map("zip_password_encrypted")
+  setBy                String    @map("set_by") @db.Uuid
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastAttemptAt        DateTime? @map("last_attempt_at") @db.Timestamptz(3)
+  lastSuccessAt        DateTime? @map("last_success_at") @db.Timestamptz(3)
+  lastError            String?   @map("last_error") @db.VarChar(300)
+
+  @@unique([organizationId], map: "company_export_destinations_org_key")
+  @@map("company_export_destinations")
+}

@@ -683,7 +683,7 @@ export const GROUP_2: SettingsGroupDef = {
           title: 'Home page',
           description: 'What each role sees on their home after signing in.',
           settings: [
-            { key: 'home.personalise_roles', label: 'Roles that may personalise their own home', kind: 'multiselect', value: [], options: ['Employee', 'Manager', 'HR', 'Finance'], helper: 'Off for everyone by default: people see the layout you set for their role. When allowed, a person can add, remove and reorder widgets on their own home only. "Needs your action" always stays first.', synonyms: ['edit home', 'customise home', 'dashboard layout', 'widgets'] },
+            { key: 'home.personalise_roles', label: 'Roles that may personalise their own home', kind: 'multiselect', value: [], options: ['Employee', 'Manager', 'HR', 'Finance', 'Recruiter'], helper: 'Off for everyone by default: people see the layout you set for their role. When allowed, a person can add, remove and reorder widgets on their own home only. "Needs your action" always stays first.', synonyms: ['edit home', 'customise home', 'dashboard layout', 'widgets'] },
             { key: 'home.pay_on_employee_home', label: 'Show net pay on the employee home', kind: 'toggle', value: false, helper: 'HR decides. When on, the amount stays hidden (₹ ••,•••) until the employee selects Show amount, and hides again on every visit.', synonyms: ['salary on home', 'net pay', 'hide pay'] },
           ],
         },

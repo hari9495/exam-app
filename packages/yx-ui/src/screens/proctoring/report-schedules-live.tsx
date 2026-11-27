@@ -36,6 +36,16 @@ export interface LiveExportRow {
   rows: number | null;
   sensitivity: 'Internal' | 'Confidential';
 }
+/** T2-G 46: one import of a file: rows that went in and rows that did not. */
+export interface LiveImportRow {
+  id: string;
+  at: string;
+  who: string;
+  what: string;
+  detail: string | null;
+  ok: number;
+  failed: number;
+}
 export interface LiveReportSchedules {
   state: 'ready' | 'loading' | 'error';
   onRetry?: () => void;
@@ -46,6 +56,8 @@ export interface LiveReportSchedules {
   onEnd: (id: string) => Promise<unknown>;
   /** Only for holders of the export-log key. */
   exportLog?: { rows: LiveExportRow[]; onDownload: () => Promise<unknown> } | null;
+  /** T2-G 46: the import log next to it, for the same key holders. */
+  importLog?: { rows: LiveImportRow[] } | null;
 }
 
 const FREQ: { value: ScheduleFrequency; label: string }[] = [
@@ -76,6 +88,11 @@ export function LiveReportSchedulesScreen({ live }: { live: LiveReportSchedules 
           {live.exportLog && (
             <TabsTrigger value="exports" count={live.exportLog.rows.length}>
               Export log
+            </TabsTrigger>
+          )}
+          {live.importLog && (
+            <TabsTrigger value="imports" count={live.importLog.rows.length}>
+              Import log
             </TabsTrigger>
           )}
         </TabsList>
@@ -126,12 +143,29 @@ export function LiveReportSchedulesScreen({ live }: { live: LiveReportSchedules 
             />
           </TabsContent>
         )}
+        {live.importLog && (
+          <TabsContent value="imports">
+            <DataTable
+              label="Import log"
+              rows={live.importLog.rows}
+              getRowId={(r) => r.id}
+              columns={[
+                { key: 'at', header: 'When', type: 'date', value: (r) => new Date(r.at), width: 120 },
+                { key: 'who', header: 'Who', value: (r) => r.who, width: 200 },
+                { key: 'what', header: 'What', value: (r) => r.what + (r.detail ? ` · ${r.detail}` : ''), width: 260 },
+                { key: 'ok', header: 'Rows in', type: 'number', value: (r) => r.ok, width: 90 },
+                { key: 'failed', header: 'Rows not in', type: 'number', value: (r) => r.failed, width: 110 },
+              ]}
+              empty={<EmptyState compact title="No imports yet" />}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     );
   return (
     <AnlFrame page="Schedules">
       <PageHeader
-        title={canSchedule ? 'Schedules and exports' : 'Export log'}
+        title={canSchedule ? 'Schedules and exports' : live.importLog ? 'Export and import log' : 'Export log'}
         description="Each recipient gets only what their own access allows. Every export is audited."
         actions={
           <>

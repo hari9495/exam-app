@@ -3,7 +3,8 @@ import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { settingFor } from '../people/probation';
 
-export const HOME_PERSONAS = ['employee', 'manager', 'hr', 'finance'] as const;
+// Answer 2921: the recruiter home too.
+export const HOME_PERSONAS = ['employee', 'manager', 'hr', 'finance', 'recruiter'] as const;
 export type HomePersona = (typeof HOME_PERSONAS)[number];
 /** Widgets that always stay first ("Needs your action", "Attendance today", the nudge): never hidden or moved. */
 export const PINNED_WIDGETS = ['actions', 'clock', 'nudge'] as const;

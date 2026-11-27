@@ -419,6 +419,8 @@ export class PerformanceSetupService {
         await this.writeRoles(tx, org, x.id, r.roles.map((x) => ({ designationId: byName.get(x.designation.toLowerCase())!, level: x.level, validFrom: today })), r.levels.length);
         await audit(tx, c, 'perf.competency.imported', 'competency', x.id, { name: r.name, line: r.line });
       }
+      // T2-G 46: one line per file for the import log.
+      await audit(tx, c, 'perf.competencies.imported', 'organization', org, { rows: parsed.rows.length });
       return { imported: parsed.rows.length };
     }).catch(this.duplicate('A competency in the file has the same name as one already saved. Nothing was imported.'));
   }

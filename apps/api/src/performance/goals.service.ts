@@ -565,6 +565,8 @@ export class PerformanceGoalsService implements OnModuleInit {
         const g = await tx.goal.create({ data: { organizationId: org, periodId: period.id, ownerType: 'person', ownerEmployeeId: r.employeeId, kind: 'kpi', title: r.title, description: r.description, weight: r.weight, status: 'draft', createdBy: v.userId } });
         await audit(tx, c, 'perf.goal.imported', 'goal', g.id, { line: r.line });
       }
+      // T2-G 46: one line per file for the import log.
+      await audit(tx, c, 'perf.goals.imported', 'goal_period', period.id, { rows: ok.length });
       return { imported: ok.length };
     });
   }

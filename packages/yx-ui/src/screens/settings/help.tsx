@@ -281,14 +281,17 @@ export interface AccessDeniedProps {
   defaultRequesting?: boolean;
   sent?: boolean;
   maxDays?: number;
+  /** The app: Request access comes from the app frame's AccessRequestContext (the company's rules), not the sample. */
+  live?: boolean;
 }
 
 /**
  * Answer 946: the drawn "Access denied" is the kit's NoAccessState with Request access, as every live page shows it when
- * the company takes access requests. Stories send nothing.
+ * the company takes access requests. Stories send nothing; `live` (T2-G) uses the app's requests.
  */
-export function AccessDeniedState({ recordType, ownerRole, defaultRequesting, sent: sentProp, maxDays = 30 }: AccessDeniedProps) {
+export function AccessDeniedState({ recordType, ownerRole, defaultRequesting, sent: sentProp, maxDays = 30, live }: AccessDeniedProps) {
   const [sent, setSent] = useState<AccessRequestSent | null>(sentProp ? { askedAt: '2026-11-11', state: 'waiting' } : null);
+  if (live) return <NoAccessState what={`this ${recordType}`} grantedBy={`the ${ownerRole}`} />;
   return (
     <AccessRequestContext.Provider value={() => ({ maxDays, sent, startOpen: defaultRequesting, send: async () => setSent({ askedAt: '2026-11-11', state: 'waiting' }) })}>
       <NoAccessState what={`this ${recordType}`} grantedBy={`the ${ownerRole}`} />
@@ -384,7 +387,8 @@ export function AvailabilityBanner({ kind, live, incident }: { kind: 'maintenanc
   return <PageBanner tone="info" action={<Button size="sm">Export my data</Button>}>Your account is read-only until 28 Oct 2026. You can view and export everything; changes are paused.</PageBanner>;
 }
 
-export function AvailabilityState({ kind, feature, wave, isAdmin = true, until }: { kind: Availability; feature: string; wave?: number; isAdmin?: boolean; until?: string }) {
+/** `action` (the app) replaces the drawn button; null shows none (there is no status page yet). */
+export function AvailabilityState({ kind, feature, wave, isAdmin = true, until, action }: { kind: Availability; feature: string; wave?: number; isAdmin?: boolean; until?: string; action?: ReactNode }) {
   const body: Record<Availability, { icon: typeof Wrench; title: string; text: string; action?: ReactNode }> = {
     maintenance: { icon: Wrench, title: `${feature} is down for maintenance`, text: `Back by ${until ?? '1:00 am'}. Your saved work is safe.`, action: <Button>Status page</Button> },
     degraded: { icon: Construction, title: `${feature} is running slowly`, text: 'You can keep working; some pages may take longer to load.', action: <Button>Status page</Button> },
@@ -399,12 +403,13 @@ export function AvailabilityState({ kind, feature, wave, isAdmin = true, until }
     'setup-needed': { icon: Wrench, title: `${feature} needs set-up`, text: 'It is switched on but a few settings are missing.', action: <Button variant="primary">Open set-up hub card</Button> },
   };
   const b = body[kind];
+  const act = action === undefined ? b.action : action;
   return (
     <div className="yx-state" role="status">
       <Icon icon={b.icon} size="md" />
       <h1 className="yx-state__title">{b.title}</h1>
       <p className="yx-state__text">{b.text}</p>
-      {b.action && <div className="yx-state__actions">{b.action}</div>}
+      {act && <div className="yx-state__actions">{act}</div>}
     </div>
   );
 }

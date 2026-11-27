@@ -8,8 +8,10 @@ import { useState } from 'react';
 import { Button } from '../../components/button';
 import { Drawer } from '../../components/drawer';
 import { InlineAlert } from '../../components/feedback';
+import { ConfirmDialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
 import { FormField } from '../../components/field';
-import { TextArea, TextField } from '../../components/inputs';
+import { PasswordField, TextArea, TextField } from '../../components/inputs';
 import { useToast } from '../../components/notify';
 import type { SettingDef, SettingsPageDef } from './settings-types';
 
@@ -77,8 +79,161 @@ export function invoicesPage(design: SettingsPageDef, b: AccountBilling): Settin
   ]);
 }
 
-/** 8.5: the export (start, download while the link works) and the closure request. */
-export function dataPage(design: SettingsPageDef, d: AccountData, canAct: boolean): SettingsPageDef {
+/* ---------------- T2-G 45 (answer 2744): the scheduled export to the company's own storage ---------------- */
+
+export type StorageKind = 's3' | 'azure_blob' | 'google_drive';
+export type ExportFrequency = 'daily' | 'weekly' | 'monthly' | 'off';
+/** GET /account/export-destination: never a secret. */
+export interface ScheduledExport {
+  frequency: ExportFrequency;
+  destination: { kind: StorageKind; where: string; by: string; at: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastError: string | null } | null;
+}
+/** What the drawer sends: the storage, its secret, the zip password, and how often. */
+export interface StorageInput {
+  kind: StorageKind;
+  bucket?: string;
+  region?: string;
+  accountName?: string;
+  container?: string;
+  prefix?: string;
+  folderId?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  accountKey?: string;
+  clientEmail?: string;
+  privateKey?: string;
+  zipPassword: string;
+}
+export const STORAGE_LABEL: Record<StorageKind, string> = { s3: 'Amazon S3', azure_blob: 'Azure Blob', google_drive: 'Google Drive' };
+const FREQ_LABEL: Record<ExportFrequency, string> = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', off: 'Off' };
+
+/** 8.5's section for the scheduled export: where it goes, how often, the last run, and the System Admin's actions. */
+export function scheduledSettings(s: ScheduledExport, canAct: boolean): SettingDef[] {
+  const d = s.destination;
+  const last: SettingDef[] = d
+    ? [
+        {
+          ...info('export.schedule.last', 'Last export', d.lastError ? `Not sent on ${when(d.lastAttemptAt!)}` : d.lastSuccessAt ? `Sent ${when(d.lastSuccessAt)}` : 'Not sent yet', d.lastError ?? 'Each export is listed in the export log.'),
+          ...(d.lastError ? { status: { tone: 'warning' as const, text: 'Not sent' } } : d.lastSuccessAt ? { status: { tone: 'success' as const, text: 'Sent' } } : {}),
+        },
+      ]
+    : [];
+  return [
+    info('export.schedule.where', 'Your storage', d ? `${STORAGE_LABEL[d.kind]} · ${d.where}` : 'Not connected', d ? `Connected by ${d.by} on ${day(d.at)}.` : 'Connect Amazon S3, Azure Blob or Google Drive to get the company data there on a schedule.'),
+    info('export.schedule.frequency', 'How often', FREQ_LABEL[s.frequency], 'Every table as CSV, in a zip locked with your password. Weekly unless you change it.'),
+    ...last,
+    ...(canAct
+      ? [
+          { key: 'export.schedule.connect', label: d ? 'Change the storage or schedule' : 'Connect your storage', kind: 'link' as const, linkScreenId: 'ACC-STORAGE', linkLabel: d ? 'Change' : 'Connect storage', helper: 'Needs your security key. Keys are stored encrypted and never shown again.' },
+          ...(d ? [{ key: 'export.schedule.send', label: 'Send an export now', kind: 'link' as const, linkScreenId: 'ACC-STORAGE-SEND', linkLabel: 'Send now' }] : []),
+        ]
+      : []),
+  ];
+}
+
+const KIND_FIELDS: Record<StorageKind, { key: keyof StorageInput; label: string; helper?: string; secret?: boolean; long?: boolean; optional?: boolean }[]> = {
+  s3: [
+    { key: 'bucket', label: 'Bucket' },
+    { key: 'region', label: 'Region', helper: 'For example ap-south-1.' },
+    { key: 'prefix', label: 'Folder in the bucket', optional: true },
+    { key: 'accessKeyId', label: 'Access key ID', helper: 'Of an IAM user that may only put files in this bucket.' },
+    { key: 'secretAccessKey', label: 'Secret access key', secret: true },
+  ],
+  azure_blob: [
+    { key: 'accountName', label: 'Storage account' },
+    { key: 'container', label: 'Container' },
+    { key: 'prefix', label: 'Folder in the container', optional: true },
+    { key: 'accountKey', label: 'Account key', secret: true },
+  ],
+  google_drive: [
+    { key: 'folderId', label: 'Shared drive folder ID', helper: 'Share the folder with the service account as Content manager.' },
+    { key: 'clientEmail', label: 'Service account email' },
+    { key: 'privateKey', label: 'Service account private key', secret: true, long: true },
+  ],
+};
+
+/** Connect (or replace) the company's storage, with the zip password and how often. Every key is asked again. */
+export function StorageDrawer({ current, onClose, onSave, onRemove }: { current: ScheduledExport; onClose: () => void; onSave: (input: StorageInput, frequency: ExportFrequency) => Promise<unknown>; onRemove?: () => Promise<unknown> }) {
+  const { toast } = useToast();
+  const [kind, setKind] = useState<StorageKind>(current.destination?.kind ?? 's3');
+  const [frequency, setFrequency] = useState<ExportFrequency>(current.frequency);
+  const [v, setV] = useState<Partial<Record<keyof StorageInput, string>>>({});
+  const [confirm, setConfirm] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const fields = KIND_FIELDS[kind];
+  const missing = (k: keyof StorageInput) => !(v[k] ?? '').trim();
+  const bad: Record<string, string | null> = {
+    ...Object.fromEntries(fields.map((f) => [f.key, !f.optional && missing(f.key) ? `Enter the ${f.label.toLowerCase()}.` : null])),
+    zipPassword: (v.zipPassword ?? '').length < 12 ? 'Use at least 12 characters.' : null,
+    confirm: confirm !== (v.zipPassword ?? '') ? 'The two passwords are not the same.' : null,
+  };
+  const save = () => {
+    setTried(true);
+    const miss = Object.entries(bad).find(([, m]) => m)?.[0];
+    if (miss) return document.getElementById(`st-${miss}`)?.focus();
+    setBusy(true);
+    setFailed(null);
+    const input = { kind, zipPassword: v.zipPassword!, ...Object.fromEntries(fields.map((f) => [f.key, (v[f.key] ?? '').trim()])) } as StorageInput;
+    onSave(input, frequency)
+      .then(() => (toast({ tone: 'success', title: `${STORAGE_LABEL[kind]} connected` }), onClose()))
+      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : 'It could not be saved. Try again.'))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title={current.destination ? 'Change your storage' : 'Connect your storage'}
+      subtitle="Scheduled company data export"
+      dirty
+      notice={failed ? <InlineAlert tone="danger" title={failed} /> : <InlineAlert tone="info" title="Keep the zip password safe. YukthiX cannot show it again, and the files cannot be opened without it." />}
+      footer={
+        <>
+          {current.destination && onRemove && (
+            <ConfirmDialog
+              trigger={<Button variant="danger">Disconnect</Button>}
+              title="Disconnect your storage?"
+              consequence="No more exports are sent. Files already sent stay in your storage."
+              confirmLabel="Disconnect"
+              destructive
+              onConfirm={async () => {
+                await onRemove();
+                toast({ tone: 'success', title: 'Storage disconnected' });
+                onClose();
+              }}
+            />
+          )}
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} onClick={save}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-set-stack">
+        <Segment<StorageKind> label="Storage" value={kind} onChange={(k) => (setKind(k), setTried(false))} options={(Object.keys(STORAGE_LABEL) as StorageKind[]).map((k) => ({ value: k, label: STORAGE_LABEL[k] }))} />
+        {fields.map((f) => (
+          <FormField key={`${kind}-${f.key}`} id={`st-${f.key}`} label={f.label} required={!f.optional} helper={f.helper} error={tried ? bad[f.key] : null}>
+            {f.long ? <TextArea value={v[f.key] ?? ''} onChange={(x) => setV({ ...v, [f.key]: x })} rows={4} maxLength={5000} /> : f.secret ? <PasswordField value={v[f.key] ?? ''} onChange={(x) => setV({ ...v, [f.key]: x })} autoComplete="off" maxLength={200} /> : <TextField value={v[f.key] ?? ''} onChange={(x) => setV({ ...v, [f.key]: x })} maxLength={200} />}
+          </FormField>
+        ))}
+        <Segment<ExportFrequency> label="How often" value={frequency} onChange={setFrequency} options={(Object.keys(FREQ_LABEL) as ExportFrequency[]).map((k) => ({ value: k, label: FREQ_LABEL[k] }))} />
+        <FormField id="st-zipPassword" label="Zip password" required helper="12 characters or more. Opens the zip in 7-Zip, WinZip or any tool that reads AES zip files." error={tried ? bad.zipPassword : null}>
+          <PasswordField value={v.zipPassword ?? ''} onChange={(x) => setV({ ...v, zipPassword: x })} autoComplete="new-password" maxLength={128} />
+        </FormField>
+        <FormField id="st-confirm" label="Zip password again" required error={tried ? bad.confirm : null}>
+          <PasswordField value={confirm} onChange={setConfirm} autoComplete="new-password" maxLength={128} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+/** 8.5: the export (start, download while the link works), the scheduled export (T2-G 45) and the closure request. */
+export function dataPage(design: SettingsPageDef, d: AccountData, canAct: boolean, scheduled?: ScheduledExport | null): SettingsPageDef {
   const last = d.exports[0];
   const exp: SettingDef[] = [
     { key: 'export.run', label: 'Export all data', kind: 'link', linkScreenId: 'ACC-EXPORT', linkLabel: 'Start full export', helper: `Every company record as one file (JSON). Sign-in details, secrets and encrypted fields are left out. Needs your security key; the download link works for ${d.linkHours} hours.` },
@@ -98,6 +253,7 @@ export function dataPage(design: SettingsPageDef, d: AccountData, canAct: boolea
     : [{ key: 'closure.start', label: 'Close account', kind: 'link', linkScreenId: 'ACC-CLOSE', linkLabel: 'Ask YukthiX to close the account', helper: `YukthiX closes it after talking to you. Export your data first: after closing, it is kept for ${d.keepDays} days, then deleted.` }];
   return pick(design, [
     { title: 'Whole-company export', settings: exp },
+    { title: 'Scheduled export to your storage', settings: scheduled ? scheduledSettings(scheduled, canAct) : [] },
     { title: 'Close account', settings: close },
   ]);
 }

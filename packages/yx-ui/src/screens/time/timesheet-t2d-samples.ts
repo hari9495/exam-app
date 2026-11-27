@@ -7,7 +7,7 @@ export const T2D_PROJECTS = [
 ];
 export const T2D_MY_PROJECTS: MyProject[] = [
   { id: 'p-kav', code: 'KAV', name: 'Kaveri billing revamp', status: 'closed', manager: 'Farah Khan', current: false, allocations: [{ role: 'Developer', fromOn: '2026-04-01', toOn: '2026-08-31', percent: 50, tentative: false }], bookedMinutes: 9_600, approvedMinutes: 9_120 },
-  { id: 'p-nrp', code: 'NRP', name: 'Nilgiri Retail web rebuild', status: 'active', manager: 'Suresh Iyer', current: true, allocations: [{ role: 'Developer', fromOn: '2026-09-01', toOn: null, percent: 80, tentative: false }], bookedMinutes: 25_200, approvedMinutes: 22_800 },
+  { id: 'p-nrp', code: 'NRP', name: 'Nilgiri Retail web rebuild', status: 'active', manager: 'Suresh Iyer', current: true, allocations: [{ role: 'Developer', fromOn: '2026-09-01', toOn: null, percent: 80, tentative: false }], bookedMinutes: 25_200, approvedMinutes: 22_800, away: { from: '2026-11-27', to: '2026-12-10', people: [{ person: 'Priya Nair', days: ['2026-12-01', '2026-12-02'] }] } },
 ];
 export const T2D_ACTIVITY: TimesheetActivity[] = [
   { action: 'timesheet_line.reduced', at: '2026-11-24T11:40:00Z', by: 'Suresh Iyer', projectId: 'p-nrp', task: 'Build', reason: 'Offsite on Tuesday' },

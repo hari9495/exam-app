@@ -690,6 +690,8 @@ export function MyProjectsTable({ projects }: { projects: MyProject[] }) {
         { key: 'pm', header: 'Project manager', cell: (p) => p.manager ?? '—' },
         { key: 'booked', header: 'My hours booked', cell: (p) => hoursText(p.bookedMinutes), num: true },
         { key: 'approved', header: 'Approved', cell: (p) => hoursText(p.approvedMinutes), num: true },
+        // Answer 2900: who is away, as the project page shows its team (people without the Projects key never see that page).
+        { key: 'away', header: 'Who is away (14 days)', cell: (p) => (!p.away ? '—' : p.away.people.length ? p.away.people.map((x) => `${x.person} (${x.days.map((d) => isoDate(d)).join(', ')})`).join('; ') : 'No one') },
       ]}
       rows={rows}
       getRowId={(p) => p.id}
