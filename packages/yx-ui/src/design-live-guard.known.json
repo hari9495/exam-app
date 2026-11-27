@@ -30,7 +30,6 @@
     "platform-a: BillingScreen",
     "platform-a: ChatAppSettingsScreen",
     "platform-a: ChatAppView",
-    "platform-a: CommandPaletteScreen",
     "platform-a: CustomObjectPhone",
     "platform-a: CustomObjectScreen",
     "platform-a: DelegationPhone",
