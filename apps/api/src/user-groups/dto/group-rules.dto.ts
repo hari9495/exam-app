@@ -7,4 +7,6 @@ export class GroupRulesDto {
   @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) departmentIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) gradeIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) employmentTypeIds?: string[];
+  /** T2-G 2903: the person's tags. */
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) tagIds?: string[];
 }

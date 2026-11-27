@@ -372,4 +372,22 @@ describe('EmailService', () => {
     expect(mockSendMail).toHaveBeenNthCalledWith(2, expect.objectContaining({ from: 'override@customer.test' }));
   });
   });
+
+  // T2-G 84a (answer 2743): a company's emails say its own words for department, grade and the rest.
+  describe('renamed terms', () => {
+    const smtp = { smtpHost: 'smtp.customer.test', smtpPort: 587, smtpUser: 'u@customer.test', smtpPasswordEncrypted: 'blob', emailFromAddress: 'hr@customer.test' };
+    it("puts the company's words in the subject and the text of the html, never in links", async () => {
+      prisma.organization.findUnique.mockResolvedValue(smtp);
+      cryptoService.decrypt.mockReturnValue('pw');
+      (prisma as unknown as { setting: { findMany: jest.Mock } }).setting = { findMany: jest.fn().mockResolvedValue([{ key: 'terms.department.one', value: 'Business unit' }]) };
+      await service.send({ to: 'a@b.com', subject: 'Your department changed', html: '<a href="https://x.test/department">Department</a>', organizationId: 'org-terms' });
+      expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Your business unit changed', html: '<a href="https://x.test/department">Business unit</a>' }));
+    });
+    it('negative: no company, or words that cannot be read, leave the email as written', async () => {
+      prisma.organization.findUnique.mockResolvedValue(smtp);
+      cryptoService.decrypt.mockReturnValue('pw');
+      await service.send({ to: 'a@b.com', subject: 'Your department changed', html: '<p>Department</p>', organizationId: 'org-none' });
+      expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Your department changed', html: '<p>Department</p>' }));
+    });
+  });
 });

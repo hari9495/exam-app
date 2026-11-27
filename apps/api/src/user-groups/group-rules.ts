@@ -8,22 +8,27 @@ type Tx = Prisma.TransactionClient;
 // today's job matches every rule that has a list (a department includes its sub-departments). Only people with an active
 // login can be members: the group is used to send things and to approve.
 
-export const RULE_KINDS = ['legalEntityIds', 'locationIds', 'departmentIds', 'gradeIds', 'employmentTypeIds'] as const;
+export const RULE_KINDS = ['legalEntityIds', 'locationIds', 'departmentIds', 'gradeIds', 'employmentTypeIds', 'tagIds'] as const;
 export type RuleKind = (typeof RULE_KINDS)[number];
 export type GroupRules = Record<RuleKind, string[]>;
 
-const TABLE: Record<RuleKind, { model: 'legalEntity' | 'location' | 'department' | 'grade' | 'employmentType'; words: string }> = {
+const TABLE: Record<RuleKind, { model: 'legalEntity' | 'location' | 'department' | 'grade' | 'employmentType' | 'personTag'; words: string }> = {
   legalEntityIds: { model: 'legalEntity', words: 'legal entities' },
   locationIds: { model: 'location', words: 'locations' },
   departmentIds: { model: 'department', words: 'departments' },
   gradeIds: { model: 'grade', words: 'grades' },
   employmentTypeIds: { model: 'employmentType', words: 'employment types' },
+  // T2-G 2903: the person's tags (any of them).
+  tagIds: { model: 'personTag', words: 'tags' },
 };
+
+/** Saved rules with every kind present (rules saved before a kind existed read it as empty). */
+export const withAllKinds = (saved: unknown): GroupRules => Object.fromEntries(RULE_KINDS.map((k) => [k, ((saved ?? {}) as Partial<GroupRules>)[k] ?? []])) as GroupRules;
 
 /** The rules as saved: every kind present, ids once each. At least one rule. */
 export function normaliseRules(input: Partial<Record<RuleKind, string[]>>): GroupRules {
   const rules = Object.fromEntries(RULE_KINDS.map((k) => [k, [...new Set(input[k] ?? [])]])) as GroupRules;
-  if (RULE_KINDS.every((k) => rules[k].length === 0)) throw new BadRequestException('Add at least one rule: a legal entity, location, department, grade or employment type.');
+  if (RULE_KINDS.every((k) => rules[k].length === 0)) throw new BadRequestException('Add at least one rule: a legal entity, location, department, grade, employment type or tag.');
   return rules;
 }
 
@@ -53,7 +58,8 @@ export async function matchingUsers(tx: Tx, org: string, rules: GroupRules, toda
       AND (cardinality(${rules.locationIds}::uuid[]) = 0 OR ea.location_id = ANY(${rules.locationIds}::uuid[]))
       AND (cardinality(${rules.departmentIds}::uuid[]) = 0 OR EXISTS (SELECT 1 FROM unnest(${rules.departmentIds}::uuid[]) x WHERE dpt.path LIKE '%/' || x::text || '/%'))
       AND (cardinality(${rules.gradeIds}::uuid[]) = 0 OR ea.grade_id = ANY(${rules.gradeIds}::uuid[]))
-      AND (cardinality(${rules.employmentTypeIds}::uuid[]) = 0 OR ea.employment_type_id = ANY(${rules.employmentTypeIds}::uuid[]))`;
+      AND (cardinality(${rules.employmentTypeIds}::uuid[]) = 0 OR ea.employment_type_id = ANY(${rules.employmentTypeIds}::uuid[]))
+      AND (cardinality(${rules.tagIds}::uuid[]) = 0 OR EXISTS (SELECT 1 FROM employee_tags et WHERE et.organization_id = e.organization_id AND et.employee_id = e.id AND et.tag_id = ANY(${rules.tagIds}::uuid[])))`;
   return rows.map((r) => r.user_id);
 }
 

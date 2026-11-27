@@ -82,6 +82,8 @@ const LATER_SUPPORT_EXCLUDED = [
   'home_layouts',
   // T2-G 45 (answer 2744): where the company's scheduled export goes (its secret encrypted).
   'company_export_destinations',
+  // T2-G 2903: the company's person tags and the tags on each person.
+  'person_tags', 'employee_tags',
   // HLP-12 accidents, HLP-13 collective disputes, speak-up cases.
   'accident_cases', 'accident_medical_records', 'accident_steps', 'ir_disputes', 'ir_dispute_steps',
   'speakup_cases', 'speakup_case_members', 'speakup_case_steps', 'speakup_messages', 'speakup_team_members',

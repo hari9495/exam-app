@@ -34,7 +34,7 @@ export function useMyGroups() {
   });
 }
 
-export interface CreateUserGroupInput { name: string; description?: string; memberUserIds?: string[]; rules?: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; gradeIds: string[]; employmentTypeIds: string[] }; }
+export interface CreateUserGroupInput { name: string; description?: string; memberUserIds?: string[]; rules?: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; gradeIds: string[]; employmentTypeIds: string[]; tagIds?: string[] }; }
 
 export function useCreateUserGroup() {
   const { accessToken } = useAuth();
@@ -48,7 +48,7 @@ export function useCreateUserGroup() {
   });
 }
 
-export interface UpdateUserGroupInput { groupId: string; name?: string; description?: string; rules?: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; gradeIds: string[]; employmentTypeIds: string[] }; }
+export interface UpdateUserGroupInput { groupId: string; name?: string; description?: string; rules?: { legalEntityIds: string[]; locationIds: string[]; departmentIds: string[]; gradeIds: string[]; employmentTypeIds: string[]; tagIds?: string[] }; }
 
 export function useUpdateUserGroup() {
   const { accessToken } = useAuth();

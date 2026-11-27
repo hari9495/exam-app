@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
-import { assertOwnRecords, normaliseRules, refreshRuleGroup, type GroupRules } from './group-rules';
+import { assertOwnRecords, normaliseRules, refreshRuleGroup, withAllKinds, type GroupRules } from './group-rules';
 import { toBin } from '../recycle-bin/bin';
 import { CreateUserGroupDto } from './dto/create-user-group.dto';
 import { UpdateUserGroupDto } from './dto/update-user-group.dto';
@@ -45,7 +45,7 @@ export class UserGroupsService {
       arr.push({ userId: u.id, name: u.name, email: u.email });
       byGroup.set(m.groupId, arr);
     }
-    return groups.map((g) => ({ id: g.id, name: g.name, description: g.description, rules: (g.rules ?? null) as GroupRules | null, membersRefreshedAt: g.membersRefreshedAt ?? null, members: byGroup.get(g.id) ?? [] }));
+    return groups.map((g) => ({ id: g.id, name: g.name, description: g.description, rules: g.rules ? withAllKinds(g.rules) : null, membersRefreshedAt: g.membersRefreshedAt ?? null, members: byGroup.get(g.id) ?? [] }));
   }
 
   list(context: TenantContext): Promise<UserGroupWithMembers[]> {

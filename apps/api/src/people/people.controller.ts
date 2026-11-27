@@ -31,7 +31,7 @@ import { toResponse } from '../custom-fields/custom-fields-config.controller';
 import { CreateCustomFieldDto } from '../custom-fields/dto/create-custom-field.dto';
 import { UpdateCustomFieldDto } from '../custom-fields/dto/update-custom-field.dto';
 import { ProfileService } from './profile.service';
-import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, MyDataDto, PersonalDetailsDto, PrivacyNomineeDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto, AboutMeDto, ClearAboutMeDto } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, MyDataDto, PersonalDetailsDto, PrivacyNomineeDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto, AboutMeDto, ClearAboutMeDto, PersonTagsDto } from './profile.dto';
 import { myDataPdf } from './my-data-pdf';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
@@ -202,6 +202,20 @@ export class PeopleController {
   async clearAboutMe(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClearAboutMeDto) {
     ownSession(req);
     return this.profiles.clearAboutMe(ctx, await this.viewer(req), id, dto.reason);
+  }
+
+  /** T2-G 2903: the person's tags; HR in scope reads them, employee.profile.edit changes them (the service checks scope). */
+  @Get('employees/:id/tags')
+  @RequireAnyPermission('employee.profile.view', 'employee.profile.edit')
+  async tags(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.profiles.tags(ctx, await this.viewer(req), id);
+  }
+
+  @Put('employees/:id/tags')
+  @RequirePermissions('employee.profile.edit')
+  async setTags(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PersonTagsDto) {
+    ownSession(req);
+    return this.profiles.setTags(ctx, await this.viewer(req), id, dto.tagIds);
   }
 
   @Put('employees/:id/work-phone')

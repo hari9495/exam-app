@@ -6,7 +6,7 @@ import { ContactsDrawer, FamilyDrawer } from './family';
 import { CancelDialog, ChangeDialog, PERSONAL_REQUIRED_DEFAULT, PersonalDialog } from '../access';
 import { PROFILE_SELF, REQUESTS } from '../access/data';
 import { fails, ok, pick, play, press, type } from './popup-play';
-import { AboutMeDialog, AskDocumentDialog, ClearAboutMeDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog } from './record-dialogs';
+import { AboutMeDialog, AskDocumentDialog, ClearAboutMeDialog, PersonTagsDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog } from './record-dialogs';
 
 const meta: Meta = { title: 'Screens/People/PPL-03 · Person record', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -98,6 +98,11 @@ export const WithdrawChangeFailed: S = { name: 'Withdraw a waiting change · the
 const DOC_TYPES = [{ key: 'pan_card', name: 'PAN card' }, { key: 'passport', name: 'Passport', expiryTracked: true }, { key: 'degree', name: 'Degree certificate' }];
 const workPhone = (onSave: (p: string | null) => Promise<void> = ok) => <WorkPhoneDialog name="Arjun Kulkarni" initial="+91 80 4012 3142" onSave={onSave} onClose={() => undefined} />;
 export const WorkPhone: S = { name: 'Work phone · open (HR)', render: () => workPhone() };
+// T2-G 2903: HR's tags on the person (Job tab card; the person never edits them).
+const TAG_OPTIONS = [{ value: 'tg-fa', label: 'First aider' }, { value: 'tg-fw', label: 'Fire warden' }, { value: 'tg-ks', label: 'Kannada speaker' }];
+const tagsDialog = (onSave: (ids: string[]) => Promise<void> = ok) => <PersonTagsDialog name="Arjun Kulkarni" initial={['tg-fa', 'tg-ks']} options={TAG_OPTIONS} onSave={onSave} onClose={() => undefined} />;
+export const Tags: S = { name: 'Tags · edit (HR)', render: () => tagsDialog() };
+export const TagsFailed: S = { name: 'Tags · the server refuses', render: () => tagsDialog(fails("Night bus user is not open to this person's legal entity.")), play: play(press('Save')) };
 export const WorkPhoneWrong: S = { name: 'Work phone · Save pressed with a wrong number', render: () => workPhone(), play: play(type(/^Work phone/, 'abc'), press('Save')) };
 export const WorkPhoneFailed: S = { name: 'Work phone · the server refuses', render: () => workPhone(fails('You can change the work phone only for people in your scope.')), play: play(press('Save')) };
 // T2-F 87 (answer 2888): the person writes their About me; HR may clear it with a reason.

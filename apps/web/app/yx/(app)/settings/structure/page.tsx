@@ -15,6 +15,7 @@ export default function YxStructurePage() {
     grades: useOrg<MasterRecord[]>('/masters/grades?includeArchived=true'),
     'employment-types': useOrg<MasterRecord[]>('/masters/employment-types?includeArchived=true'),
     'cost-centres': useOrg<MasterRecord[]>('/masters/cost-centres?includeArchived=true'),
+    tags: useOrg<MasterRecord[]>('/masters/tags?includeArchived=true'),
   } satisfies Record<MasterKind, unknown>;
   const entities = useOrg<LegalEntity[]>('/legal-entities?includeArchived=true');
   const settings = useOrg<Parameters<typeof companyRules>[0]>('/settings');

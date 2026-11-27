@@ -193,6 +193,98 @@ describe('T2-G: company control', () => {
       expect(((await api('adminA', 'get', '/engage/announcements/options').expect(200)).body.groups as { id: string }[]).some((g) => g.id === gid)).toBe(true);
     });
   });
+  describe('2903 tags on the person and the Tags rule', () => {
+    type Tags = { tags: { id: string; name: string; archived: boolean }[]; canEdit: boolean };
+    const emp = async (k: 'A' | 'B', who: string) => (await tenantPrisma.forTenant({ organizationId: org[k]!, isSuperAdmin: false }, (tx) => tx.employee.findFirstOrThrow({ where: { userId: users[`${who}${k}`] }, select: { id: true } }))).id;
+    const tag: Record<string, string> = {};
+
+    it('HR keeps the tag list as a structure master (settings key); others may not; another company never sees it', async () => {
+      await api('plainA', 'post', '/org/masters/tags').send({ name: 'First aider' }).expect(403);
+      for (const [k, name] of [['fa', 'First aider'], ['fw', 'Fire warden'], ['old', 'Old tag']] as const) tag[k] = (await api('hrA', 'post', '/org/masters/tags').send({ name }).expect(201)).body.id;
+      tag.b = (await api('hrB', 'post', '/org/masters/tags').send({ name: 'First aider' }).expect(201)).body.id;
+      const listA = (await api('plainA', 'get', '/org/masters/tags').expect(200)).body as { id: string }[];
+      expect(listA.map((t) => t.id).sort()).toEqual([tag.fa, tag.fw, tag.old].sort());
+      await api('hrB', 'put', `/org/masters/tags/${tag.fa}`).send({ name: 'Taken' }).expect(404);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'org.person_tag.created', entityId: tag.fa } }))).toBe(1);
+    });
+
+    it('HR puts tags on a person (audited); the person, plain users and another company may not; bad tags are a 400', async () => {
+      const e1 = await emp('A', 'emp1');
+      await api('emp1A', 'put', `/people/employees/${e1}/tags`).send({ tagIds: [tag.fa] }).expect(403);
+      await api('emp1A', 'get', `/people/employees/${e1}/tags`).expect(403);
+      await api('plainA', 'put', `/people/employees/${e1}/tags`).send({ tagIds: [tag.fa] }).expect(403);
+      await api('adminB', 'put', `/people/employees/${e1}/tags`).send({ tagIds: [tag.b] }).expect(404);
+      await api('adminA', 'put', `/people/employees/${e1}/tags`).send({ tagIds: [tag.b] }).expect(400);
+      await api('adminA', 'put', `/people/employees/${e1}/tags`).send({ tagIds: ['not-a-uuid'] }).expect(400);
+      const saved = (await api('adminA', 'put', `/people/employees/${e1}/tags`).send({ tagIds: [tag.fa, tag.old] }).expect(200)).body as Tags;
+      expect(saved.tags.map((t) => t.name)).toEqual(['First aider', 'Old tag']);
+      expect(((await api('adminA', 'get', `/people/employees/${e1}/tags`).expect(200)).body as Tags).canEdit).toBe(true);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'employee.tags.updated', entityId: e1 } }))).toBe(1);
+    });
+
+    it('a tag in use is archived, never deleted; an archived tag stays on the person but is not added anew', async () => {
+      await api('hrA', 'delete', `/org/masters/tags/${tag.old}`).expect(409);
+      await api('hrA', 'post', `/org/masters/tags/${tag.old}/archive`).expect(200);
+      const e1 = await emp('A', 'emp1');
+      const e2 = await emp('A', 'emp2');
+      await api('adminA', 'put', `/people/employees/${e2}/tags`).send({ tagIds: [tag.old] }).expect(400);
+      expect(((await api('adminA', 'put', `/people/employees/${e1}/tags`).send({ tagIds: [tag.fa, tag.old] }).expect(200)).body as Tags).tags.find((t) => t.id === tag.old)!.archived).toBe(true);
+      await api('hrA', 'delete', `/org/masters/tags/${tag.fw}`).expect(204);
+    });
+
+    it('a group from a Tags rule holds the tagged people; untagging and the sweep drop them', async () => {
+      const g = (await api('adminA', 'post', '/user-groups').send({ name: `Aiders ${run}`, rules: { tagIds: [tag.fa] } }).expect(201)).body as { id: string; rules: Record<string, string[]>; members: { userId: string }[] };
+      expect(g.members.map((m) => m.userId)).toEqual([users.emp1A]);
+      expect(g.rules.locationIds).toEqual([]);
+      await api('adminA', 'post', '/user-groups').send({ name: `Other tags ${run}`, rules: { tagIds: [tag.b] } }).expect(400);
+      await api('adminA', 'put', `/people/employees/${await emp('A', 'emp1')}/tags`).send({ tagIds: [] }).expect(200);
+      await app.get(UserGroupsService).sweep();
+      expect(await inA((tx) => tx.userGroupMember.count({ where: { groupId: g.id } }))).toBe(0);
+    });
+  });
+  describe('84a renamed terms', () => {
+    const set = (who: string, key: string, value: string) => api(who, 'put', '/org/settings').send({ key, scopeType: 'tenant', value });
+    it("HR saves the company's words (audited); everyone signed in reads them; the other company keeps YukthiX's", async () => {
+      const before = (await api('emp1A', 'get', '/org/display').expect(200)).body.terms;
+      expect(before.department).toEqual({ one: 'Department', many: 'Departments' });
+      await set('hrA', 'terms.department.one', 'Business unit').expect(200);
+      await set('hrA', 'terms.department.many', 'Business units').expect(200);
+      expect((await api('emp1A', 'get', '/org/display').expect(200)).body.terms.department).toEqual({ one: 'Business unit', many: 'Business units' });
+      expect((await api('emp1B', 'get', '/org/display').expect(200)).body.terms.department).toEqual({ one: 'Department', many: 'Departments' });
+      const audited = await inA((tx) => tx.auditLog.findMany({ where: { action: 'org.setting.changed', organizationId: org.A! }, select: { metadataJson: true } }));
+      expect(audited.some((a) => (a.metadataJson ?? '').includes('terms.department.one'))).toBe(true);
+    });
+    it('negative: markup, a second line, more than 30 characters, scopes other than the company and people without the key are refused', async () => {
+      await set('hrA', 'terms.grade.one', '<b>Band</b>').expect(400);
+      await set('hrA', 'terms.grade.one', 'Band\nTwo').expect(400);
+      await set('hrA', 'terms.grade.one', 'x'.repeat(31)).expect(400);
+      await api('hrA', 'put', '/org/settings').send({ key: 'terms.grade.one', scopeType: 'legal_entity', scopeId: ids.entityA, value: 'Band' }).expect(400);
+      await set('plainA', 'terms.grade.one', 'Band').expect(403);
+      await set('emp1A', 'terms.grade.one', 'Band').expect(403);
+      expect((await api('plainA', 'get', '/org/display').expect(200)).body.terms.grade.one).toBe('Grade');
+    });
+  });
+  describe('84b Hindi screens', () => {
+    const locale = async (who: string) => (await api(who, 'get', '/org/display').expect(200)).body.locale as string;
+    it("a person who chooses Hindi reads Hindi screens while the company offers them (on by default); others English", async () => {
+      expect(await locale('emp1A')).toBe('en');
+      await api('emp1A', 'put', '/global/me/language').send({ language: 'hi' }).expect(200);
+      expect(await locale('emp1A')).toBe('hi');
+      expect(await locale('emp2A')).toBe('en');
+      expect(await locale('emp1B')).toBe('en');
+    });
+    it('negative: the company switches Hindi screens off (settings key only): English for everyone; bad values refused', async () => {
+      const set = (who: string, value: string) => api(who, 'put', '/org/settings').send({ key: 'people.language.hindi_screens', scopeType: 'tenant', value });
+      await set('plainA', 'off').expect(403);
+      await set('hrA', 'maybe').expect(400);
+      await set('hrA', 'off').expect(200);
+      expect(await locale('emp1A')).toBe('en');
+      await set('hrA', 'on').expect(200);
+      expect(await locale('emp1A')).toBe('hi');
+      await api('emp1A', 'put', '/global/me/language').send({ language: 'ta' }).expect(200);
+      expect(await locale('emp1A')).toBe('en');
+    });
+  });
   describe('44 a named owner per module', () => {
     type Owned = { id: string; owner: { id: string; name: string } | null };
     const owners = (who: string, o: Record<string, string | null>) => api(who, 'put', '/org/modules').send({ off: [], order: [], owners: o });

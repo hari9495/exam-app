@@ -87,7 +87,8 @@ export interface LocationInput {
   registeredFactory: boolean;
 }
 
-export type MasterKind = 'departments' | 'designations' | 'grades' | 'employment-types' | 'cost-centres';
+/** T2-G 2903: 'tags' is the company's person tag list (HR puts tags on a person; rule groups may match them). */
+export type MasterKind = 'departments' | 'designations' | 'grades' | 'employment-types' | 'cost-centres' | 'tags';
 
 export const EMPLOYMENT_CATEGORIES = ['permanent', 'probation', 'fixed_term', 'intern', 'apprentice', 'consultant', 'deployed_contractor', 'retired_reemployed'] as const;
 export type EmploymentCategory = (typeof EMPLOYMENT_CATEGORIES)[number];

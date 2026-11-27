@@ -60,6 +60,7 @@ import { AttendanceRequestSheet, LateMarksDrawer, OnDutySentBackSheet, OtPreAppr
 import { MODE_TEXT } from './live/kit';
 import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput, OnDutyInput, PermissionInput, OtPlanInput, OtPlanRow, LateMarks } from './live/types';
 import './time.css';
+import { useYxT } from '../../i18n';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
 export type Persona = 'emp' | 'mgr' | 'hr';
@@ -3126,33 +3127,36 @@ function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
   const week = Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
   const lates = d ? d.days.filter((x) => (x.lateMinutes ?? 0) > 0).length : 0;
+  // T2-G 84b: the page's words in the reader's language.
+  const t = useYxT('myAttendance');
+  const tc = useYxT('dayCode');
   const weekText = (date: Date) => {
     if (!d) return '';
     const on = isoOf(date);
     const row = d.days.find((x) => x.on === on);
     const code = days.find((x) => isoOf(x.date) === on)?.code ?? (on > d.today ? 'FUT' : undefined);
-    if (on === d.today) return d.next === 'out' ? (d.onBreak ? 'On a break' : 'Working') : d.punches.some((p) => p.accepted) ? 'Done for the day' : 'Not in yet';
+    if (on === d.today) return d.next === 'out' ? (d.onBreak ? t('onBreak') : t('working')) : d.punches.some((p) => p.accepted) ? t('done') : t('notIn');
     if (code === 'FUT' || !code) return shiftLabel(d.shift.name);
     const inAt = row?.firstIn ? zoneTime(new Date(row.firstIn), d.zone).hhmm : null;
     const outAt = row?.lastOut ? zoneTime(new Date(row.lastOut), d.zone).hhmm : null;
-    return (code === 'P' || code === 'L' || code === 'WFH') && inAt && outAt ? `${DAY_CODE_LABEL[code]} · ${fmt12(inAt)} – ${fmt12(outAt)}` : DAY_CODE_LABEL[code];
+    return (code === 'P' || code === 'L' || code === 'WFH') && inAt && outAt ? `${tc(code)} · ${fmt12(inAt)} – ${fmt12(outAt)}` : tc(code);
   };
-  const where = !d ? '' : d.shift.checkIn === 'field' ? 'Anywhere: your location is recorded' : d.fences.length ? `${d.fences.map((f) => `${f.name} (within ${f.radiusM} m)`).join(' or ')}, or the office network` : 'The office network';
+  const where = !d ? '' : d.shift.checkIn === 'field' ? t('anywhere') : d.fences.length ? t('orNetwork', { places: d.fences.map((f) => t('within', { name: f.name, m: f.radiusM })).join(t('or')) }) : t('network');
   return (
     <TimePage active="My attendance">
       <PageHeader
-        title="My attendance today"
-        description={d ? (d.mode === 'punch' ? 'Clock in and out from your desk.' : d.mode === 'assumed_present' ? 'You are counted present unless you are on leave, so clocking in is optional.' : 'Your day comes from your timesheet; punches are kept as a record.') : undefined}
+        title={t('title')}
+        description={d ? (d.mode === 'punch' ? t('punch') : d.mode === 'assumed_present' ? t('assumed') : t('timesheet')) : undefined}
         actions={
           ready ? (
             <div className="yx-tim-row">
-              {live.monthHref && <Button asChild><a href={live.monthHref}>My month</a></Button>}
-              {d.mode === 'punch' && <Button onClick={() => reqs.open('regularise')}>Regularise another day</Button>}
+              {live.monthHref && <Button asChild><a href={live.monthHref}>{t('month')}</a></Button>}
+              {d.mode === 'punch' && <Button onClick={() => reqs.open('regularise')}>{t('regularise')}</Button>}
             </div>
           ) : undefined
         }
       />
-      <LiveStates state={live.state} onRetry={live.onRetry} what="your attendance">
+      <LiveStates state={live.state} onRetry={live.onRetry} what={t('what')}>
         {d && (
           <div className="yx-tim-grid">
             <div data-span="8">
@@ -3160,7 +3164,7 @@ function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
             </div>
             <div data-span="4" className="yx-tim-stack">
               <FixAlert days={toFix} onFix={(on) => reqs.open('regularise', on)} />
-              <Card title="This week">
+              <Card title={t('week')}>
                 <ul className="yx-tim-list">
                   {week.map((date) => (
                     <li key={date.getTime()}>
@@ -3170,13 +3174,13 @@ function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
                   ))}
                 </ul>
               </Card>
-              <Card title="Your rules">
+              <Card title={t('rules')}>
                 <ul className="yx-tim-list">
-                  <li><span>Clock-in from</span><span className="yx-tim-muted">{where}</span></li>
-                  <li><span>Grace</span><span className="yx-tim-muted">{d.shift.grace} min after {fmt12(hm(d.shift.start))}</span></li>
-                  <li><span>Late marks</span><span className="yx-tim-muted">{lates} this month</span></li>
-                  <li><span>Regularisations</span><span className="yx-tim-muted">{d.regularise.used} of {d.regularise.limit} used this month</span></li>
-                  {live.onWfh && <li><span>Work from home</span><span className="yx-tim-muted">{d.wfh.used} of {d.wfh.limit} this month without HR</span></li>}
+                  <li><span>{t('clockFrom')}</span><span className="yx-tim-muted">{where}</span></li>
+                  <li><span>{t('grace')}</span><span className="yx-tim-muted">{t('graceText', { min: d.shift.grace, time: fmt12(hm(d.shift.start)) })}</span></li>
+                  <li><span>{t('lateMarks')}</span><span className="yx-tim-muted">{t('lateText', { n: lates })}</span></li>
+                  <li><span>{t('regularisations')}</span><span className="yx-tim-muted">{t('regText', { used: d.regularise.used, limit: d.regularise.limit })}</span></li>
+                  {live.onWfh && <li><span>{t('wfh')}</span><span className="yx-tim-muted">{t('wfhText', { used: d.wfh.used, limit: d.wfh.limit })}</span></li>}
                 </ul>
               </Card>
             </div>

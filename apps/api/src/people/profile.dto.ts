@@ -69,6 +69,12 @@ export class ClearAboutMeDto {
   reason!: string;
 }
 
+/** T2-G 2903: the person's tags (the company's tag ids; empty clears them). */
+export class PersonTagsDto {
+  @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true })
+  tagIds!: string[];
+}
+
 export class WorkPhoneDto {
   @IsOptional() @IsString() @MaxLength(30)
   workPhone!: string | null;

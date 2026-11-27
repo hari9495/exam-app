@@ -146,7 +146,7 @@ const KIND_FIELDS: Record<StorageKind, { key: keyof StorageInput; label: string;
     { key: 'accountKey', label: 'Account key', secret: true },
   ],
   google_drive: [
-    { key: 'folderId', label: 'Shared drive folder ID', helper: 'Share the folder with the service account as Content manager.' },
+    { key: 'folderId', label: 'Shared drive folder ID', helper: "The folder must be in a shared drive: a service account cannot store files in anyone's My Drive. Add the service account to that shared drive as Content manager." },
     { key: 'clientEmail', label: 'Service account email' },
     { key: 'privateKey', label: 'Service account private key', secret: true, long: true },
   ],

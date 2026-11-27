@@ -9,7 +9,7 @@ import { FormField, useTooEarly } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
-import { Select } from '../../components/select';
+import { MultiSelect, Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
 
@@ -22,6 +22,28 @@ export interface AskableType {
 
 /** At least 7 digits; digits, spaces, brackets, dashes and one leading +. Empty clears the number. */
 export const workPhoneOk = (v: string) => !v.trim() || (/^\+?[\d\s()-]{7,30}$/.test(v.trim()) && (v.match(/\d/g)?.length ?? 0) >= 7);
+
+/** T2-G 2903: HR picks the person's tags from the company's list (Settings › Structure › Tags); none clears them. */
+export function PersonTagsDialog({ name, initial, options, onSave, onClose }: { name: string; initial: string[]; options: { value: string; label: string }[]; onSave: (tagIds: string[]) => Promise<void>; onClose: () => void }) {
+  const [tags, setTags] = useState(initial);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title={`Tags for ${name}`}
+      consequence="HR's words for grouping people, such as First aider. Groups worked out from tags update tonight. The person does not edit them."
+      confirmLabel="Save"
+      onConfirm={async () => {
+        await onSave(tags);
+      }}
+    >
+      <FormField id="pt-tags" label="Tags" optional helper={options.length ? 'Pick any number. Add new tags in Settings › Structure › Tags.' : 'The company has no tags yet. Add them in Settings › Structure › Tags.'}>
+        <MultiSelect aria-label="Tags" value={tags} onChange={setTags} options={options} searchable placeholder="No tags" />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
 
 /** HR sets or clears the company phone shown on the record and in the directory. */
 export function WorkPhoneDialog({ name, initial, onSave, onClose }: { name: string; initial: string | null; onSave: (phone: string | null) => Promise<void>; onClose: () => void }) {

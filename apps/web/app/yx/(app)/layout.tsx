@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CalendarClock, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
-import { AccessibilityMenu, Button, CommandPalette, EmptyState, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
+import { AccessibilityMenu, applyTerms, Button, CommandPalette, EmptyState, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, TermsProvider, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast, type Terms } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
 import { AvailabilityState, DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import { downForMaintenance } from '../../../lib/yx-availability';
@@ -35,6 +35,9 @@ import { useWhatsNew } from '../../../lib/yx-whats-new';
 import { inCompanyOrder, moduleOfHref, pageOff, type CompanyModule } from '../../../lib/yx-modules';
 import { lastAreaKey, readLastArea, writeLastArea, type LastArea } from '../../../lib/yx-recent';
 import { PHONE_TABS, phoneTab, usePhone } from '../../../lib/yx-phone';
+import { NextIntlClientProvider } from 'next-intl';
+import { YxI18nProvider, type YxLocale } from '@yukthix/ui/i18n';
+import { bellText, messagesFor, navLabel } from '../../../lib/yx-i18n';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/engage', 'engage'], ['/yx/learning', 'learning'], ['/yx/analytics', 'analytics'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
@@ -107,7 +110,17 @@ function Frame({ children }: { children: React.ReactNode }) {
   const phone = usePhone();
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const bell = useBellItems(!actingSuperAdmin);
+  // T2-G 84a (answer 2743): the company's own words for department, grade and the rest, on every screen and in the menu.
+  // T2-G 84b: and the reader's screen language (Hindi or English; English for every word not yet in Hindi).
+  const display = useOrg<{ terms: Terms; locale?: YxLocale }>('/display');
+  const terms = display.data?.terms;
+  const locale: YxLocale = display.data?.locale === 'hi' ? 'hi' : 'en';
+  const messages = useMemo(() => messagesFor(locale), [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+  const bellLine = useMemo(() => bellText(locale), [locale]);
+  const bell = useBellItems(!actingSuperAdmin, bellLine);
   const contained = useQuery<{ contained: boolean }>({ queryKey: ['yx', 'containment'], queryFn: () => apiFetch('/help/containment', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, staleTime: 60_000 });
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
@@ -137,7 +150,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const employee = Boolean(team.data?.managerId);
   const nav = useMemo(
     () =>
-      buildNav({
+      termedNav(terms, locale, buildNav({
         has: (k) => perms.has(k as never),
         role,
         support,
@@ -162,10 +175,10 @@ function Frame({ children }: { children: React.ReactNode }) {
         trainer: Boolean(learningRoles.data?.trainer),
         modulesOff,
         moduleOrder,
-      }),
+      })),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data, modulesOff, moduleOrder],
+    [terms, locale, perms.data, role, support, employee, team.data, people.data, myClearance.data, myTasks.data, firstDays.data, counts.data, staffingDesk.data, assessmentsOn.data, projectsOn.data, myInterviews.data, modulesOff, moduleOrder],
   );
   // Ctrl K as designed (PLT-20): Recent, Actions, people, requests and tickets, pages when typed.
   const palette = useYxPalette({ nav: withAccount(nav, { support, employee }), pathname, open: paletteOpen, userId: me.data?.id, orgId: me.data?.organizationId, waiting: counts.data?.approvals, self: employee && !support, help: !support,
@@ -313,6 +326,9 @@ function Frame({ children }: { children: React.ReactNode }) {
   const profileHref = meHref('profile') ?? '/profile';
 
   return (
+    <NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Kolkata">
+    <YxI18nProvider locale={locale}>
+    <TermsProvider terms={terms}>
     <DesktopFrame
       area={area.id}
       panelTitle={shown.title}
@@ -402,5 +418,16 @@ function Frame({ children }: { children: React.ReactNode }) {
         )}
       </YxPageHelp>
     </DesktopFrame>
+    </TermsProvider>
+    </YxI18nProvider>
+    </NextIntlClientProvider>
   );
+}
+
+/** The menu in the company's own words (T2-G 84a) and, for a Hindi reader, its self-service links in Hindi (84b). */
+function termedNav(terms: Terms | undefined, locale: YxLocale, nav: NavArea[]): NavArea[] {
+  if (!terms && locale === 'en') return nav;
+  const word = (s: string) => (terms ? applyTerms(s, terms) : s);
+  const label = navLabel(locale);
+  return nav.map((a) => ({ ...a, sections: a.sections.map((s) => ({ ...s, ...(s.label ? { label: word(s.label) } : {}), items: s.items.map((l) => ({ ...l, label: word(label(l.id, l.label)) })) })) }));
 }

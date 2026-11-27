@@ -62,6 +62,8 @@ export class OrgScopeService {
           return pick(tx.grade.findFirst({ where, select: { ownerLegalEntityId: true } }), (r) => r.ownerLegalEntityId);
         case 'employment-types':
           return pick(tx.employmentType.findFirst({ where, select: { ownerLegalEntityId: true } }), (r) => r.ownerLegalEntityId);
+        case 'tags':
+          return pick(tx.personTag.findFirst({ where, select: { ownerLegalEntityId: true } }), (r) => r.ownerLegalEntityId);
       }
     });
   }

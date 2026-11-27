@@ -26,6 +26,7 @@ import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { HOLIDAYS_2026, ME, TODAY } from '../_kit/data';
 import { ListPage, bulkApprovable, bulkNotApprovable, homePanel, leaveEffect, toneFor, validateDelegation } from './platform-kit';
 import { PEOPLE, type ApprovalRow, type MyRequest, type NotifCategory, type PlatformNotification } from './platform-data';
+import { useYxT } from '../../i18n';
 
 /* ================================================================ PLT-03 Notifications inbox */
 
@@ -883,24 +884,28 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
     live: live ? { decide: (d: 'approve' | 'reject' | 'send_back', reason: string) => live.onDecide(r, d, reason), today, reassign: live.reassign, onlyReassign: tab === 'everyone' } : undefined,
   });
   const overdue = overdueCount(items, today);
+  // T2-G 84b: the page's words in the reader's language.
+  const t = useYxT('approvals');
+  const COL: Record<string, string> = { requester: t('colRequester'), type: t('colType'), due: t('colDue'), status: t('colStatus'), approver: t('colApprover') };
+  const worded = (cs: TableColumn<ApprovalRow>[]) => cs.map((c) => (COL[c.key] ? { ...c, header: COL[c.key]! } : c));
   const page = (
       <ListPage
-        title="Approvals"
-        description="Everything waiting for your decision, including requests delegated to you."
-        facts={`${items.length} waiting${overdue ? ` · ${overdue} overdue` : ''}`}
-        actions={<Button onClick={live ? () => setAway(true) : undefined}>Set up delegation</Button>}
+        title={t('title')}
+        description={t('description')}
+        facts={`${t('facts', { n: items.length })}${overdue ? ` · ${t('overdue', { n: overdue })}` : ''}`}
+        actions={<Button onClick={live ? () => setAway(true) : undefined}>{t('delegation')}</Button>}
         above={
           <>
             <span className="yx-visually-hidden" aria-live="polite">
               {announce}
             </span>
             {rowError && (
-              <InlineAlert tone="danger" title="Not approved">
+              <InlineAlert tone="danger" title={t('notApproved')}>
                 {rowError}
               </InlineAlert>
             )}
             {refused.length > 0 && (
-              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not ${refusedVerb}`} actions={<Button size="sm" onClick={() => setRefused([])}>Dismiss</Button>}>
+              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not ${refusedVerb}`} actions={<Button size="sm" onClick={() => setRefused([])}>{t('dismiss')}</Button>}>
                 <ul className="yx-plt-list">
                   {refused.map((x) => (
                     <li key={x.title}>
@@ -913,12 +918,12 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           </>
         }
         tabs={[
-          { id: 'waiting', label: 'Waiting for me', count: mine.length },
-          { id: 'delegated', label: 'Delegated to me', count: delegated.length },
-          { id: 'sent', label: 'Sent by me', count: sent.length },
-          { id: 'history', label: 'Team history' },
-          ...(decided ? [{ id: 'decided', label: 'Decided by me' }] : []),
-          ...(everyone ? [{ id: 'everyone', label: 'Everyone’s pending', count: everyone.length }] : []),
+          { id: 'waiting', label: t('waiting'), count: mine.length },
+          { id: 'delegated', label: t('delegated'), count: delegated.length },
+          { id: 'sent', label: t('sent'), count: sent.length },
+          { id: 'history', label: t('history') },
+          ...(decided ? [{ id: 'decided', label: t('decided') }] : []),
+          ...(everyone ? [{ id: 'everyone', label: t('everyone'), count: everyone.length }] : []),
         ]}
         tab={tab}
         onTabChange={setTab}
@@ -927,47 +932,47 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
             <div className="yx-plt-row">
               {tab === 'decided' && (
                 <Segment
-                  label="Decided in the last"
+                  label={t('decidedIn')}
                   value={String(days) as '30' | '90' | '365'}
                   onChange={(v) => {
                     const n = Number(v) as 30 | 90 | 365;
                     setOwnDays(n);
                     live?.onDecidedDays?.(n);
                   }}
-                  options={[{ value: '30', label: '30 days' }, { value: '90', label: '3 months' }, { value: '365', label: '12 months' }]}
+                  options={[{ value: '30', label: t('days30') }, { value: '90', label: t('months3') }, { value: '365', label: t('months12') }]}
                 />
               )}
               {!desk && kinds.length > 1 && (
                 <Segment
-                  label="Kind of request"
+                  label={t('kind')}
                   value={shownKind}
                   onChange={setKind}
-                  options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+                  options={[{ value: 'all', label: t('all', { n: tabRows.length }) }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
                 />
               )}
             </div>
           ) : undefined
         }
-        label="Approval requests"
-        columns={tab === 'everyone' ? everyoneColumns(today, Boolean(live)) : approvalColumns(!actionable, today, Boolean(live))}
+        label={t('table')}
+        columns={worded(tab === 'everyone' ? everyoneColumns(today, Boolean(live)) : approvalColumns(!actionable, today, Boolean(live)))}
         rows={rows}
         getRowId={(r) => r.id}
         key={tab}
         filters={[
-          { key: 'type', label: 'Type', type: 'multi', options: (live ? [...new Set([...items, ...sent, ...history].map((r) => r.type))] : APPROVAL_TYPES).map((t) => ({ value: t, label: t })) },
-          ...(tab === 'sent' || tab === 'decided' ? [] : [{ key: 'due', label: 'Due', type: 'date' as const }]),
+          { key: 'type', label: t('type'), type: 'multi', options: (live ? [...new Set([...items, ...sent, ...history].map((r) => r.type))] : APPROVAL_TYPES).map((t) => ({ value: t, label: t })) },
+          ...(tab === 'sent' || tab === 'decided' ? [] : [{ key: 'due', label: t('due'), type: 'date' as const }]),
           // T2-E 49 (answer 2872): who asked (a person, or my direct or whole team), and the request's status where it varies.
-          ...(tab === 'sent' ? [] : [{ key: 'askedBy', label: 'Asked by', type: 'multi' as const, options: askedByOptions(tabRows) }]),
-          ...(tab === 'sent' || tab === 'history' || tab === 'decided' ? [{ key: 'requestStatus', label: 'Status', type: 'multi' as const, options: STATUS_OPTIONS }] : []),
+          ...(tab === 'sent' ? [] : [{ key: 'askedBy', label: t('askedBy'), type: 'multi' as const, options: askedByOptions(tabRows) }]),
+          ...(tab === 'sent' || tab === 'history' || tab === 'decided' ? [{ key: 'requestStatus', label: t('status'), type: 'multi' as const, options: STATUS_OPTIONS }] : []),
         ]}
         filterValue={approvalFilterValue}
-        searchPlaceholder="Search name or reference"
+        searchPlaceholder={t('search')}
         state={state}
         onRetry={live?.onRetry}
         empty={
           <EmptyState
-            title={tab === 'waiting' ? 'Nothing is waiting for you.' : tab === 'delegated' ? 'Nobody has delegated approvals to you.' : 'No requests here yet.'}
-            description={tab === 'waiting' ? 'New requests from your team will appear here and on your home.' : undefined}
+            title={tab === 'waiting' ? t('emptyWaiting') : tab === 'delegated' ? t('emptyDelegated') : t('emptyOther')}
+            description={tab === 'waiting' ? t('emptyWaitingText') : undefined}
           />
         }
         selectable={actionable}
@@ -1013,13 +1018,13 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
             ? (r) =>
                 live ? (
                   <>
-                    <MenuItem onSelect={() => openRow(r.id)}>Open request</MenuItem>
-                    {!r.decideAt && <MenuItem onSelect={() => openRow(r.id, 'reject')}>Do not approve</MenuItem>}
+                    <MenuItem onSelect={() => openRow(r.id)}>{t('open')}</MenuItem>
+                    {!r.decideAt && <MenuItem onSelect={() => openRow(r.id, 'reject')}>{t('doNotApprove')}</MenuItem>}
                   </>
                 ) : (
                   <>
-                    <MenuItem onSelect={() => setOpen(r.id)}>Open request</MenuItem>
-                    <MenuItem onSelect={() => setOpen(r.id)}>Send back</MenuItem>
+                    <MenuItem onSelect={() => setOpen(r.id)}>{t('open')}</MenuItem>
+                    <MenuItem onSelect={() => setOpen(r.id)}>{t('sendBack')}</MenuItem>
                     <MenuItem destructive onSelect={() => setOpen(r.id)}>
                       Reject
                     </MenuItem>
@@ -1088,7 +1093,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           </ConfirmDialog>
         )}
         {live && away && (
-          <Drawer open onOpenChange={(o) => !o && setAway(false)} title="When I am away" subtitle="Choose who approves requests for you while you are away." size="md">
+          <Drawer open onOpenChange={(o) => !o && setAway(false)} title={t('away')} subtitle={t('awayText')} size="md">
             <DelegationForm key={live.delegation.current?.id ?? 'new'} live={live.delegation} />
           </Drawer>
         )}
@@ -1101,16 +1106,16 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         <div className="yx-plt-desk">
           <div className="yx-plt-desk__groups">
             <Segment
-              label="Kind of request"
+              label={t('kind')}
               orientation="vertical"
               value={shownKind}
               onChange={setKind}
-              options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+              options={[{ value: 'all', label: t('all', { n: tabRows.length }) }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
             />
           </div>
           <div className="yx-plt-desk__list">{page}</div>
-          <aside className="yx-plt-desk__detail" aria-label="The request">
-            {current ? <ApprovalPane key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} /> : <EmptyState compact title="Choose a request." description="It opens here, with what to decide." />}
+          <aside className="yx-plt-desk__detail" aria-label={t('theRequest')}>
+            {current ? <ApprovalPane key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} /> : <EmptyState compact title={t('choose')} description={t('chooseText')} />}
           </aside>
         </div>
       ) : (

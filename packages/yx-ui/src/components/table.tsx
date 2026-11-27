@@ -25,6 +25,7 @@ import {
   Rows3,
 } from 'lucide-react';
 import { cx } from '../lib/cx';
+import { useTerm } from '../lib/terms';
 import { formatDate, formatINR, groupIndian } from '../lib/format';
 import { groupRows, sortRows, toCsv, total as computeTotal, type SortState, type TotalKind } from '../lib/table';
 import { Icon } from './foundations';
@@ -269,7 +270,7 @@ type Item<R> = { kind: 'group'; key: string; label: string; rows: R[] } | { kind
 export function DataTable<R>(props: DataTableProps<R>) {
   const {
     label,
-    columns,
+    columns: rawColumns,
     rows,
     getRowId,
     state: stateProp = 'ready',
@@ -307,6 +308,9 @@ export function DataTable<R>(props: DataTableProps<R>) {
     exportFormats = ['csv', 'xlsx'],
     cardSummary,
   } = props;
+  // T2-G 84a: column headers in the company's own words (department, grade and the rest); unchanged without them.
+  const term = useTerm();
+  const columns = useMemo(() => (term.custom ? rawColumns.map((c) => ({ ...c, header: term(c.header) })) : rawColumns), [rawColumns, term]);
 
   // ---- error retry: "Try again" always does something visible (loading, then the list), and calls onRetry when given ----
   const [retry, setRetry] = useState<'idle' | 'loading' | 'done'>('idle');

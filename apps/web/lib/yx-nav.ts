@@ -143,6 +143,9 @@ export const MORE_SETTINGS_PAGES: [string, string, string, string][] = [
 const morePage = (id: string) => MORE_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/${p[2]}/${p[3]}`);
 const timePage = (id: string) => TIME_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/time/${p[2]}`);
 
+/** Answer 2905: Settings › People & Access › Groups. */
+export const GROUPS_PAGE = `${SETTINGS_HOME}/groups`;
+
 /** Answer 1563: the company audit log. */
 export const AUDIT_LOG = `${SETTINGS_HOME}/audit-log`;
 
@@ -163,6 +166,8 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.8': peoplePage('2.8'),
   '2.9': [...peoplePage('2.9'), '/yx/desk/speakup-setup'],
   '2.10': [...peoplePage('2.10'), AUDIT_LOG],
+  // Answer 2905: HR's groups key opens the groups without the access key (also under Roles & access › Groups).
+  '2.12': [GROUPS_PAGE],
   '3.1': timePage('3.1'),
   '3.2': [...timePage('3.2'), '/yx/time/setup/devices', '/yx/time/setup/locations'],
   '3.3': [...timePage('3.3'), '/yx/time/shifts-setup'],
@@ -671,6 +676,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       ...sec('People & Access', [
         ...when(has('access.role.manage'), L('access', 'Roles & access', '/yx/settings/access')),
+        // Answer 2905: the company's groups for HR's groups key (and the older staff-groups key).
+        ...when(!support && any('people.group.manage', 'users:manage_groups'), L('groups', 'Groups', GROUPS_PAGE)),
         ...when(settingsAdmin, L('custom-fields', 'Custom fields', '/yx/settings/custom-fields')),
         // S-4 (answer 1323): the People & Access settings pages; HR's settings key changes them.
         ...when(settingsView, ...PEOPLE_SETTINGS_PAGES.map(([id, label, slug]) => L(`people-settings-${id}`, label, `${SETTINGS_HOME}/people/${slug}`))),

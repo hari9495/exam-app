@@ -7,6 +7,9 @@ import { EmailService } from '../email/email.service';
 import { companySetting } from '../time/time-core';
 import { pushDefault } from './push-rules';
 import { PushService } from './push.service';
+import { HINDI_TEMPLATES, hindiEmail } from './notification-hindi';
+import { hindiReaders } from '../org-structure/ui-locale';
+import type { CompanyContext } from '../org-structure/org-structure.service';
 
 export const DIGEST_MODES = ['immediate', 'daily', 'off'];
 
@@ -65,7 +68,9 @@ export class NotificationsService {
       });
       // S-8 (5.4): the company may turn notification emails off; the bell row below is always written.
       const emailsOn = await this.emailsOn(tx, context);
-      const outbox: { to: string; prefMap: Map<string, boolean>; digest: string }[] = [];
+      const outbox: { to: string; prefMap: Map<string, boolean>; digest: string; hi: boolean }[] = [];
+      // T2-G 84b: people who read Hindi get the kind's Hindi template (where there is one).
+      const hindi = HINDI_TEMPLATES[type] ? await hindiReaders(tx, { organizationId: context.organizationId as string, isSuperAdmin: false } as CompanyContext, valid.map((u) => u.id)).catch(() => new Set<string>()) : new Set<string>();
       let actorName: string | null = null;
       if (valid.length > 0) {
         const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
@@ -92,7 +97,7 @@ export class NotificationsService {
         });
         if (u.email && emailsOn) {
           const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
-          outbox.push({ to: u.email, prefMap, digest: u.notificationDigest });
+          outbox.push({ to: u.email, prefMap, digest: u.notificationDigest, hi: hindi.has(u.id) });
         }
       }
       return { outbox, actorName, approvalTemplate };
@@ -111,14 +116,14 @@ export class NotificationsService {
         .map((entry) => {
           // Behavior-preserving fallback: no template, disabled template, or a non-approval type
           // all fall straight through to the existing generic render -- byte-for-byte unchanged.
-          const { subject, html } = approvalTemplate?.enabled
+          const { subject, html } = (entry.hi ? hindiEmail(type, target.contextText, target.linkPath, appBaseUrl) : null) ?? (approvalTemplate?.enabled
             ? this.renderApprovalTemplateEmail(approvalTemplate, actorName, target, appBaseUrl)
             : renderNotificationEmail(typeDef, {
                 actorName,
                 contextText: target.contextText ?? null,
                 linkPath: target.linkPath,
                 appBaseUrl,
-              });
+              }));
           return this.emailService.send({ to: entry.to, subject, html, organizationId: context.organizationId as string });
         });
       await Promise.allSettled(sends);
@@ -150,7 +155,8 @@ export class NotificationsService {
         select: { id: true, email: true, notificationDigest: true },
       });
       const emailsOn = await this.emailsOn(tx, context);
-      const box: { to: string; prefMap: Map<string, boolean>; digest: string }[] = [];
+      const box: { to: string; prefMap: Map<string, boolean>; digest: string; hi: boolean }[] = [];
+      const hindi = HINDI_TEMPLATES[type] && email ? await hindiReaders(tx, { organizationId: context.organizationId as string, isSuperAdmin: false } as CompanyContext, valid.map((u) => u.id)).catch(() => new Set<string>()) : new Set<string>();
       for (const u of valid) {
         await tx.userNotification.create({
           data: {
@@ -166,7 +172,7 @@ export class NotificationsService {
         });
         if (u.email && emailsOn && email) {
           const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
-          box.push({ to: u.email, prefMap, digest: u.notificationDigest });
+          box.push({ to: u.email, prefMap, digest: u.notificationDigest, hi: hindi.has(u.id) });
         }
       }
       return box;
@@ -181,7 +187,7 @@ export class NotificationsService {
         // (the bell row created above is what the digest collects), 'off' gets none.
         .filter((entry) => entry.digest === 'immediate' && (entry.prefMap.get(type) ?? true))
         .map(async (entry) => {
-          const e = typeof email === 'function' ? await email(entry.to) : email!;
+          const e = (entry.hi ? hindiEmail(type, target.contextText, target.linkPath, process.env.FRONTEND_URL ?? 'http://localhost:3000') : null) ?? (typeof email === 'function' ? await email(entry.to) : email!);
           return this.emailService.send({ to: entry.to, subject: e.subject, html: e.html, organizationId: context.organizationId as string });
         });
       await Promise.allSettled(sends);
