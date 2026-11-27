@@ -29678,5 +29678,24 @@
                               "Screens/Projects/PRJ-09 · Hours reports (by person, by task, own projects only, none, loading, error, no access)"
                     ],
                     "note": "Positive and negative (projects-t2d2 e2e 60: PM scope mine, rows with booked and approved hours (a line reduced at the second level counts the reduced hours), reporting key all with a project filter, CSV header and audit, viewer 403, member 403, other company 404, another PM's project 404, dates reversed 400, unknown kind 400, status.reports for the menu; hours-reports unit 3; kit prj-09 4; nav test). Migration 902 adds the projects.reporting key (System Admin holds it). Route GET projects/reports/hours (format=csv). The payroll feed is unchanged."
+          },
+          {
+                    "id": "MT-T2E-49-50-APPROVAL-FILTERS",
+                    "area": "T2-E 49 and 50 (answers 2872, 2873): Asked by and Status filters, and Decided by me",
+                    "screen": "Approvals (Waiting for me, Sent by me, Team history, Decided by me)",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "A manager with a direct report who has their own report (two levels), and someone outside the team; the manager also acts as a delegate for a colleague.",
+                    "steps": [
+                              "Have the direct report, their report and the outsider each raise a request the manager approves. As the manager open Approvals › Waiting for me, press Filter › Asked by and tick My direct team; then My whole team; then one person.",
+                              "Open Filter on Waiting for me and on Sent by me and look at the fields offered.",
+                              "Approve one request, do not approve one with a reason, and as the colleague's delegate approve one. Open Decided by me.",
+                              "Switch the period to 30 days, 3 months and 12 months. Filter Status to Approved. Open a row.",
+                              "Open Team history and filter Status."
+                    ],
+                    "expected": "Step 1: My direct team shows only the direct report's request; My whole team shows both levels; one person shows only theirs. Step 2: Waiting for me offers Type, Due and Asked by (no Status); Sent by me offers Type and Status (no Asked by). Step 3: Decided by me lists the three, newest first, 'You approved on <date>', 'You did not approve on <date>' and the delegated one with '· for <colleague>', each with the request's present status. Step 4: 3 months is chosen first; 30 days drops older decisions; the side panel shows the trail. Step 5: Status filters on the request's present status. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 with real data (Decided by me · 3 months, Decided by me · 12 months none, Waiting for me · Asked by filter with my teams)"
+                    ],
+                    "note": "Positive and negative (approvals-t2e e2e: direct, whole and none team flags, another person sees no tasks, decided with present status and delegation marked, 60-day decision in 90 and 365 but not 30, days=7 refused 400, others see none, team history flag; kit inbox 4). Routes: GET workflow/approvals/history?days=30|90|365; requesterTeam on the inbox and team-history rows."
           }
 ]

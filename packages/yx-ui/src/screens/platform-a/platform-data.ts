@@ -74,6 +74,10 @@ export interface ApprovalRow {
   canSendBack?: boolean;
   /** Answer 2500: who holds it now ("Everyone's pending", for HR). */
   approver?: string;
+  /** T2-E 49 (2872): the requester is in my direct team or my whole team (the Asked by filter). */
+  requesterTeam?: 'direct' | 'whole' | null;
+  /** T2-E 49 and 50: the request's present status when the row is about a decision (Team history, Decided by me). */
+  requestStatus?: ApprovalRow['status'];
 }
 
 export const APPROVALS: ApprovalRow[] = [

@@ -1,0 +1,140 @@
+import { Test } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import * as argon2 from 'argon2';
+import cookieParser from 'cookie-parser';
+import { randomUUID } from 'crypto';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { AppModule } from '../src/app.module';
+import { EmailService } from '../src/email/email.service';
+import { ApprovalsEngine } from '../src/workflow/approvals-engine.service';
+
+// Batch T2-E items 49 and 50 end to end (founder answers 2872, 2873, 27 Nov 2026): each waiting request and each Team
+// history decision says whether the requester is in my direct team or my whole team (the Asked by filter), and
+// "Decided by me" lists what I approved, did not approve or sent back in 30 days, 3 months or 12 months, with the
+// request's present status and the decisions I made for someone else marked. Positive and negative.
+
+jest.setTimeout(300_000);
+
+describe('Approvals T2-E 49 and 50', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let tenantPrisma: TenantPrismaService;
+  let engine: ApprovalsEngine;
+  const PASSWORD = 'Corr3ct-Horse-Battery';
+  const run = randomUUID().slice(0, 8);
+  const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
+  const server = () => app.getHttpServer();
+  let planId: string;
+  const org = { id: '', slug: '' };
+  type Who = 'admin' | 'mgr' | 'emp' | 'deep' | 'other' | 'boss';
+  const token: Partial<Record<Who, string>> = {};
+  const users: Partial<Record<Who, string>> = {};
+  const ids: Record<string, string> = {};
+  const api = (who: Who, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const ctx = () => ({ organizationId: org.id, isSuperAdmin: false });
+  const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant(ctx(), fn);
+  const want = (status: number) => (r: request.Response) => {
+    if (r.status !== status) throw new Error(`${r.status}: ${JSON.stringify(r.body)}`);
+  };
+  const submit = (requester: Who) =>
+    inA((tx) => engine.submit(tx, ctx(), { type: 'test.t2e', subjectType: 'test', subjectId: randomUUID(), title: `Request of ${requester} ${run}`, summary: [], subjectPersonId: null, requesterUserId: users[requester]!, raisedByUserId: users[requester]!, steps: [{ name: 'Manager', approvers: [{ kind: 'users', userIds: [users.mgr!] }], mode: 'any' }], payload: {}, payloadFields: [], fallbackUserIds: [] }));
+  const taskOf = (requestId: string) => inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId } }));
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue({ send: jest.fn(async () => ({ success: true })) }).compile();
+    app = moduleRef.createNestApplication();
+    app.use(cookieParser());
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    await app.init();
+    prisma = moduleRef.get(PrismaService);
+    tenantPrisma = moduleRef.get(TenantPrismaService);
+    engine = moduleRef.get(ApprovalsEngine);
+    engine.register({ key: 'test.t2e', label: 'Test request', risk: 'normal', autoActions: false, onDecided: async () => undefined, requesterLink: () => '/yx/me/requests' });
+    planId = (await prisma.plan.create({ data: { name: `t2e-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
+    const created = await prisma.organization.create({ data: { name: 'T2E Org', slug: `t2e-${run}`, planId } });
+    Object.assign(org, { id: created.id, slug: created.slug });
+    const passwordHash = await argon2.hash(PASSWORD);
+    for (const who of ['admin', 'mgr', 'emp', 'deep', 'other', 'boss'] as const) {
+      users[who] = (await inA((tx) => tx.user.create({ data: { organizationId: org.id, email: `${who}@t2e-${run}.test`, name: `${who} ${run}`, passwordHash, role: who === 'admin' ? 'org_admin' : 'panel' } }))).id;
+      token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.slug, email: `${who}@t2e-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
+    }
+    await inA(async (tx) => {
+      const o = { organizationId: org.id };
+      ids.entity = (await tx.legalEntity.create({ data: { ...o, name: 'T2E Tech', shortName: `T2E-${run}`, isDefault: true } })).id;
+      ids.loc = (await tx.location.create({ data: { ...o, legalEntityId: ids.entity, name: 'Chennai', code: 'CHN', address: {}, country: 'IN', state: 'IN-TN', timezone: 'Asia/Kolkata' } })).id;
+      const deptId = randomUUID();
+      ids.dept = (await tx.department.create({ data: { ...o, id: deptId, name: 'Ops', code: 'OPS', path: `/${deptId}/` } })).id;
+      ids.desig = (await tx.designation.create({ data: { ...o, name: 'Officer', code: 'OFF' } })).id;
+      ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
+    });
+    const joined = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+    const hire = async (who: Who, manager: string | null) =>
+      (
+        await api('admin', 'post', '/people/employees')
+          .send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, joinedOn: joined, userId: users[who], workEmail: `${who}@t2e-${run}.test`, assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: manager } })
+          .expect(want(201))
+      ).body.id as string;
+    // mgr manages emp; deep reports to emp (mgr's whole team); other is no one's report.
+    ids.mgrEmp = await hire('mgr', null);
+    ids.empEmp = await hire('emp', ids.mgrEmp);
+    ids.deepEmp = await hire('deep', ids.empEmp);
+    ids.otherEmp = await hire('other', null);
+    ids.r1 = (await submit('emp')).id;
+    ids.r2 = (await submit('deep')).id;
+    ids.r3 = (await submit('other')).id;
+  }, 300_000);
+
+  afterAll(async () => {
+    await tenantPrisma
+      .forTenant(SUPER, async (tx) => {
+        const all = Object.values(users) as string[];
+        await tx.refreshToken.deleteMany({ where: { userId: { in: all } } });
+        await tx.session.deleteMany({ where: { userId: { in: all } } });
+        await tx.organization.deleteMany({ where: { id: org.id } });
+      })
+      .catch((e) => console.warn('cleanup', e));
+    await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
+    await app.close();
+  });
+
+  it('49: waiting requests say whether who asked is in my direct or whole team; others are neither', async () => {
+    const inbox = (await api('mgr', 'get', '/workflow/approvals/inbox').expect(want(200))).body as { requestId: string; requesterTeam: string | null }[];
+    const team = (id: string) => inbox.find((r) => r.requestId === id)?.requesterTeam;
+    expect(team(ids.r1!)).toBe('direct');
+    expect(team(ids.r2!)).toBe('whole');
+    expect(team(ids.r3!)).toBeNull();
+    // Negative: emp is not mgr's manager, so to emp nobody here is "team"; another person sees none of these tasks.
+    expect((await api('other', 'get', '/workflow/approvals/inbox').expect(want(200))).body).toEqual([]);
+  });
+
+  it('50: Decided by me lists my decisions in the period with the present status; for-someone-else is marked', async () => {
+    const t1 = await taskOf(ids.r1!);
+    const t2 = await taskOf(ids.r2!);
+    const t3 = await taskOf(ids.r3!);
+    await api('mgr', 'post', `/workflow/approvals/tasks/${t1.id}/decide`).send({ decision: 'approve' }).expect(want(200));
+    await api('mgr', 'post', `/workflow/approvals/tasks/${t2.id}/decide`).send({ decision: 'reject', reason: 'Not this month' }).expect(want(200));
+    // mgr decides r3 as boss's delegate (the task names who it is for).
+    await inA((tx) => tx.wfTask.update({ where: { id: t3.id }, data: { onBehalfOfUserId: users.boss } }));
+    await api('mgr', 'post', `/workflow/approvals/tasks/${t3.id}/decide`).send({ decision: 'approve' }).expect(want(200));
+    type D = { requestId: string; decision: string; requestStatus: string; requesterTeam: string | null; onBehalfOf: string | null };
+    const h = (await api('mgr', 'get', '/workflow/approvals/history').expect(want(200))).body as { days: number; decided: D[] };
+    expect(h.days).toBe(90);
+    const of = (id: string) => h.decided.find((x) => x.requestId === id)!;
+    expect(of(ids.r1!)).toMatchObject({ decision: 'approved', requestStatus: 'approved', requesterTeam: 'direct', onBehalfOf: null });
+    expect(of(ids.r2!)).toMatchObject({ decision: 'rejected', requestStatus: 'rejected', requesterTeam: 'whole' });
+    expect(of(ids.r3!)).toMatchObject({ decision: 'approved', onBehalfOf: `boss ${run}`, requesterTeam: null });
+    // The period: a decision 60 days ago is in 3 months and 12 months, not in 30 days.
+    await inA((tx) => tx.wfTask.update({ where: { id: t2.id }, data: { decidedAt: new Date(Date.now() - 60 * 86_400_000) } }));
+    const in30 = (await api('mgr', 'get', '/workflow/approvals/history?days=30').expect(want(200))).body.decided as D[];
+    expect(in30.map((x) => x.requestId)).not.toContain(ids.r2);
+    expect(((await api('mgr', 'get', '/workflow/approvals/history?days=365').expect(want(200))).body.decided as D[]).map((x) => x.requestId)).toContain(ids.r2);
+    // Negative: another period is refused; nobody else sees my decisions.
+    await api('mgr', 'get', '/workflow/approvals/history?days=7').expect(400);
+    expect((await api('other', 'get', '/workflow/approvals/history').expect(want(200))).body.decided).toEqual([]);
+    // Team history carries the team flag too.
+    const team = (await api('mgr', 'get', '/workflow/approvals/team-history').expect(want(200))).body as { requestId: string; requesterTeam: string | null }[];
+    expect(team.find((x) => x.requestId === ids.r1)?.requesterTeam).toBe('direct');
+  });
+});

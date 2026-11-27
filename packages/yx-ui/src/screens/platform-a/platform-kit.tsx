@@ -138,6 +138,8 @@ export interface ListPageProps<R> {
   rows: R[];
   getRowId: (r: R) => string;
   filters?: FilterFieldDef[];
+  /** A filter's value for a row when no column has the filter's key (e.g. who asked, with the team flags). */
+  filterValue?: (key: string, row: R) => unknown;
   defaultFilters?: FilterValue[];
   searchPlaceholder?: string;
   defaultSearch?: string;
@@ -160,13 +162,14 @@ export interface ListPageProps<R> {
 }
 
 /** Filters rows client-side: each active filter matches the column of the same key; search matches any column text. */
-export function filterRows<R>(rows: R[], columns: TableColumn<R>[], filters: FilterValue[], search: string): R[] {
+export function filterRows<R>(rows: R[], columns: TableColumn<R>[], filters: FilterValue[], search: string, filterValue?: (key: string, row: R) => unknown): R[] {
   const q = search.trim().toLowerCase();
   const active = filters.filter(isFilterActive);
   return rows.filter((r) => {
     for (const f of active) {
       const col = columns.find((c) => c.key === f.key);
       if (col && !matchesFilter(col.value(r), f)) return false;
+      if (!col && filterValue && !matchesFilter(filterValue(f.key, r), f)) return false;
     }
     if (!q) return true;
     return columns.some((c) => {
@@ -182,7 +185,7 @@ export function ListPage<R>(p: ListPageProps<R>) {
   const [search, setSearch] = useState(p.defaultSearch ?? '');
   const [view, setView] = useState(p.views?.[0]?.id ?? '');
   const [selected, setSelected] = useState<string[]>(p.defaultSelected ?? []);
-  const rows = useMemo(() => filterRows(p.rows, p.columns, filters, search), [p.rows, p.columns, filters, search]);
+  const rows = useMemo(() => filterRows(p.rows, p.columns, filters, search, p.filterValue), [p.rows, p.columns, filters, search, p.filterValue]);
   const filtered = filters.some(isFilterActive) || search.trim() !== '';
 
   const table = (
