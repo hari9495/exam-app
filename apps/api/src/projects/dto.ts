@@ -296,3 +296,27 @@ export class HoursRangeQueryDto {
   @IsIn(['week', 'month', 'all'])
   range?: 'week' | 'month' | 'all';
 }
+
+/** T2-D 56 (2865): a task's new stage on the board. */
+export class TaskStageDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  stage!: string;
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
+
+/** T2-D 56 (2866): who a task is assigned to (none clears it). */
+export class TaskAssigneesDto {
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  employeeIds!: string[];
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}

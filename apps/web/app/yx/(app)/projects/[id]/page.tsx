@@ -53,6 +53,9 @@ export default function YxProjectPage() {
         onEndAllocation: async (aid, version) => void (await write('POST', `${p}/allocations/${encodeURIComponent(aid)}/end`, { version })),
         onAddTask: async (input) => void (await write('POST', `${p}/tasks`, input)),
         onChangeTask: async (tid, input) => void (await write('PUT', `${p}/tasks/${encodeURIComponent(tid)}`, input)),
+        // T2-D 56 (answers 2865, 2866): the tasks board and who a task is assigned to.
+        onMoveTask: async (tid, stage, version) => void (await write('POST', `${p}/tasks/${encodeURIComponent(tid)}/stage`, { stage, version })),
+        onAssignTask: async (tid, employeeIds, version) => void (await write('PUT', `${p}/tasks/${encodeURIComponent(tid)}/assignees`, { employeeIds, version })),
         onAddMilestone: async (input) => void (await write('POST', `${p}/milestones`, input)),
         cost: cost.isError || !(can?.finance || can?.run) ? undefined : (cost.data ?? null),
         expenses: expenses.isError ? undefined : (expenses.data ?? null),

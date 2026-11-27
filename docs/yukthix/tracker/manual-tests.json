@@ -29597,5 +29597,27 @@
                               "Screens/People/Me and set-up · My assets, first 30 days, checklists and signatories (Checklists · joining, applies to an employment type)"
                     ],
                     "note": "Grade is not offered yet: a joiner has no grade until they join (question 2891)."
+          },
+          {
+                    "id": "MT-T2D-56-TASK-BOARD",
+                    "area": "T2-D 56 (answers 2865, 2866): project tasks with stages, assignees and a board",
+                    "screen": "Projects › a project › Tasks & milestones (List / Board); Settings › Projects & timesheets (Task stages of your own); Me › My timesheet",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "The project's manager (no Projects key needed); a person on the project team; a Projects view holder who is not the manager; a System Admin.",
+                    "steps": [
+                              "As the System Admin open Settings › Projects & timesheets and type 'A, B, C, D' in Task stages of your own; save. Then type 'Review' and save.",
+                              "As the project manager open the project, Tasks & milestones, and switch Show tasks as to Board.",
+                              "Drag a task from To do to Review; then use the card's menu to move it to Done.",
+                              "Back on List, open a task's menu › Assign people, tick one team member and save.",
+                              "As that team member open Me › My timesheet and open the task picker on the project's row.",
+                              "With the task in Done, as the team member add an hour to it on a day and save the week. Then save the week with the same hours as before.",
+                              "As the Projects view holder (not the manager) open the board."
+                    ],
+                    "expected": "Step 1: 'Task stages: At most 3 stages of your own.' and nothing saved; then saved. Step 2: columns To do, In progress, Review, Done; each card shows who it is assigned to ('Not assigned' when no one) and hours used of the budget; tasks not in use are not on the board. Step 3: toast '<task> moved to Review', then '... moved to Done'. Step 4: toast '<task>: assigned'; the list shows the stage and Assigned to. Step 5: the assigned task comes first and says '(assigned to you)'; the other tasks are still there. Step 6: '<code> · <task> is done, so it takes no new hours (<date>)...' and nothing saved; the same hours save fine. Step 7: the board shows, with no drag and no Move menu. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-01 · Projects and project workspace (Live · tasks board by stage, view only, tasks list with stage and assignees, assign a task drawer)",
+                              "Screens/Time/TIM-15 · Timesheets (Live · my assigned task first)"
+                    ],
+                    "note": "Positive and negative (projects-t2d2 e2e 56: 4 stages refused 400, moves and assigns audited, stale version 409, unknown stage 400, team member 404, viewer 403, other company 404, assignee off the team 400; my tasks first; Done task refuses new hours, keeps the same; task-stages unit 4; kit prj-t2d2 6, timesheet-t2d 2). Migration 900 (stage, assignee_employee_ids, version on project_tasks); setting projects.task.extra_stages; routes POST projects/:id/tasks/:tid/stage, PUT projects/:id/tasks/:tid/assignees."
           }
 ]

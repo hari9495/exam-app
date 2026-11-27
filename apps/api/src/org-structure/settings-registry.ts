@@ -443,6 +443,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'projects.enabled': { label: 'Projects: client and internal projects with budgets, team, tasks and milestones', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // Answer 1442: 'approval' lets unallocated hours through, each line waiting for the project manager (never in bulk).
   'projects.booking.allocated_only': { label: 'Projects: only people allocated to a project book time to it', scopes: ['tenant'], dated: false, values: ['on', 'off', 'approval'], default: 'on' },
+  // T2-D 56 (answer 2865): up to 3 task stages of the company's own, between In progress and Done (names, comma between).
+  'projects.task.extra_stages': { label: 'Projects: task stages of your own (up to 3, comma between)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 80 }, default: '' },
   // Answer 1407: bulk approve only weeks within the person's allocation.
   // Answer 1411: the billable utilisation target and the small-team limit (fewer people: per-person figures hidden from the PM).
   'projects.utilisation.target_pct': { label: 'Projects: billable utilisation target (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '65', '70', '75', '80', '85', '90'], default: '75' },

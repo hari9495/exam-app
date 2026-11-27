@@ -16,6 +16,7 @@ import { asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, myEmploye
 import { addDays } from './time-maths';
 import { settingFor } from '../people/probation';
 import { mondayOf } from './time-rules';
+import { doneTaskGrowth } from '../projects/task-stages';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 
@@ -67,6 +68,7 @@ export class TimesheetService implements OnModuleInit {
       const sheet = await tx.timesheet.findFirst({ where: { organizationId: org, employeeId: me, weekStart: asDate(week) } });
       const lines = sheet ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: sheet.id }, orderBy: { id: 'asc' } }) : [];
       const projects = await tx.timesheetProject.findMany({ where: { organizationId: org, OR: [{ active: true }, { id: { in: lines.map((l) => l.projectId) } }] }, orderBy: { code: 'asc' } });
+      const myTasks = await tx.projectTask.findMany({ where: { organizationId: org, active: true, assigneeEmployeeIds: { has: me } }, select: { projectId: true, name: true } });
       const to = addDays(week, 6);
       const hol = (await holidaysFor(tx, org, f.locationId, week, to, me)).map;
       const leave = await leaveDays(tx, org, me, week, to);
@@ -80,7 +82,11 @@ export class TimesheetService implements OnModuleInit {
         sheet: sheet ? { id: sheet.id, status: sheet.status, totalMinutes: sheet.totalMinutes, submittedAt: sheet.submittedAt, decidedAt: sheet.decidedAt } : null,
         // Projects P-2 (1406): each line's decision with its reason, and the hours approved.
         lines: lines.map((l) => ({ id: l.id, projectId: l.projectId, activity: l.activity, billable: l.billable, minutes: l.minutes, comments: sevenComments(l.dayComments), decision: l.status, reason: l.reason, approvedMinutes: l.status ? lineApproved(l) : null, unallocated: l.unallocated, clientStatus: l.clientStatus, clientNote: l.clientNote })),
-        projects: projects.map((p) => ({ id: p.id, code: p.code, name: p.name, billable: p.billable, activities: p.activities, active: p.active })),
+        // T2-D 56 (answer 2866): the tasks assigned to me come first in the picker (anyone allocated may book to any task).
+        projects: projects.map((p) => {
+          const mine = myTasks.filter((t) => t.projectId === p.id && p.activities.includes(t.name)).map((t) => t.name);
+          return { id: p.id, code: p.code, name: p.name, billable: p.billable, activities: [...mine, ...p.activities.filter((a) => !mine.includes(a))], myTasks: mine, active: p.active };
+        }),
         days: Array.from({ length: 7 }, (_, k) => {
           const on = addDays(week, k);
           return { on, holiday: hol.get(on)?.name ?? null, leave: leave.get(on) ?? null, leaveRequested: !leave.has(on) && asked.has(on), locked: locked.has(on) };
@@ -380,6 +386,18 @@ export class TimesheetService implements OnModuleInit {
               throw new BadRequestException(`Line ${i + 1}: you are not allocated to ${projects.get(l.projectId)!.code} on ${fmt(d)}. Ask the project manager to add you to the team.`);
             }
           }
+        }
+      }
+      // T2-D 56 (answer 2865): a task in Done takes no new hours (hours already booked to it stay).
+      const done = await tx.projectTask.findMany({ where: { organizationId: org, projectId: { in: lines.map((l) => l.projectId) }, stage: 'done' }, select: { projectId: true, name: true } });
+      const onDone = lines.filter((l) => l.activity && done.some((t) => t.projectId === l.projectId && t.name === l.activity));
+      if (onDone.length) {
+        const prev = await tx.timesheet.findFirst({ where: { organizationId: org, employeeId: me, weekStart: asDate(week) }, select: { id: true } });
+        const was = prev ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: prev.id }, select: { projectId: true, activity: true, minutes: true } }) : [];
+        const daysOf = (xs: { projectId: string; activity?: string | null; minutes: number[] }[], pid: string, act: string) => Array.from({ length: 7 }, (_, k) => xs.filter((x) => x.projectId === pid && x.activity === act).reduce((t, x) => t + (x.minutes[k] ?? 0), 0));
+        for (const l of onDone) {
+          const grew = doneTaskGrowth(daysOf(was, l.projectId, l.activity!), daysOf(lines, l.projectId, l.activity!));
+          if (grew.length) throw new BadRequestException(`${projects.get(l.projectId)!.code} · ${l.activity} is done, so it takes no new hours (${fmt(addDays(week, grew[0]!))}). Ask the project manager to move it back if work goes on.`);
         }
       }
       const perDay = Array.from({ length: 7 }, (_, k) => lines.reduce((s, l) => s + l.minutes[k], 0));

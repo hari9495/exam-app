@@ -64,6 +64,11 @@ export interface LiveTask {
   usedHours: number;
   billable: boolean;
   active: boolean;
+  /** T2-D 56 (2865): the board stage (todo, in_progress, done or one of the company's own). */
+  stage?: string;
+  /** T2-D 56 (2866): who the task is assigned to. */
+  assignees?: { employeeId: string; name: string }[];
+  version?: number;
 }
 export interface LiveMilestone {
   id: string;
@@ -81,6 +86,8 @@ export interface LiveProjectDetail {
   allocations: LiveAllocation[];
   tasks: LiveTask[];
   milestones: LiveMilestone[];
+  /** T2-D 56 (2865): the board's stages in order (absent: an older API, no board). */
+  stages?: { id: string; label: string }[];
 }
 
 export interface ProjectChoices {

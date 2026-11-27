@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ProjectsListScreen, ProjectWorkspaceScreen, type ProjectExpense } from './projects';
+import { TaskAssigneesDrawer } from './projects-drawers';
 import { ALLOCATIONS, MILESTONES, PD, PROJECTS, RATE_CARD_PRJ, TASKS, WIP_LINES } from './projects-data';
 import { TODAY } from '../_kit/data';
+import { LIVE_PROJECT_GLANCE } from './projects-live-fixtures';
 import { LIVE_FIXED_FEE_DETAIL, LIVE_PROJECT_CHOICES, LIVE_PROJECT_DETAIL, LIVE_PROJECT_ROWS, LIVE_PROJECT_ROWS_FINANCE } from './projects-live-fixtures';
 import type { LiveProjectWorkspace, LiveProjectsList } from './projects';
 import type { TimelineItem } from '../../components/timeline';
@@ -89,3 +91,14 @@ const LIVE_BILLING_TAB = {
 };
 export const LiveBilling: S = { name: 'Live · billing, hours held for client approval', render: () => <ProjectWorkspaceScreen defaultTab="billing" live={liveWs({ detail: { ...LIVE_PROJECT_DETAIL, can: { ...LIVE_PROJECT_DETAIL.can, finance: true } }, billing: LIVE_BILLING_TAB, onOpenInvoice: () => {} })} /> };
 export const LiveBillingEmpty: S = { name: 'Live · billing, nothing to bill yet', render: () => <ProjectWorkspaceScreen defaultTab="billing" live={liveWs({ billing: { ...LIVE_BILLING_TAB, ready: '0.00', readyHours: 0, waitingHours: 0, billed: '0.00', unbilled: [], invoices: [] } })} /> };
+
+// T2-D 56 (answers 2865, 2866): the Tasks tab as a board by stage (the PM moves a task by drag or Move to), and who a task is assigned to.
+export const LiveTaskBoard: S = { name: 'Live · tasks board by stage (T2-D 56)', render: () => <ProjectWorkspaceScreen defaultTab="tasks" live={liveWs({ defaultTaskView: 'board', onMoveTask: ok, onAssignTask: ok })} /> };
+export const LiveTaskBoardReader: S = { name: 'Live · tasks board, view only (no moves)', render: () => <ProjectWorkspaceScreen defaultTab="tasks" live={liveWs({ defaultTaskView: 'board', detail: { ...LIVE_PROJECT_DETAIL, can: { edit: false, run: false, team: false, finance: false } } })} /> };
+export const LiveTaskList: S = { name: 'Live · tasks list with stage and assignees (T2-D 56)', render: () => <ProjectWorkspaceScreen defaultTab="tasks" live={liveWs({ onMoveTask: ok, onAssignTask: ok })} /> };
+export const LiveAssignTask: S = { name: 'Live · assign a task drawer (T2-D 56)', render: () => <TaskAssigneesDrawer task={{ name: 'Build', assignees: ['e1'] }} team={LIVE_PROJECT_DETAIL.allocations} onClose={() => {}} onSave={ok} /> };
+
+// T2-D 57 (answers 2867, 2868): actions pending for the project manager and who on the project is away (never the leave type).
+export const LiveGlancePm: S = { name: 'Live · actions pending and who is away (PM, T2-D 57)', render: () => <ProjectWorkspaceScreen live={liveWs({ glance: LIVE_PROJECT_GLANCE, onOpenLink: () => {} })} /> };
+export const LiveGlanceMember: S = { name: 'Live · who is away only (a team member, T2-D 57)', render: () => <ProjectWorkspaceScreen live={liveWs({ glance: { pending: null, away: LIVE_PROJECT_GLANCE.away } })} /> };
+export const LiveGlanceNothing: S = { name: 'Live · nothing pending, no one away (T2-D 57)', render: () => <ProjectWorkspaceScreen live={liveWs({ glance: { pending: [], away: { ...LIVE_PROJECT_GLANCE.away!, people: [] } } })} /> };

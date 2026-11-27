@@ -13,7 +13,8 @@ import { OrgSettingsService } from '../org-structure/org-settings.service';
 import { SETTINGS } from '../org-structure/settings-registry';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
-import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskDto } from './dto';
+import { AllocationDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskAssigneesDto, TaskDto, TaskStageDto } from './dto';
+import { EXTRA_STAGES_KEY, parseExtraStages, stageOf, taskStages } from './task-stages';
 
 // Projects P-1 (founder answers 1401 to 1405, 1412, 1420). The project is Time's project grown up (one list, 1402):
 // a client from the staffing desk (1403), a billing model (1420), budgets, dates and a status; its team (allocations),
@@ -33,7 +34,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day', 'timesheet.nudge.daily_from', 'timesheet.reminder.cutoff_day', 'timesheet.reminder.time'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day', 'timesheet.nudge.daily_from', 'timesheet.reminder.cutoff_day', 'timesheet.reminder.time', EXTRA_STAGES_KEY] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -116,7 +117,13 @@ export class ProjectsService {
       if (!(PROJECT_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a Projects setting.`);
       if (seen.has(ch.key)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is in the list twice.`);
       seen.add(ch.key);
-      if (!SETTINGS[ch.key]!.values.includes(ch.value)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is one of: ${SETTINGS[ch.key]!.values.join(', ')}`);
+      if (ch.key === EXTRA_STAGES_KEY) {
+        try {
+          parseExtraStages(ch.value);
+        } catch (e) {
+          throw new BadRequestException(`Task stages: ${(e as Error).message}`);
+        }
+      } else if (!SETTINGS[ch.key]!.values.includes(ch.value)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is one of: ${SETTINGS[ch.key]!.values.join(', ')}`);
     }
     const now = (await this.readSettings(ctx, user)).values;
     const next: Record<string, string> = { ...now, ...Object.fromEntries(changes.map((ch) => [ch.key, ch.value])) };
@@ -248,7 +255,8 @@ export class ProjectsService {
         p.clientId ? tx.staffingClient.findFirst({ where: { organizationId: org, id: p.clientId }, select: { name: true } }) : null,
         p.managerUserId ? tx.user.findFirst({ where: { organizationId: org, id: p.managerUserId }, select: { name: true, email: true } }) : null,
       ]);
-      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: allocations.map((a) => a.employeeId) } }, select: { id: true, givenName: true, familyName: true } });
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set([...allocations.map((a) => a.employeeId), ...tasks.flatMap((t) => t.assigneeEmployeeIds)])] } }, select: { id: true, givenName: true, familyName: true } });
+      const stages = taskStages(String(await settingFor(tx, c, EXTRA_STAGES_KEY, { legalEntityId: '' })));
       const name = (eid: string) => {
         const e = people.find((x) => x.id === eid);
         return e ? [e.givenName, e.familyName].filter(Boolean).join(' ') : 'Former employee';
@@ -280,7 +288,9 @@ export class ProjectsService {
           hours: ((h) => ({ billable: hoursOf(h.billable), nonBillable: hoursOf(h.nonBillable), booked: hoursOf(h.booked) }))(range$.get(a.employeeId) ?? { billable: 0, nonBillable: 0, booked: 0 }),
           version: a.version,
         })),
-        tasks: tasks.map((t) => ({ id: t.id, name: t.name, budgetHours: num(t.budgetHours), usedHours: hoursOf(booked.filter((b) => b.activity === t.name).reduce((s, b) => s + b.minutes, 0)), billable: t.billable, active: t.active })),
+        // T2-D 56 (2865, 2866): the board's stages, each task's stage and who it is assigned to.
+        stages,
+        tasks: tasks.map((t) => ({ id: t.id, name: t.name, budgetHours: num(t.budgetHours), usedHours: hoursOf(booked.filter((b) => b.activity === t.name).reduce((s, b) => s + b.minutes, 0)), billable: t.billable, active: t.active, stage: stageOf(t.stage, stages), assignees: t.assigneeEmployeeIds.map((eid) => ({ employeeId: eid, name: name(eid) })), version: t.version })),
         milestones: milestones.map((m) => ({ id: m.id, name: m.name, pct: num(m.pct), dueOn: day(m.dueOn), status: m.status, version: m.version })),
       };
     });
@@ -494,6 +504,47 @@ export class ProjectsService {
       await this.syncActivities(tx, org, projectId);
       await audit(tx, c, 'projects.task.changed', 'project_task', t.id, { projectId, from: { budgetHours: num(t.budgetHours), billable: t.billable, active: t.active }, to: { budgetHours: dto.budgetHours ?? null, billable: dto.billable, active: dto.active ?? t.active } });
       return { id: t.id };
+    });
+  }
+
+  /** T2-D 56 (2865): moves a task to another stage of the board (the project manager, by drag or the menu). */
+  async moveTask(ctx: TenantContext, user: ScopeUser, projectId: string, taskId: string, dto: TaskStageDto) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, projectId, w);
+      this.needRun(p, w);
+      const t = await tx.projectTask.findFirst({ where: { organizationId: org, projectId, id: taskId } });
+      if (!t) throw new NotFoundException('No such task.');
+      if (t.version !== dto.version) throw new ConflictException('Someone changed this task. Reload to see the latest.');
+      const stages = taskStages(String(await settingFor(tx, c, EXTRA_STAGES_KEY, { legalEntityId: '' })));
+      if (!stages.some((s) => s.id === dto.stage)) throw new BadRequestException(`Choose one of the stages: ${stages.map((s) => s.label).join(', ')}.`);
+      const from = stageOf(t.stage, stages);
+      if (from === dto.stage) throw new ConflictException('The task is already in this stage.');
+      await tx.projectTask.update({ where: { id: t.id }, data: { stage: dto.stage, version: { increment: 1 } } });
+      await audit(tx, c, 'projects.task.moved', 'project_task', t.id, { projectId, from, to: dto.stage });
+      return { id: t.id, stage: dto.stage, version: t.version + 1 };
+    });
+  }
+
+  /** T2-D 56 (2866): who a task is assigned to: people allocated to the project (the project manager assigns). */
+  async assignTask(ctx: TenantContext, user: ScopeUser, projectId: string, taskId: string, dto: TaskAssigneesDto) {
+    const w = await this.who(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.needOn(tx, c);
+      const org = c.organizationId;
+      const p = await this.project(tx, org, projectId, w);
+      this.needRun(p, w);
+      const t = await tx.projectTask.findFirst({ where: { organizationId: org, projectId, id: taskId } });
+      if (!t) throw new NotFoundException('No such task.');
+      if (t.version !== dto.version) throw new ConflictException('Someone changed this task. Reload to see the latest.');
+      const ids = [...new Set(dto.employeeIds)];
+      const on = await tx.projectAllocation.findMany({ where: { organizationId: org, projectId, employeeId: { in: ids } }, select: { employeeId: true } });
+      if (ids.some((id) => !on.some((a) => a.employeeId === id))) throw new BadRequestException('Assign the task to people on the project team.');
+      await tx.projectTask.update({ where: { id: t.id }, data: { assigneeEmployeeIds: ids, version: { increment: 1 } } });
+      await audit(tx, c, 'projects.task.assigned', 'project_task', t.id, { projectId, from: t.assigneeEmployeeIds, to: ids });
+      return { id: t.id, version: t.version + 1 };
     });
   }
 

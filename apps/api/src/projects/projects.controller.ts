@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import type { ScopeUser } from '../access/scope';
-import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskDto, VersionDto, HoursRangeQueryDto } from './dto';
+import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskAssigneesDto, TaskDto, TaskStageDto, VersionDto, HoursRangeQueryDto } from './dto';
 import { ProjectsService } from './projects.service';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420). Signed-in company people; the service checks the Projects keys
@@ -97,6 +97,19 @@ export class ProjectsController {
   @Put(':id/tasks/:tid')
   updateTask(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('tid', ParseUUIDPipe) tid: string, @Body() dto: TaskDto) {
     return this.projects.updateTask(ctx, this.user(req), id, tid, dto);
+  }
+
+  /** T2-D 56 (2865): move a task on the board. */
+  @Post(':id/tasks/:tid/stage')
+  @HttpCode(200)
+  moveTask(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('tid', ParseUUIDPipe) tid: string, @Body() dto: TaskStageDto) {
+    return this.projects.moveTask(ctx, this.user(req), id, tid, dto);
+  }
+
+  /** T2-D 56 (2866): who a task is assigned to. */
+  @Put(':id/tasks/:tid/assignees')
+  assignTask(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('tid', ParseUUIDPipe) tid: string, @Body() dto: TaskAssigneesDto) {
+    return this.projects.assignTask(ctx, this.user(req), id, tid, dto);
   }
 
   @Post(':id/milestones')

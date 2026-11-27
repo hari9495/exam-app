@@ -25,11 +25,19 @@ export const LIVE_PROJECT_DETAIL: LiveProjectDetail = {
     { id: 'a3', employeeId: 'e3', person: 'Meera Iyer', role: null, fromOn: '2026-11-16', toOn: null, percent: 40, tentative: true, bookedHours: 0, version: 1 },
   ],
   tasks: [
-    { id: 't1', name: 'Build', budgetHours: 1600, usedHours: 1500, billable: true, active: true },
-    { id: 't2', name: 'Testing', budgetHours: 600, usedHours: 480, billable: true, active: true },
-    { id: 't3', name: 'Internal reviews', budgetHours: null, usedHours: 60, billable: false, active: false },
+    { id: 't1', name: 'Build', budgetHours: 1600, usedHours: 1500, billable: true, active: true, stage: 'in_progress', assignees: [{ employeeId: 'e1', name: 'Priya Nair' }, { employeeId: 'e2', name: 'Rohit Bhat' }], version: 3 },
+    { id: 't2', name: 'Testing', budgetHours: 600, usedHours: 480, billable: true, active: true, stage: 'Review', assignees: [], version: 1 },
+    { id: 't3', name: 'Internal reviews', budgetHours: null, usedHours: 60, billable: false, active: false, stage: 'done', assignees: [], version: 1 },
+    { id: 't4', name: 'Release notes', budgetHours: 40, usedHours: 0, billable: true, active: true, stage: 'todo', assignees: [{ employeeId: 'e3', name: 'Meera Iyer' }], version: 1 },
   ],
   milestones: [],
+  // T2-D 56 (2865): the fixed stages and one of the company's own.
+  stages: [
+    { id: 'todo', label: 'To do' },
+    { id: 'in_progress', label: 'In progress' },
+    { id: 'Review', label: 'Review' },
+    { id: 'done', label: 'Done' },
+  ],
 };
 
 export const LIVE_FIXED_FEE_DETAIL: LiveProjectDetail = {
@@ -167,3 +175,14 @@ export const LIVE_CORRECTION_LINES: import('./billing-live').LiveCorrectionLine[
   { lineId: 'l1', person: 'Rohit Bhat', week: '2026-08-10', hours: 44, invoice: { id: 'i0', number: 'KF/TN/151', status: 'issued' }, corrected: false },
   { lineId: 'l2', person: 'Priya Nair', week: '2026-08-10', hours: 40, invoice: null, corrected: false },
 ];
+
+/** T2-D 57: GET /projects/:id/glance for the project manager (actions pending) and who is away (never the leave type). */
+export const LIVE_PROJECT_GLANCE: import('./projects').LiveProjectGlance = {
+  pending: [
+    { kind: 'approvals', count: 2, href: '/yx/projects/approvals' },
+    { kind: 'not_sent', count: 1, people: ['Meera Iyer'], href: 'timesheets' },
+    { kind: 'requests', count: 1, href: '/yx/projects/requests' },
+    { kind: 'billing', count: 0, href: '/yx/projects/billing' },
+  ],
+  away: { from: '2026-11-30', to: '2026-12-13', people: [{ employeeId: 'e2', person: 'Rohit Bhat', days: ['2026-12-03', '2026-12-04'] }] },
+};

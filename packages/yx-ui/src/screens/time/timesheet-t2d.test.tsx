@@ -73,3 +73,15 @@ describe('T2-D 61 view switch', () => {
     set.mockRestore();
   });
 });
+
+describe('T2-D 56 my tasks on my week (2866)', () => {
+  const withMine = (): LiveTimesheet => ({ ...live(), data: { ...MY_TIMESHEET, projects: MY_TIMESHEET.projects.map((p) => (p.id === 'pr1' ? { ...p, myTasks: ['Documentation'] } : p)) } });
+  it('a task assigned to me says so on my week', () => {
+    render(<ToastProvider><TimesheetScreen live={withMine()} /></ToastProvider>);
+    expect(screen.getAllByText(/Documentation \(assigned to you\)/).length).toBeGreaterThan(0);
+  });
+  it('negative: tasks not assigned to me carry no mark', () => {
+    render(<ToastProvider><TimesheetScreen live={live()} /></ToastProvider>);
+    expect(screen.queryByText(/assigned to you/)).toBeNull();
+  });
+});

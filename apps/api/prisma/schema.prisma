@@ -6734,6 +6734,11 @@ model ProjectTask {
   billable       Boolean  @default(true)
   active         Boolean  @default(true)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// T2-D 56 (2865): the board stage: todo, in_progress, done, or one of the company's own stages (by name).
+  stage               String   @default("todo") @db.VarChar(20)
+  /// T2-D 56 (2866): who the task is assigned to (people on the project); anyone allocated may still book to it.
+  assigneeEmployeeIds String[] @default([]) @map("assignee_employee_ids") @db.Uuid
+  version             Int      @default(1)
 
   @@map("project_tasks")
 }

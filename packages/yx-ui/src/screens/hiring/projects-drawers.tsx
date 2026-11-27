@@ -258,3 +258,39 @@ export function MilestoneDrawer({ onClose, onSave }: { onClose: () => void; onSa
     </EditorDrawer>
   );
 }
+
+/** T2-D 56 (answer 2866): who a task is assigned to, from the project's team. Anyone on the team may still book to it. */
+export function TaskAssigneesDrawer({ task, team, onClose, onSave }: { task: { name: string; assignees: string[] }; team: { employeeId: string; person: string }[]; onClose: () => void; onSave: (employeeIds: string[]) => Promise<void> }) {
+  const [ids, setIds] = useState<string[]>(task.assignees);
+  const [dirty, setDirty] = useState(false);
+  const { busy, error, run } = useRun();
+  const people = team.filter((p, i) => team.findIndex((x) => x.employeeId === p.employeeId) === i);
+  return (
+    <EditorDrawer
+      open
+      onClose={onClose}
+      dirty={dirty}
+      title={`Assign ${task.name}`}
+      subtitle="The task shows first on their timesheet. Anyone on the team can still book hours to it."
+      errors={[]}
+      saving={busy === 'save'}
+      failed={error}
+      saveLabel="Save"
+      onSave={() => void run('save', () => onSave(ids)).then((ok) => ok && onClose())}
+    >
+      <FormSection title="Assigned to">
+        {people.map((p) => (
+          <Checkbox
+            key={p.employeeId}
+            checked={ids.includes(p.employeeId)}
+            onChange={(on) => {
+              setIds((x) => (on ? [...x, p.employeeId] : x.filter((y) => y !== p.employeeId)));
+              setDirty(true);
+            }}
+            label={p.person}
+          />
+        ))}
+      </FormSection>
+    </EditorDrawer>
+  );
+}
