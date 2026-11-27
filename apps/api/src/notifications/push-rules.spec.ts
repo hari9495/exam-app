@@ -21,6 +21,12 @@ describe('T2-E 52 push rules (answers 2875 to 2877)', () => {
     expect(validEndpoint('https://fcm.googleapis.com/fcm/send/abc')).toBe(true);
     expect(validEndpoint('http://evil.test/x')).toBe(false);
     expect(validEndpoint('not a url')).toBe(false);
+    expect(validEndpoint('https://web.push.apple.com/abc')).toBe(true);
+    expect(validEndpoint('https://updates.push.services.mozilla.com/wpush/v2/abc')).toBe(true);
+    expect(validEndpoint('https://169.254.169.254/latest')).toBe(false);
+    expect(validEndpoint('https://localhost/x')).toBe(false);
+    expect(validEndpoint('https://fcm.googleapis.com.evil.test/x')).toBe(false);
+    expect(validEndpoint('https://fcm.googleapis.com:8443/x')).toBe(false);
     expect(pushKeys({})).toBeNull();
     expect(pushKeys({ WEB_PUSH_PUBLIC_KEY: 'fake-public', WEB_PUSH_PRIVATE_KEY: 'fake-private', WEB_PUSH_SUBJECT: 'mailto:ops@example.test' })).toEqual({ publicKey: 'fake-public', privateKey: 'fake-private', subject: 'mailto:ops@example.test' });
   });

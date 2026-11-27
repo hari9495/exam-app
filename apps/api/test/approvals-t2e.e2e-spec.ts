@@ -168,7 +168,7 @@ describe('Approvals T2-E 49 and 50', () => {
   it('52: push with keys from config only: one subscription per device, neutral title, choices, quiet hours, gone and sign-out', async () => {
     const api3 = (who: Who, method: 'get' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
     const keys = webpush.generateVAPIDKeys(); // made for this run only, never stored
-    const sub = { endpoint: `https://push.example.test/${run}`, p256dh: 'BFakeP256dhKeyForTestsOnly_abcdefgh', auth: 'FakeAuthKey_123' };
+    const sub = { endpoint: `https://fcm.googleapis.com/fcm/send/t2e-${run}`, p256dh: 'BFakeP256dhKeyForTestsOnly_abcdefgh', auth: 'FakeAuthKey_123' };
     // Without keys in config: push is not available and nothing subscribes.
     delete process.env.WEB_PUSH_PUBLIC_KEY;
     expect((await api3('emp', 'get', '/notifications/push').expect(want(200))).body).toMatchObject({ available: false, publicKey: null, paused: false, quietFrom: '21:00', quietTo: '08:00' });
@@ -177,6 +177,7 @@ describe('Approvals T2-E 49 and 50', () => {
     try {
       expect((await api3('emp', 'get', '/notifications/push').expect(want(200))).body).toMatchObject({ available: true, publicKey: keys.publicKey });
       await api3('emp', 'put', '/notifications/push/subscription').send({ ...sub, endpoint: 'http://push.example.test/x' }).expect(400);
+      await api3('emp', 'put', '/notifications/push/subscription').send({ ...sub, endpoint: 'https://169.254.169.254/latest' }).expect(400);
       await api3('emp', 'put', '/notifications/push/subscription').send(sub).expect(want(200));
       // The same device signed in by someone else of the company moves to them, never two.
       await api3('other', 'put', '/notifications/push/subscription').send(sub).expect(want(200));

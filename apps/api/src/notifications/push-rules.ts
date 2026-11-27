@@ -18,11 +18,15 @@ export const istHm = (now = new Date()) => new Date(now.getTime() + 330 * 60_000
 
 export const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** A push endpoint the browser gave: https only (the push services all are), at most 1000 characters. */
+/** The browsers' push services (Chrome/Edge via FCM, Firefox, Safari, Windows). The server POSTs to the endpoint, so any other host is refused (no requests to internal addresses). */
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^([a-z0-9-]+\.)*push\.apple\.com$/, /^([a-z0-9-]+\.)*notify\.windows\.com$/];
+
+/** A push endpoint the browser gave: https, on a known push service, at most 1000 characters. */
 export function validEndpoint(url: string): boolean {
   if (url.length > 1000) return false;
   try {
-    return new URL(url).protocol === 'https:';
+    const u = new URL(url);
+    return u.protocol === 'https:' && !u.port && !u.username && PUSH_HOSTS.some((h) => h.test(u.hostname));
   } catch {
     return false;
   }
