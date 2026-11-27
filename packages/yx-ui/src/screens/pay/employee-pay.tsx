@@ -73,6 +73,7 @@ import {
   type DeclLine,
 } from './pay-data';
 import { EMPLOYEES, TODAY as NOW } from '../_kit/data';
+import { useYxT } from '../../i18n';
 import {
   DEDUCTION_CAPS,
   commission,
@@ -1933,6 +1934,8 @@ const toExplained = (lines: PayslipLine[]): ExplainedLine[] =>
 
 function LivePayslipViewer({ live }: { live: LivePayslips }) {
   const { toast } = useToast();
+  // T2-G 84b: the page's words in the reader's language.
+  const t = useYxT('myPayslips');
   const slips = live.payslips ?? [];
   const [openId, setOpenId] = useState<string | null>(null);
   const slip = slips.find((s) => s.id === openId) ?? slips[0] ?? null;
@@ -1976,54 +1979,54 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
   // PAY-21 Document: the design's "Payslip PDF" drawer shows the PDF in the page (PDF.js); its footer downloads it.
   const [pdfOpen, setPdfOpen] = useState(false);
   const pdf = useFileUrl(pdfOpen && slip ? slip.id : null, slip && live.onPdfFile ? () => live.onPdfFile!(slip.id) : undefined, 'payslip.pdf');
-  const downloadPdf = () => slip && void run('pdf', () => live.onPdf(slip.id, slip.month)).then((ok) => ok && toast({ title: 'Payslip downloaded', description: `Your payslip for ${period} is in your downloads.`, tone: 'success' }));
+  const downloadPdf = () => slip && void run('pdf', () => live.onPdf(slip.id, slip.month)).then((ok) => ok && toast({ title: t('downloaded'), description: t('downloadedText', { period }), tone: 'success' }));
   const actions = slip && (
     <>
       {prev && (
         <Button variant="primary" icon={HelpCircle} loading={busy === 'why'} onClick={openWhy}>
-          Why is my pay different?
+          {t('why')}
         </Button>
       )}
       <Button icon={MessageSquare} onClick={() => setQuery('')}>
-        Raise a query
+        {t('query')}
       </Button>
       <Button icon={Download} loading={busy === 'pdf'} onClick={() => (live.onPdfFile ? setPdfOpen(true) : downloadPdf())}>
-        Download PDF
+        {t('pdf')}
       </Button>
     </>
   );
   return (
     <MyPayFrame page="payslips">
-      <PageHeader title={slip ? `Payslip for ${period}` : 'My payslips'} description="Your published payslips. Open a line to see how it was worked out." actions={live.state === 'ready' ? actions : undefined} />
-      <PayPageState state={live.state} onRetry={live.onRetry} what="your payslips">
+      <PageHeader title={slip ? t('titleFor', { period }) : t('title')} description={t('description')} actions={live.state === 'ready' ? actions : undefined} />
+      <PayPageState state={live.state} onRetry={live.onRetry} what={t('what')}>
         {!slip ? (
-          <EmptyState title="No payslips yet." description="Payroll publishes payslips after the run is approved and paid. You get a notification in the app." />
+          <EmptyState title={t('none')} description={t('noneText')} />
         ) : (
           <div className="yx-pay-months">
           <PayslipMonths
             years={years}
             year={year}
             onYear={(y) => setOpenId(slips.filter((x) => taxYearOf(x.month) === y).sort((x, z) => z.month.localeCompare(x.month))[0]?.id ?? null)}
-            months={inYear.map((x) => ({ id: x.id, label: monthName(x.month), net: num(x.net), ...(x.runType === 'offcycle' ? { note: 'Off-cycle' } : {}) }))}
+            months={inYear.map((x) => ({ id: x.id, label: monthName(x.month), net: num(x.net), ...(x.runType === 'offcycle' ? { note: t('offCycle') } : {}) }))}
             selectedId={slip.id}
             onSelect={setOpenId}
             {...(live.onDownloadYear
               ? {
                   downloading: busy === 'year',
                   onDownloadYear: () =>
-                    void run('year', () => live.onDownloadYear!(year)).then((ok) => ok && toast({ title: 'Payslips downloaded', description: `Your ${year} payslips are in your downloads as one zip file.`, tone: 'success' })),
+                    void run('year', () => live.onDownloadYear!(year)).then((ok) => ok && toast({ title: t('yearDownloaded'), description: t('yearDownloadedText', { year }), tone: 'success' })),
                 }
               : {})}
           />
           <div className="yx-pay-stack">
             {error && (
-              <InlineAlert tone="danger" title="That did not work">
+              <InlineAlert tone="danger" title={t('failed')}>
                 {error}
               </InlineAlert>
             )}
             {held && (
-              <InlineAlert tone="warning" title="Your net pay is on hold">
-                Tax and PF are still deducted as usual. Payroll tells you when your pay is released.
+              <InlineAlert tone="warning" title={t('held')}>
+                {t('heldText')}
               </InlineAlert>
             )}
             <MoneySummary
@@ -2034,19 +2037,19 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
               employerCost={d ? num(d.employerCost) : undefined}
               payDate={new Date()}
               payLabel={PAYMENT_TEXT[slip.paymentStatus] ?? slip.paymentStatus}
-              status={<Badge tone={slip.paymentStatus === 'paid' ? 'success' : held || slip.paymentStatus === 'failed' || slip.paymentStatus === 'returned' ? 'warning' : 'neutral'}>{held ? 'On hold' : PAYMENT_TEXT[slip.paymentStatus] ?? slip.paymentStatus}</Badge>}
+              status={<Badge tone={slip.paymentStatus === 'paid' ? 'success' : held || slip.paymentStatus === 'failed' || slip.paymentStatus === 'returned' ? 'warning' : 'neutral'}>{held ? t('onHold') : PAYMENT_TEXT[slip.paymentStatus] ?? slip.paymentStatus}</Badge>}
               change={prev && netChange != null ? (netChange === 0n ? `Same as ${monthName(prev.month)}` : `${rupees(fromPaise(netChange < 0n ? -netChange : netChange))} ${netChange < 0n ? 'less' : 'more'} than ${monthName(prev.month)}`) : undefined}
             />
             {slip && (live.queries ?? []).some((q) => q.mine && q.payslipId === slip.id) && (
-              <section className="yx-pay-panel" aria-label="Your queries on this payslip">
-                <SectionTitle>Your queries on this payslip</SectionTitle>
+              <section className="yx-pay-panel" aria-label={t('queries')}>
+                <SectionTitle>{t('queries')}</SectionTitle>
                 <ul className="yx-pay-cards">
                   {(live.queries ?? [])
                     .filter((q) => q.mine && q.payslipId === slip.id)
                     .map((q) => (
                       <li key={q.id}>
                         <div className="yx-pay-cards__row">
-                          <strong>{(q.lineCode && d?.lines.find((l) => l.code === q.lineCode)?.name) || 'Whole payslip'}</strong>
+                          <strong>{(q.lineCode && d?.lines.find((l) => l.code === q.lineCode)?.name) || t('wholePayslip')}</strong>
                           <Badge tone={QUERY_STATE[q.status].tone}>{QUERY_STATE[q.status].label}</Badge>
                         </div>
                         <span className="yx-pay-muted">{q.text}</span>
@@ -2058,7 +2061,7 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
                         {q.status !== 'closed' && live.onWithdraw && (
                           <div className="yx-pay-row">
                             <Button size="sm" onClick={() => setWithdraw(q)}>
-                              Withdraw query
+                              {t('withdrawQuery')}
                             </Button>
                           </div>
                         )}
@@ -2068,8 +2071,8 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
               </section>
             )}
             {d?.days && d.days.list.length > 0 && (
-              <section className="yx-pay-panel" aria-label="Days">
-                <SectionTitle>Days in {monthName(slip.month).split(' ')[0]}</SectionTitle>
+              <section className="yx-pay-panel" aria-label={t('days')}>
+                <SectionTitle>{t('daysIn', { month: monthName(slip.month).split(' ')[0]! })}</SectionTitle>
                 <DaysStrip days={d.days.list} periodLabel={monthName(slip.month)} />
                 {d.days.paidDays != null && d.days.calendarDays != null && (
                   <p className="yx-pay-muted">
@@ -2080,35 +2083,35 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
               </section>
             )}
             <div className="yx-pay-split">
-              <section className="yx-pay-panel" aria-label="Why this number">
-                <SectionTitle>How your pay was worked out</SectionTitle>
+              <section className="yx-pay-panel" aria-label={t('whyNumber')}>
+                <SectionTitle>{t('workedOut')}</SectionTitle>
                 {!d ? (
                   <Skeleton height={200} />
                 ) : (
                   <div className="yx-pay-stack">
                     <WhyThisNumber lines={toExplained(d.lines)} onQuery={(l) => setQuery(d.lines.find((x, i) => lineId(x, i) === l.id)?.code ?? '')} />
-                    <section aria-label="Reimbursements">
-                      <SectionTitle>Reimbursements</SectionTitle>
+                    <section aria-label={t('reimbursements')}>
+                      <SectionTitle>{t('reimbursements')}</SectionTitle>
                       {reimbursements.length ? (
                         <DescriptionList items={reimbursements.map((l) => ({ label: l.name, value: rupees(l.amount) }))} />
                       ) : (
-                        <p className="yx-pay-note">None this month. Approved expense claims paid with salary show here; they are part of net pay, not of gross earnings.</p>
+                        <p className="yx-pay-note">{t('noReimbursements')}</p>
                       )}
                     </section>
                   </div>
                 )}
               </section>
               <div className="yx-pay-stack">
-                <Card title="Year to date">
+                <Card title={t('ytd')}>
                   <DescriptionList
                     items={[
-                      { label: 'Gross earnings', value: rupees(sumMoney(ytd.map((x) => x.gross))) },
-                      { label: 'Deductions', value: rupees(sumMoney(ytd.map((x) => x.deductions))) },
-                      { label: 'Net pay', value: rupees(sumMoney(ytd.map((x) => x.net))) },
+                      { label: t('gross'), value: rupees(sumMoney(ytd.map((x) => x.gross))) },
+                      { label: t('deductions'), value: rupees(sumMoney(ytd.map((x) => x.deductions))) },
+                      { label: t('net'), value: rupees(sumMoney(ytd.map((x) => x.net))) },
                     ]}
                   />
                   <p className="yx-pay-note">
-                    {monthName(fyStart)} to {monthName(slip.month)}, {ytd.length} {ytd.length === 1 ? 'payslip' : 'payslips'}.
+                    {t('ytdText', { from: monthName(fyStart), to: monthName(slip.month), n: ytd.length })}
                   </p>
                 </Card>
               </div>
@@ -2118,7 +2121,7 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
         )}
       </PayPageState>
       {slip && prev && (
-        <Drawer open={why} onOpenChange={setWhy} title="Why is my pay different?" subtitle={`${monthName(slip.month)} compared with ${monthName(prev.month)}`} size="lg" footer={<Button onClick={() => setWhy(false)}>Close</Button>}>
+        <Drawer open={why} onOpenChange={setWhy} title={t('why')} subtitle={t('compared', { month: monthName(slip.month), prev: monthName(prev.month) })} size="lg" footer={<Button onClick={() => setWhy(false)}>{t('close')}</Button>}>
           <PayDiffPanel
             diffs={diffs}
             previous={num(prev.net)}
@@ -2135,20 +2138,20 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
         <Drawer
           open={pdfOpen}
           onOpenChange={setPdfOpen}
-          title="Payslip PDF"
-          subtitle={`Your ${period} payslip, as issued`}
+          title={t('pdfTitle')}
+          subtitle={t('pdfText', { period })}
           size="full"
           footer={
             <Button variant="primary" icon={Download} loading={busy === 'pdf'} onClick={downloadPdf}>
-              Download PDF
+              {t('pdf')}
             </Button>
           }
         >
-          <div className="yx-pay-preview" tabIndex={0} role="region" aria-label="Payslip preview">
+          <div className="yx-pay-preview" tabIndex={0} role="region" aria-label={t('preview')}>
             {pdf?.url ? (
               <PdfPages url={pdf.url} label={`Payslip for ${period}`} />
             ) : pdf?.failed ? (
-              <EmptyState title="We couldn't show the preview" description="Download the PDF to read it." />
+              <EmptyState title={t('noPreview')} description={t('noPreviewText')} />
             ) : (
               <Skeleton height="var(--yx-space-16)" />
             )}
