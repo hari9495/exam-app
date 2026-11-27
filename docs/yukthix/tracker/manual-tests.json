@@ -29737,5 +29737,126 @@
                               "Screens/Platform/PLT-65 · Notification preferences (Push · on for this device, not yet on, iPhone add to the Home Screen first, blocked in the browser, switched off for the company)"
                     ],
                     "note": "Positive and negative (approvals-t2e e2e 52 with keys made for the run only: no keys = not available and subscribe 400, http endpoint 400, one subscription per device moving to who signed in, neutral title and link, off-by-default kind, quiet hours 22:30, pause, company switch, the bell path pushes, 410 removes the subscription, sign-out removes mine only; push-rules unit 3; notifications service and controller specs; kit preferences-push 4; rls-isolation push_subscriptions). Migration 903 (push_subscriptions with RLS; push_enabled on preferences; push_paused and quiet hours on users); web-push 3.6.7 (MIT); setting notify.push.enabled; service worker /yx-sw.js caches nothing; web manifest; GO-LIVE item 49 names the env values. WhatsApp (2879): nothing built."
+          },
+          {
+                    "id": "MT-T2F-87",
+                    "area": "People (T2-F item 87, answer 2888): About me on the person record",
+                    "screen": "People › Profile (my record) and People › Directory › a person (PPL-03 Overview: About me card)",
+                    "url": "http://localhost:3000/yx/people/profile",
+                    "account": "An employee (their own record); their manager (panel@, Divya); HR Admin with employee.profile.edit; another company's admin.",
+                    "steps": [
+                              "As the employee open People › Profile. On Overview the About me card says to write a little about yourself; press Write.",
+                              "Paste more than 500 characters and press Save.",
+                              "Write 'I look after incoming quality. Best reached on Teams before 4 pm.' and press Save.",
+                              "As the manager open the employee from My team: read the About me card; look for an Edit or Clear button.",
+                              "As HR open the same person from the Directory; press Clear, then press Clear again with no reason; then give the reason 'Has a phone number in it' and press Clear.",
+                              "As the employee open My data (People › Privacy, download my data as JSON) and search the file for the text.",
+                              "As another company's admin call PUT /people/employees/<id>/about-me."
+                    ],
+                    "expected": "Step 1: the dialog 'About me' with a count '0 of 500 characters'. Step 2: 'Keep it to 500 characters.' under the field, nothing saved. Step 3: toast 'About me saved'; the card shows the text with line breaks kept. Step 4: the manager reads the text and has no button on the card. Step 5: 'Say why in a few words.' first; then toast '<first name>'s About me cleared' and the card is gone for HR and the manager; the audit log has employee.about_me.cleared with the reason. Step 6: the About me text is not in the file. Step 7: 404. No page scroll at 1278 x 635 beyond what the record had before.",
+                    "stories": [
+                              "Screens/People/PPL-03 · Person record (Employee · own record, HR · overview, Manager · team member, About me · write, too long, server refuses, HR clears it, no reason)"
+                    ],
+                    "note": "Positive and negative (access-privacy e2e: 501 characters 400, trimmed save, 500 exactly ok, HR / manager write 403, other company 404, manager reads it, can.editAbout / clearAbout per viewer, clear without reason 400, manager or the person clear 403, cleared with the reason audited, update audit without the text, not in my-data export; kit record-dialogs 10; web access pages 15). Migration 940 (employees.about_me VARCHAR(500)); routes PUT people/employees/:id/about-me (the person only, service-checked) and POST people/employees/:id/about-me/clear (employee.profile.edit, in scope)."
+          },
+          {
+                    "id": "MT-T2F-77",
+                    "area": "Helpdesk (T2-F item 77, answer 2890): satisfaction filter on the ticket list",
+                    "screen": "Helpdesk › Tickets (HLP-02 Agent desk): Filter › Satisfaction",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "A desk agent and a desk lead of the IT desk (demo org); an employee without a desk seat; another company's agent.",
+                    "steps": [
+                              "As the employee raise three IT tickets; as the agent solve them; as the employee rate them 2, 3 and 5 stars.",
+                              "As the agent open Tickets › All in my queues, press Filter › Satisfaction and tick Low (1-2).",
+                              "Tick also High (4-5); then untick both and tick Not rated.",
+                              "Save the view with Low (1-2) as 'Unhappy' and open it again later.",
+                              "As the employee open /yx/desk/tickets?satisfaction=low; as another company's agent pick all four bands."
+                    ],
+                    "expected": "Step 2: only the ticket rated 2. Step 3: the tickets rated 2 and 5; then every ticket nobody rated yet (none of the three). Step 4: the view keeps the band and shows the ticket rated 2. Step 5: the employee has no access (403); the other company's agent never sees these tickets. The requester shown is as before; the rating comment stays in the ticket report. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-02 · Agent desk (filter bar: Satisfaction)"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp02 e2e 9: low / neutral / high / two bands / not rated / not rated + neutral, bad band 400, other company none, employee 403, saved view keeps it; kit helpdesk-desk-live 17; web yx-desk 1). No migration; GET desk/tickets?satisfaction=low,neutral,high,none on top of the visibility filter (export follows the same filter)."
+          },
+          {
+                    "id": "MT-T2F-82",
+                    "area": "Platform (T2-F item 82, answer 2887): moved-page stubs",
+                    "screen": "Any old YukthiX address of a page that moved (Settings 6.3 Moved page)",
+                    "url": "http://localhost:3000/yx/settings/payroll-rules",
+                    "account": "HR Admin (demo org), signed in.",
+                    "steps": [
+                              "Open /yx/settings/payroll-rules and wait without pressing anything.",
+                              "Open /yx/me/letters and press 'Open Me › Documents and letters now' at once.",
+                              "Open each of /yx/settings/company-rules, /yx/settings/access-settings, /yx/settings/performance, /yx/hiring/scorecards, /yx/hiring/duplicates, /yx/performance/cycles, /yx/performance/reviews.",
+                              "Open an old /v2 address, e.g. /v2/users, and an outside old link, e.g. /login.",
+                              "Open a /yx address that never existed, e.g. /yx/settings/nothing-here."
+                    ],
+                    "expected": "Step 1: 'This page has moved' with 'It is now Settings › Loans and advances (/yx/settings/payroll/loans-and-advances). We open it in 5 seconds.'; after 5 seconds the new page opens (the old address is replaced in history, so Back does not loop). Step 2: the new page opens at once. Step 3: each shows the stub naming its new page, then opens it. Step 4: these redirect at once, no stub. Step 5: the not-found page, not a stub. From 6 months after each move (e.g. 12 May 2027 for payroll rules) the old address opens the new page at once. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Help (6.3 Moved page, 6.3 Moved page · phone)"
+                    ],
+                    "note": "Positive and negative (web lib/yx-moved 4: last stub day vs the day after, no double hop, 4.9 s not yet / 5 s opens, Open now, after 6 months straight through; org pages S-7 and performance reviews through the stub; next.config: no /yx redirects left; kit settings 36). The two /yx redirects in next.config (/yx/me/letters, /yx/hiring/scorecards) became stub pages; the list with the move dates is apps/web/lib/yx-moved.ts."
+          },
+          {
+                    "id": "MT-T2F-80",
+                    "area": "Platform (T2-F item 80, answer 2885): the rail's \"last used\" slot",
+                    "screen": "Every YukthiX page: the left rail (Shell › Side rail · last used slot)",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee (demo org) whose rail has no Projects or Hire area; a second person on the same browser.",
+                    "steps": [
+                              "Sign in as the employee and look at the rail on Home.",
+                              "Open a page in an area that is not on your rail from a link (e.g. a project page from a notification, /yx/projects/<id>), then go back to Home.",
+                              "Press the new slot under the areas; use the arrow keys through the rail.",
+                              "Open a page in an area that is on your rail (Time › Leave); look at the slot.",
+                              "Sign out, sign in as the second person on the same browser."
+                    ],
+                    "expected": "Step 1: no slot (nothing shown until one is used). Step 2: under the areas, set off by a line and above Settings, one slot with the area's icon and name; its screen-reader name is 'Last used: Projects'. Step 3: it opens the page last opened there; arrow keys reach it between the areas and Settings. Step 4: the slot stays as it was (areas on the rail never fill it). Step 5: no slot for the second person (kept per person and company in this browser, cleared on sign-out like Ctrl K Recent).",
+                    "stories": [
+                              "Shell/… · Side rail · employee with the \"last used\" slot"
+                    ],
+                    "note": "Positive and negative (kit shell 23: the slot's place, link and keyboard order, nothing until used, never a copy of a rail area; web access pages 17: an off-rail page fills it and it stays on the next page, nothing on first use, a tampered stored link outside the app never shows). Kept under yx-recent:last-area:<user>:<company> in localStorage; no server change."
+          },
+          {
+                    "id": "MT-T2F-79",
+                    "area": "Home (T2-F item 79, answer 2884): Edit home on the live Home",
+                    "screen": "Home (PLT-02 role home: Edit home, Reset to company layout) and Settings › 2.2 Directory and privacy › Home page",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "HR Admin (settings); an employee (demo org); the same employee on a second browser; a manager while only Employee is allowed.",
+                    "steps": [
+                              "As the employee open Home: look for Edit home.",
+                              "As HR open Settings › Directory and privacy › Home page and tick Employee under 'Roles that may personalise their own home'; save.",
+                              "As the employee reload Home and press Edit home. Open ⋯ on My tasks › Remove widget; on Coming up choose Wide (full row); move Coming up up; press Done.",
+                              "Open Home on a second browser or after signing in again.",
+                              "Press Edit home › Reset to company layout; then Undo; then Reset to company layout again and Done.",
+                              "In Edit home look for a menu on Needs your action and Attendance today.",
+                              "As the manager open Home."
+                    ],
+                    "expected": "Step 1: no Edit home (off for every role by default). Step 2: toast that the setting was saved. Step 3: the bar 'Editing your home… Changes are saved for you only.'; My tasks leaves (with Undo), Coming up fills the row and moves up. Step 4: the same layout (kept in YukthiX per person, not per browser). Step 5: the company layout comes back; Undo restores theirs; reset again gives the company layout on every device. Step 6: no menu; they show 'Always shown' and stay first. Step 7: no Edit home (only Employee is allowed). No page scroll at 1278 x 635 beyond the widgets' own.",
+                    "stories": [
+                              "Dashboards/… DashboardGrid (Edit home, editing bar, Add widget, Reset to company layout)",
+                              "Screens/Platform/PLT-02 · Role homes"
+                    ],
+                    "note": "Positive and negative (small-features e2e 16: off by default and saving refused 403, setting only by a settings manager and only known roles, persona not allowed 403, pinned widget hidden or ordered 400, a widget twice 400, size 5 400, bad id 400, unknown persona 400, saved and read back, another person and another company never see it, one row per person, reset removes it, audit saved/saved/reset, signed out 401; API unit home-layout 3; kit shell-home 34 and settings 175; web pages 'Edit home' 2). Migration 941 (home_layouts, RLS + support-session exclusion, in the rls-isolation list); setting home.personalise_roles (multi, default none); routes GET/PUT/DELETE workspace/home/layout (the caller's own row only)."
+          },
+          {
+                    "id": "MT-T2F-81",
+                    "area": "Platform (T2-F item 81, answer 2886): \"+ New\" quick create in the top bar",
+                    "screen": "Every YukthiX page: top bar › New (PLT-05 request type picker)",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee (demo org); a manager who may raise requisitions (panel@, Divya); HR Admin without an employee record; a YukthiX support session.",
+                    "steps": [
+                              "As the employee press New in the top bar.",
+                              "Type 'ticket' in the search, then 'visa'.",
+                              "Pick Leave; come back, press New › Regularise attendance, then Expense claim, Helpdesk ticket, Letter or certificate.",
+                              "As the manager press New and pick Job request.",
+                              "As HR without an employee record press New.",
+                              "In a support session look for New."
+                    ],
+                    "expected": "Step 1: the drawer 'What do you want to request?' with groups Time off (Leave), Attendance (Regularise attendance), Money (Expense claim), Documents (Letter or certificate), Help (Helpdesk ticket); no Job request. Step 2: only Helpdesk ticket; then 'No request type matches.'. Step 3: the drawer closes and each opens its live form: the leave request sheet, the regularise sheet on attendance, the new expense claim, the new ticket form, the certificate request. Step 4: Job request is listed and opens the new-requisition sheet on Requisitions. Step 5: only what HR may raise (a helpdesk ticket). Step 6: no New button. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/PLT-05 · Request sheet (\"+ New\" · an employee, a manager, nothing to raise; helpdesk ticket; job request)",
+                              "Shell/… · Top bar · with + New"
+                    ],
+                    "note": "Positive and negative (kit inbox 'PLT-05 + New' 2 and shell 24: only allowed types, grouped, pick closes and opens, search, nothing to raise, New only with a handler; web palette 'newRequestTypes' 2: employee list and hrefs, none without a record, job only with ats.requisition.raise; requisitions ?new=1 opens the sheet only with the key (2); layout + New opens the picker and the pick navigates (1)). No API change: each form keeps its own checks."
           }
 ]

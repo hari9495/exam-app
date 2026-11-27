@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation';
+import { MovedPage } from '../../moved-page';
 
-// Settings S-7 (answers 1321, 1521): Payroll rules is retired; its bonus, loan and reports-access settings are on 4.6
-// Loans & advances, where a change waits for a second person. The old address opens 4.6.
+// Settings S-7 (answer 1321): payroll rules are on 4.6 Loans and advances.
+// T2-F 82 (answer 2887): the old address shows the moved-page stub for 6 months, then opens the new page.
 export default function YxPayrollRulesPage() {
-  redirect('/yx/settings/payroll/loans-and-advances');
+  return <MovedPage from="/yx/settings/payroll-rules" />;
 }

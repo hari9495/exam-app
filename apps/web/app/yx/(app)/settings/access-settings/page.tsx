@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation';
+import { MovedPage } from '../../moved-page';
 
-// Settings S-7 (answer 1321): Access and privacy is retired; its settings are on 2.1 Roles & access, 2.2 Directory &
-// privacy, 2.3 Security and 2.10 Audit & data retention. The old address opens 2.2.
+// Settings S-7 (answer 1321): access and privacy settings are on 2.2 Directory and privacy.
+// T2-F 82 (answer 2887): the old address shows the moved-page stub for 6 months, then opens the new page.
 export default function YxAccessSettingsPage() {
-  redirect('/yx/settings/people/directory-and-privacy');
+  return <MovedPage from="/yx/settings/access-settings" />;
 }

@@ -31,7 +31,7 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const d = (n: number) => addDays(today, n);
@@ -277,6 +277,45 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
       expect((await api('empB', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: false });
       await api('adminB', 'put', '/org/settings').send({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }).expect(200);
       expect((await api('empB', 'get', '/payroll/me/home-pay').expect(200)).body).toEqual({ shown: true, latest: null, previous: null });
+    });
+  });
+
+  describe('Edit home (T2-F 79, answer 2884)', () => {
+    const layout = { persona: 'employee', order: ['stats', 'coming'], hidden: ['tasks'], sizes: { coming: 6 } };
+    it('off for every role by default: the company layout, and saving is refused', async () => {
+      expect((await api('emp', 'get', '/workspace/home/layout').expect(200)).body).toEqual({ personaliseRoles: [], layout: null });
+      expect((await api('emp', 'put', '/workspace/home/layout').send(layout).expect(403)).body.message).toMatch(/same home for your role/);
+      await api('emp', 'put', '/org/settings').send({ key: 'home.personalise_roles', scopeType: 'tenant', value: 'employee' }).expect(403);
+      await api('adminA', 'put', '/org/settings').send({ key: 'home.personalise_roles', scopeType: 'tenant', value: 'everyone' }).expect(400);
+      await api('adminA', 'put', '/org/settings').send({ key: 'home.personalise_roles', scopeType: 'tenant', value: 'employee,manager' }).expect(200);
+    });
+
+    it('allowed: each person keeps their own (it follows them), pinned widgets never hidden, bad shapes refused', async () => {
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, persona: 'hr' }).expect(403);
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, hidden: ['actions'] }).expect(400);
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, order: ['clock', 'stats'] }).expect(400);
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, order: ['stats', 'stats'] }).expect(400);
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, sizes: { coming: 5 } }).expect(400);
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, order: ['<script>'] }).expect(400);
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, persona: 'admin' }).expect(400);
+      expect((await api('emp', 'put', '/workspace/home/layout').send(layout).expect(200)).body).toEqual({ layout: { order: ['stats', 'coming'], hidden: ['tasks'], sizes: { coming: 6 } } });
+      expect((await api('emp', 'get', '/workspace/home/layout').expect(200)).body).toEqual({ personaliseRoles: ['employee', 'manager'], layout: { order: ['stats', 'coming'], hidden: ['tasks'], sizes: { coming: 6 } } });
+      // Someone else in the company never sees it; another company has its own setting (off) and nothing of ours.
+      expect((await api('peer', 'get', '/workspace/home/layout').expect(200)).body.layout).toBeNull();
+      expect((await api('empB', 'get', '/workspace/home/layout').expect(200)).body).toEqual({ personaliseRoles: [], layout: null });
+      await api('empB', 'put', '/workspace/home/layout').send(layout).expect(403);
+      // Saving again replaces it (one row per person).
+      await api('emp', 'put', '/workspace/home/layout').send({ ...layout, order: ['coming', 'stats'] }).expect(200);
+      const rows = await tenantPrisma.forTenant(SUPER, (tx) => tx.homeLayout.findMany({ where: { organizationId: org.A.id } }));
+      expect(rows.map((r) => r.widgetOrder)).toEqual([['coming', 'stats']]);
+    });
+
+    it('Reset to company layout removes the own layout of the person; audited without the widgets', async () => {
+      expect((await api('emp', 'delete', '/workspace/home/layout').expect(200)).body).toEqual({ layout: null });
+      expect((await api('emp', 'get', '/workspace/home/layout').expect(200)).body.layout).toBeNull();
+      const acts = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { startsWith: 'home.layout.' } }, orderBy: { createdAt: 'asc' } }));
+      expect(acts.map((a) => a.action)).toEqual(['home.layout.saved', 'home.layout.saved', 'home.layout.reset']);
+      await request(server()).get('/api/v1/workspace/home/layout').expect(401);
     });
   });
 

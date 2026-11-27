@@ -47,6 +47,57 @@ export function WorkPhoneDialog({ name, initial, onSave, onClose }: { name: stri
   );
 }
 
+export const ABOUT_ME_MAX = 500;
+
+/** T2-F 87 (answer 2888): the person writes their own About me (no approval); empty clears it. */
+export function AboutMeDialog({ initial, onSave, onClose }: { initial: string | null; onSave: (text: string) => Promise<void>; onClose: () => void }) {
+  const [text, setText] = useState(initial ?? '');
+  const early = useTooEarly(text.trim().length > ABOUT_ME_MAX ? [{ fieldId: 'ab-text', message: `Keep it to ${ABOUT_ME_MAX} characters.` }] : []);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title="About me"
+      consequence="Anyone who can open your profile sees it. Leave it empty to remove it."
+      confirmLabel="Save"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onSave(text.trim());
+      }}
+    >
+      <FormField id="ab-text" label="About me" optional helper={`${text.trim().length} of ${ABOUT_ME_MAX} characters. What you work on, what you like, how to reach you best.`} error={early.errorOf('ab-text')}>
+        <TextArea value={text} onChange={setText} rows={5} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+/** HR clears someone's About me with a reason (recorded); the text is not kept. */
+export function ClearAboutMeDialog({ name, onClear, onClose }: { name: string; onClear: (reason: string) => Promise<void>; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const early = useTooEarly(reason.trim().length >= 3 ? [] : [{ fieldId: 'ab-reason', message: 'Say why in a few words.' }]);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      destructive
+      title={`Clear ${name}'s About me?`}
+      consequence={`The text is removed for everyone. ${name} can write a new one. Your reason is recorded.`}
+      confirmLabel="Clear"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onClear(reason.trim());
+      }}
+    >
+      <FormField id="ab-reason" label="Reason" required error={early.errorOf('ab-reason')}>
+        <TextField value={reason} onChange={setReason} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 /** HR asks the person to upload a document; they get an email and see it in My documents. */
 export function AskDocumentDialog({ name, types, onRequest, onClose }: { name: string; types: AskableType[]; onRequest: (typeKey: string, typeName: string) => Promise<void>; onClose: () => void }) {
   const [type, setType] = useState<string | null>(null);

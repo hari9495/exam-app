@@ -555,6 +555,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'visitors.watchlist_review_days': { label: 'Visitors: review each watch-list entry every (days)', scopes: ['tenant'], dated: false, values: ['90', '180', '365'], default: '365' },
   'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off', platform: { feature: 'white_label' } },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // T2-F 79 (answer 2884; the drawn 2.2 Home page setting): roles that may personalise their own Home. Off for everyone.
+  'home.personalise_roles': { label: 'Roles that may personalise their own home', scopes: ['tenant'], dated: false, multi: true, values: ['employee', 'manager', 'hr', 'finance'], default: '', labels: { employee: 'Employee', manager: 'Manager', hr: 'HR', finance: 'Finance' } },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
   // PPL-43: the day each financial year's BFSI declarations are due (designated persons).

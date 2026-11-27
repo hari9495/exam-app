@@ -3203,6 +3203,8 @@ model Employee {
   preferredName  String?  @map("preferred_name") @db.VarChar(100)
   workEmail      String?  @map("work_email") @db.Citext
   workPhone      String?  @map("work_phone") @db.VarChar(16)
+  /// T2-F 87 (answer 2888): the person's own "About me" on PPL-03 (500 at most; HR may clear it; never on exports).
+  aboutMe        String?  @map("about_me") @db.VarChar(500)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -16324,4 +16326,19 @@ model PushSubscription {
   @@unique([organizationId, endpoint], map: "push_subscriptions_endpoint_key")
   @@index([organizationId, userId], map: "push_subscriptions_user_idx")
   @@map("push_subscriptions")
+}
+
+/// T2-F 79 (answer 2884): a person's own Home layout (order, removed widgets, sizes); none = the company layout.
+model HomeLayout {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  widgetOrder    String[] @map("widget_order") @db.VarChar(40)
+  hidden         String[] @db.VarChar(40)
+  /// { widgetId: 4 | 6 | 12 }
+  sizes          Json     @default("{}")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId], map: "home_layouts_org_user_key")
+  @@map("home_layouts")
 }

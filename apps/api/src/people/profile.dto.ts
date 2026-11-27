@@ -57,6 +57,18 @@ export class CustomFieldValuesDto {
 }
 
 /** Work phone (Internal): HR with employee.profile.edit; null clears it. */
+/** T2-F 87 (answer 2888): the person's own About me; empty clears it. */
+export class AboutMeDto {
+  @IsString() @MaxLength(500, { message: 'About me is 500 characters at most.' })
+  aboutMe!: string;
+}
+
+/** HR clears someone's About me with a reason (audited). */
+export class ClearAboutMeDto {
+  @IsString() @MinLength(3, { message: 'Say why in a few words.' }) @MaxLength(500)
+  reason!: string;
+}
+
 export class WorkPhoneDto {
   @IsOptional() @IsString() @MaxLength(30)
   workPhone!: string | null;

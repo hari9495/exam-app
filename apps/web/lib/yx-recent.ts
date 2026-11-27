@@ -54,3 +54,29 @@ export function clearAllRecent() {
   }
 }
 
+// T2-F 80 (answer 2885): the rail's "last used" slot: the last area opened that is not on the person's rail, and the
+// page opened there. Same place and rules as Recent (per person and company, this browser, cleared on sign-out).
+export interface LastArea {
+  area: string;
+  href: string;
+}
+export const lastAreaKey = (userId: string, orgId: string | null | undefined) => `${PREFIX}last-area:${userId}:${orgId ?? 'none'}`;
+
+export function readLastArea(key: string, areas: readonly string[]): LastArea | null {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(key) ?? 'null');
+    if (!raw || typeof raw !== 'object') return null;
+    const { area, href } = raw as Record<string, unknown>;
+    return typeof area === 'string' && areas.includes(area) && internal(href) ? { area, href } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLastArea(key: string, last: LastArea) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(last));
+  } catch {
+    /* private window: this visit only */
+  }
+}

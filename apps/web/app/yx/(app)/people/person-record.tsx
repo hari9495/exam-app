@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { AskDocumentDialog, ChangeActionDrawer, ContactsDrawer, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, type AskableType, CustomFieldsDrawer, FamilyDrawer, PayAccessDialog, PersonWorkspace, type PayAccessAskInput, type PayAccessRow, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { AboutMeDialog, AskDocumentDialog, ChangeActionDrawer, ClearAboutMeDialog, ContactsDrawer, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, type AskableType, CustomFieldsDrawer, FamilyDrawer, PayAccessDialog, PersonWorkspace, type PayAccessAskInput, type PayAccessRow, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
 import { draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
@@ -141,6 +141,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [pay, setPay] = useState<{ busy: boolean; error: string | null; data: Compensation | null }>({ busy: false, error: null, data: null });
   const [docDialog, setDocDialog] = useState<{ kind: 'request' | 'reject'; doc?: RecordDoc } | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState<'edit' | 'clear' | null>(null);
   const [askingPay, setAskingPay] = useState(false);
   const [uploading, setUploading] = useState(false);
   // PPL-34: loaded each time HR opens the identity panel (every load is a recorded view of Special data).
@@ -304,6 +305,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     // PPL-46: the salary account abroad goes to approval like any bank change (HR with identity change rights, or the person).
     ...(prof?.can.requestChange ? { onBankAbroad: () => router.push(self ? '/yx/me/bank-abroad' : `/yx/people/directory/${p}/bank-abroad`) } : {}),
     ...(prof?.can.editWork ? { onEditWorkPhone: () => setPhoneOpen(true) } : {}),
+    // T2-F 87 (answer 2888): About me, written by the person; HR may clear it with a reason.
+    about: prof && prof.aboutMe !== undefined ? { text: prof.aboutMe ?? null, ...(prof.can.editAbout ? { onEdit: () => setAboutOpen('edit') } : {}), ...(prof.can.clearAbout ? { onClear: () => setAboutOpen('clear') } : {}) } : null,
     abroad:
       abroadAcct || paySplit.data?.current
         ? { name, current: abroadAcct ? { ...abroadAcct, usableFrom: new Date(abroadAcct.usableFrom) } : null, waiting: false, onSend: async () => undefined, onCancel: () => undefined, ...(paySplit.data ? { split: liveSplit(paySplit.data) } : {}) }
@@ -387,6 +390,28 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
             done(`${docs.data!.askable.find((t) => t.key === typeKey)?.name ?? 'Document'} uploaded for ${first}`);
           }}
           onClose={() => setUploading(false)}
+        />
+      )}
+      {aboutOpen === 'edit' && (
+        <AboutMeDialog
+          initial={prof?.aboutMe ?? null}
+          onSave={async (aboutMe) => {
+            await write('PUT', `/employees/${p}/about-me`, { aboutMe });
+            void profile.refetch();
+            done(aboutMe ? 'About me saved' : 'About me removed');
+          }}
+          onClose={() => setAboutOpen(null)}
+        />
+      )}
+      {aboutOpen === 'clear' && (
+        <ClearAboutMeDialog
+          name={first}
+          onClear={async (reason) => {
+            await write('POST', `/employees/${p}/about-me/clear`, { reason });
+            void profile.refetch();
+            done(`${first}'s About me cleared`);
+          }}
+          onClose={() => setAboutOpen(null)}
         />
       )}
       {phoneOpen && (

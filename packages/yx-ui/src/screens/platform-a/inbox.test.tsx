@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen, type LiveApprovals } from './inbox';
 import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME, type ApprovalRow } from './platform-data';
@@ -368,5 +368,32 @@ describe('T2-E 49 and 50 Asked by, Status and Decided by me (2872, 2873)', () =>
   it('negative: without decided rows there is no Decided by me tab', () => {
     render(<ApprovalsInboxScreen waiting={waiting} sent={[]} history={[]} live={live} desk={false} />);
     expect(screen.queryByRole('tab', { name: /Decided by me/ })).toBeNull();
+  });
+});
+
+describe('PLT-05 "+ New" (T2-F 81, answer 2886)', () => {
+  const types = [{ id: 'leave' as const, href: '/yx/time/leave?apply=1' }, { id: 'ticket' as const, href: '/yx/desk/help?new=1' }];
+  it('offers only the types the person may raise, grouped; picking one closes the sheet and opens its form', () => {
+    const onPick = vi.fn();
+    const onOpenChange = vi.fn();
+    render(<RequestSheetScreen live={{ open: true, onOpenChange, onPick, types }} />);
+    expect(screen.getByRole('dialog', { name: 'What do you want to request?' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Time off' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Help' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Expense claim/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Job request/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Helpdesk ticket/ }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onPick).toHaveBeenCalledWith('/yx/desk/help?new=1');
+  });
+  it('search narrows the types; nothing to raise says so', () => {
+    const { unmount } = render(<RequestSheetScreen live={{ open: true, onOpenChange: vi.fn(), onPick: vi.fn(), types }} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search request types' }), { target: { value: 'visa' } });
+    expect(screen.getByText('No request type matches.')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search request types' }), { target: { value: 'ticket' } });
+    expect(screen.queryByRole('button', { name: /^Leave/ })).toBeNull();
+    unmount();
+    render(<RequestSheetScreen live={{ open: true, onOpenChange: vi.fn(), onPick: vi.fn(), types: [] }} />);
+    expect(screen.getByText('Nothing to request here yet.')).toBeInTheDocument();
   });
 });

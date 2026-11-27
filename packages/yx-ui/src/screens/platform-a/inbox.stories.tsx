@@ -52,6 +52,13 @@ export const PLT05Proxy: S = { name: 'PLT-05 · Request sheet · on behalf of (H
 export const PLT05Sick: S = { name: 'PLT-05 · Request sheet · sick leave needs certificate', render: () => <RequestSheetScreen defaultType="leave" defaultLeaveType="sick" defaultFrom={d(5, 9)} defaultTo={d(7, 9)} /> };
 export const PLT05Letter: S = { name: 'PLT-05 · Request sheet · letter request', render: () => <RequestSheetScreen defaultType="letter" /> };
 export const PLT05Expense: S = { name: 'PLT-05 · Request sheet · expense', render: () => <RequestSheetScreen defaultType="expense" /> };
+// T2-F 81 (answer 2886): "+ New" in the top bar opens the picker with only the types this person may raise.
+export const PLT05Ticket: S = { name: 'PLT-05 · Request sheet · helpdesk ticket', render: () => <RequestSheetScreen defaultType="ticket" /> };
+export const PLT05Job: S = { name: 'PLT-05 · Request sheet · job request (manager)', render: () => <RequestSheetScreen defaultType="job" /> };
+const liveTypes = (ids: Parameters<typeof RequestSheetScreen>[0]['defaultType'][]) => ids.map((id) => ({ id: id!, href: `#${id}` }));
+export const PLT05NewEmployee: S = { name: 'PLT-05 · "+ New" · an employee (leave, attendance, expense, ticket, letter)', render: () => <RequestSheetScreen live={{ open: true, onOpenChange: () => undefined, onPick: () => undefined, types: liveTypes(['leave', 'regularise', 'expense', 'ticket', 'letter']) }} /> };
+export const PLT05NewManager: S = { name: 'PLT-05 · "+ New" · a manager (also a job request)', render: () => <RequestSheetScreen live={{ open: true, onOpenChange: () => undefined, onPick: () => undefined, types: liveTypes(['leave', 'regularise', 'expense', 'ticket', 'letter', 'job']) }} /> };
+export const PLT05NewNothing: S = { name: 'PLT-05 · "+ New" · nothing to raise', render: () => <RequestSheetScreen live={{ open: true, onOpenChange: () => undefined, onPick: () => undefined, types: [] }} /> };
 export const PLT05Sent: S = { name: 'PLT-05 · Request sheet · sent on behalf', render: () => <RequestSheetScreen defaultType="leave" defaultSubject="p5" submitted /> };
 export const PLT05Phone: S = { name: 'PLT-05 · Request sheet · phone type picker', ...phone, render: () => <RequestSheetPhone /> };
 export const PLT05PhoneLeave: S = { name: 'PLT-05 · Request sheet · phone leave', ...phone, render: () => <RequestSheetPhone defaultType="leave" defaultFrom={d(1, 9)} defaultTo={d(2, 9)} /> };

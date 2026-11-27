@@ -78,6 +78,8 @@ const LATER_SUPPORT_EXCLUDED = [
   'company_exports',
   // T2-E 52: Web Push subscriptions (a person's devices) are never read or changed inside a support session.
   'push_subscriptions',
+  // T2-F 79 (answer 2884): a person's own Home layout.
+  'home_layouts',
   // HLP-12 accidents, HLP-13 collective disputes, speak-up cases.
   'accident_cases', 'accident_medical_records', 'accident_steps', 'ir_disputes', 'ir_dispute_steps',
   'speakup_cases', 'speakup_case_members', 'speakup_case_steps', 'speakup_messages', 'speakup_team_members',

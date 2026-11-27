@@ -25,6 +25,7 @@ import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { Actions, CardGrid, Facts, FirstResponseBadge, OpsDesk, SlaBadge, TeamTargetsTable, Workspace, useSay } from './ops-kit';
 import { ackPercent, slaState, ticketCloseInfo } from './ops-rules';
+import { SATISFACTION_FILTER } from '../desk/desk-kit';
 import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data';
 import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
 import { LiveAgentDesk, type LiveAgentDesk as LiveAgentDeskProps } from './helpdesk-desk-live';
@@ -373,6 +374,7 @@ const DESK_FILTERS: FilterFieldDef[] = [
   { key: 'priority', label: 'Priority', type: 'multi', options: ['Urgent', 'High', 'Normal', 'Low'].map((v) => ({ value: v, label: v })) },
   { key: 'status', label: 'Status', type: 'multi', options: ['New', 'In progress', 'Waiting on employee', 'Resolved', 'Reopened'].map((v) => ({ value: v, label: v })) },
   { key: 'created', label: 'Raised', type: 'date' },
+  SATISFACTION_FILTER,
 ];
 
 export function ticketColumns(): TableColumn<Ticket>[] {

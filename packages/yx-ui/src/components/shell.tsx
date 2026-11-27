@@ -44,6 +44,7 @@ import {
   Menu as MenuIcon,
   MoreHorizontal,
   PanelLeftClose,
+  Plus,
   Search,
   Settings,
   SlidersHorizontal,
@@ -323,11 +324,15 @@ export interface SideRailProps {
   /** X monogram (from the designer's files, §1). */
   logo?: ReactNode;
   'aria-label'?: string;
+  /** T2-F 80 (answer 2885): the last area the person opened that is not on their rail, in one slot under the areas
+   * (kept in this browser). Left out until one is used. */
+  lastUsed?: RailItem | null;
 }
 
 /** 80 px product rail with a name under every icon (founder review 30 Sep 2026). Arrow keys move between areas (roving tabindex). */
-export function SideRail({ items, activeId, onSelect, logo, 'aria-label': ariaLabel = 'Areas' }: SideRailProps) {
-  const ordered = [...items.filter((i) => !i.pinBottom), ...items.filter((i) => i.pinBottom)];
+export function SideRail({ items, activeId, onSelect, logo, 'aria-label': ariaLabel = 'Areas', lastUsed }: SideRailProps) {
+  const extra = lastUsed && !items.some((i) => i.id === lastUsed.id) ? [{ ...lastUsed, pinBottom: false, lastUsed: true }] : [];
+  const ordered: (RailItem & { lastUsed?: boolean })[] = [...items.filter((i) => !i.pinBottom), ...extra, ...items.filter((i) => i.pinBottom)];
   const activeIndex = Math.max(0, ordered.findIndex((i) => i.id === activeId));
   const [focusIndex, setFocusIndex] = useState(activeIndex);
   const refs = useRef<(HTMLElement | null)[]>([]);
@@ -347,14 +352,14 @@ export function SideRail({ items, activeId, onSelect, logo, 'aria-label': ariaLa
     refs.current[next]?.focus();
   };
 
-  const renderItem = (item: RailItem, i: number) => {
+  const renderItem = (item: RailItem & { lastUsed?: boolean }, i: number) => {
     const active = item.id === activeId;
     const common = {
       ref: (el: HTMLElement | null) => {
         refs.current[i] = el;
       },
       className: 'yx-rail__item',
-      'aria-label': item.label,
+      'aria-label': item.lastUsed ? `Last used: ${item.label}` : item.label,
       'aria-current': active ? ('page' as const) : undefined,
       'data-active': active || undefined,
       tabIndex: i === focusIndex ? 0 : -1,
@@ -362,7 +367,7 @@ export function SideRail({ items, activeId, onSelect, logo, 'aria-label': ariaLa
       onClick: () => onSelect?.(item.id),
     };
     return (
-      <li key={item.id} data-pin={item.pinBottom || undefined}>
+      <li key={item.id} data-pin={item.pinBottom || undefined} data-last-used={item.lastUsed || undefined}>
         {item.href ? (
           <a href={item.href} {...common}>
             {item.art ?? <Icon icon={item.icon} size="md" />}
@@ -524,6 +529,8 @@ export interface TopBarProps {
    * one that keeps the choices in this browser: a company can never turn it off (answer 2330).
    */
   accessibility?: ReactNode;
+  /** T2-F 81 (answer 2886): "+ New" opens the request type picker (PLT-05). Left out when there is nothing to raise. */
+  onNew?: () => void;
 }
 
 export function TopBar({
@@ -538,6 +545,7 @@ export function TopBar({
   helpUnread,
   profile,
   accessibility,
+  onNew,
 }: TopBarProps) {
   const shell = useContext(ShellContext);
   return (
@@ -555,6 +563,11 @@ export function TopBar({
         </button>
       )}
       <div className="yx-topbar__end">
+        {onNew && (
+          <Button size="sm" variant="primary" icon={Plus} onClick={onNew} aria-haspopup="dialog">
+            New
+          </Button>
+        )}
         {entity && <div className="yx-topbar__entity">{entity}</div>}
         {/* Ask AI sits in the bar with the other tools, never floating over the page (R8). */}
         {onAsk && <IconButton icon={MessageCircleQuestionMark} label="Ask AI" variant="secondary" className="yx-ask-fab" onClick={onAsk} />}

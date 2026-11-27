@@ -168,6 +168,11 @@ export interface DashboardGridProps {
   onEditingChange?: (editing: boolean) => void;
   /** False when the company doesn't let this person personalise their home: no Edit button, no widget menus. */
   customisable?: boolean;
+  /** Controlled sizes the person picked (T2-F 79: kept per person); onSizesChange reports each pick. */
+  sizes?: Record<string, WidgetSize>;
+  onSizesChange?: (sizes: Record<string, WidgetSize>) => void;
+  /** "Reset to company layout": given, the host forgets the person's own layout (onChange is not called for it). */
+  onReset?: () => void;
 }
 
 /** Sizes a person can pick for a widget (stat cards and pinned widgets keep theirs). */
@@ -191,11 +196,19 @@ export function DashboardGrid({
   defaultEditing = false,
   onEditingChange,
   customisable = true,
+  sizes: sizesProp,
+  onSizesChange,
+  onReset,
 }: DashboardGridProps) {
   const byId = new Map(widgets.map((w) => [w.id, w]));
   const companyIds = defaultValue ?? widgets.map((w) => w.id);
   const [ownIds, setOwnIds] = useState(companyIds);
-  const [sizes, setSizes] = useState<Record<string, WidgetSize>>({});
+  const [ownSizes, setOwnSizes] = useState<Record<string, WidgetSize>>({});
+  const sizes = sizesProp ?? ownSizes;
+  const setSizes = (next: Record<string, WidgetSize>) => {
+    setOwnSizes(next);
+    onSizesChange?.(next);
+  };
   const [ownEditing, setOwnEditing] = useState(defaultEditing);
   const [announce, setAnnounce] = useState('');
   const [undo, setUndo] = useState<{ text: string; ids: string[] } | null>(null);
@@ -205,9 +218,9 @@ export function DashboardGrid({
   const ids = (value ?? ownIds).filter((id) => byId.has(id) && !byId.get(id)!.pinned);
   const available = widgets.filter((w) => !w.pinned && !ids.includes(w.id));
 
-  const commit = (next: string[], message: string) => {
+  const commit = (next: string[], message: string, notify = true) => {
     setOwnIds(next);
-    onChange?.(next);
+    if (notify) onChange?.(next);
     setAnnounce(message);
   };
   const setEditing = (e: boolean) => {
@@ -233,8 +246,10 @@ export function DashboardGrid({
   };
   const reset = () => {
     setUndo({ text: 'Home reset to the company layout.', ids });
-    setSizes({});
-    commit(companyIds.filter((id) => byId.has(id)), 'Home reset to the company layout.');
+    setOwnSizes({});
+    if (onReset) onReset();
+    else onSizesChange?.({});
+    commit(companyIds.filter((id) => byId.has(id)), 'Home reset to the company layout.', !onReset);
   };
 
   const addMenu = (
@@ -344,7 +359,7 @@ export function DashboardGrid({
                       key={c.size}
                       icon={size === c.size ? Check : undefined}
                       onSelect={() => {
-                        setSizes((s) => ({ ...s, [w.id]: c.size }));
+                        setSizes({ ...sizes, [w.id]: c.size });
                         setAnnounce(`${w.title} is now ${c.label.toLowerCase()}.`);
                       }}
                     >

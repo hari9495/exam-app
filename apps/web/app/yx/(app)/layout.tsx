@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CalendarClock, Languages, Laptop, ShieldCheck, UserCheck } from 'lucide-react';
 import { AccessibilityMenu, Button, CommandPalette, InlineAlert, NoticeBar, NotificationCentre, ProfileMenu, ScopePicker, ShortcutHelp, shortcutGroups, Spinner, ToastProvider, useAccessibility, useCommandPaletteShortcut, useShortcutHelp, useToast } from '@yukthix/ui';
 import { useAppearance, type MfaStatus } from '@yukthix/ui/auth';
-import { DesktopFrame, PALETTE_PLACEHOLDER, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
+import { DesktopFrame, PALETTE_PLACEHOLDER, RequestSheetScreen, SCREEN_RAIL, type AreaId } from '@yukthix/ui/frame';
 import { ContainedBanner } from '@yukthix/ui/console';
 import type { LegalEntity } from '@yukthix/ui/org';
 import type { TeamMember } from '@yukthix/ui/workforce';
@@ -17,7 +17,7 @@ import { useAuth } from '../../../lib/auth-context';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { useMarkAllNotificationsRead, useMarkNotificationRead } from '../../../lib/hooks/useNotifications';
 import { useBellItems } from '../../../lib/yx-bell';
-import { useYxPalette } from '../../../lib/yx-palette';
+import { newRequestTypes, useYxPalette } from '../../../lib/yx-palette';
 import { TourHost } from '../../../lib/yx-tours';
 import { AvailabilityBanner, type CurrentIncident } from '@yukthix/ui/desk';
 import { decodeJwtPayload } from '../../../lib/jwt';
@@ -31,6 +31,7 @@ import { ScopeProvider, YxNavContext, recentMonths, useScope, useWorkspaceCounts
 import { DeskHelp } from './desk-help';
 import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
+import { lastAreaKey, readLastArea, writeLastArea, type LastArea } from '../../../lib/yx-recent';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/engage', 'engage'], ['/yx/learning', 'learning'], ['/yx/analytics', 'analytics'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
@@ -96,6 +97,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Answer 948 (C-5): planned maintenance, the day before and during a window. Never blocks anything by itself.
   const availability = useQuery<{ maintenance: { phase: 'upcoming' | 'now'; title: string; startsAt: string; endsAt: string } | null; incident?: CurrentIncident | null }>({ queryKey: ['yx', 'availability'], queryFn: () => apiFetch('/availability', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, refetchInterval: 15 * 60_000 });
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const bell = useBellItems(!actingSuperAdmin);
   const contained = useQuery<{ contained: boolean }>({ queryKey: ['yx', 'containment'], queryFn: () => apiFetch('/help/containment', {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false, staleTime: 60_000 });
@@ -185,6 +187,23 @@ function Frame({ children }: { children: React.ReactNode }) {
   const userId = me.data?.id;
   const [mfaHidden, setMfaHidden] = useState(false);
   useEffect(() => setMfaHidden(Boolean(userId) && hiddenToday(localStore(), 'mfa', userId!, todayIst())), [userId]);
+
+  // T2-F 81 (answer 2886): "+ New": the request types this person may raise (never in a support session).
+  const newTypes = support ? [] : newRequestTypes(withAccount(nav, { support, employee }), { self: employee, help: true, job: perms.has('ats.requisition.raise') });
+
+  // T2-F 80 (answer 2885): the rail's "last used" slot: opening a page in an area that is not on this person's rail
+  // keeps it (and the page) in this browser; nothing shows until one is used. Only once the menu (grants) is known.
+  const lastKey = userId && perms.data ? lastAreaKey(userId, me.data?.organizationId) : null;
+  const pathArea: AreaId = pageLink(nav, pathname)?.area.id ?? AREA_BY_PATH.find(([p]) => pathname.startsWith(p))?.[1] ?? 'home';
+  const [lastArea, setLastArea] = useState<LastArea | null>(null);
+  useEffect(() => {
+    if (!lastKey) return;
+    if (!nav.some((a) => a.id === pathArea) && SCREEN_RAIL.some((r) => r.id === pathArea)) {
+      const here = { area: pathArea, href: pathname };
+      writeLastArea(lastKey, here);
+      setLastArea(here);
+    } else setLastArea(readLastArea(lastKey, SCREEN_RAIL.map((r) => r.id)));
+  }, [lastKey, pathname, pathArea, nav]);
 
   useEffect(() => {
     // A lapsed session comes back here after sign-in; a deliberate sign-out does not (the next person is someone else).
@@ -291,6 +310,8 @@ function Frame({ children }: { children: React.ReactNode }) {
       railItems={rail}
       live={{
         onNavigate: go,
+        ...(newTypes.length ? { onNew: () => setNewOpen(true) } : {}),
+        lastUsed: lastArea && !rail.some((r) => r.id === lastArea.area) ? { ...SCREEN_RAIL.find((r) => r.id === lastArea.area)!, href: lastArea.href } : null,
         onSearch: () => setPaletteOpen(true),
         onHelp: support ? undefined : () => setHelpOpen(true),
         helpUnread: !support && (news?.unread ?? 0) > 0,
@@ -327,6 +348,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         tabs: { home: '/yx/home', ...(support ? {} : { requests: '/yx/approvals' }), ...(employee && !support ? { time: '/yx/time/attendance', pay: '/yx/me/payslips' } : {}), me: profileHref },
         overlays: (
           <>
+            {newTypes.length > 0 && <RequestSheetScreen live={{ open: newOpen, onOpenChange: setNewOpen, types: newTypes, onPick: go }} />}
             <CommandPalette
               groups={palette.groups}
               open={paletteOpen}
