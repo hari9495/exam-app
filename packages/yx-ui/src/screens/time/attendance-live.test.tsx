@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AttendanceCalendarScreen, DayCardScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
+import { AttendanceCalendarPhone, AttendanceCalendarScreen, DayCardPhone, DayCardScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
 import type { DayCard, MyAttendance, Muster, PersonAttendance } from './live/types';
 
 // The designed attendance screens with `live` (Me › Attendance, its clock page, and Time › Muster), as the app renders
@@ -522,3 +522,30 @@ describe('batch A items 5 and 18: the month as a list or table, and my requests 
     expect(screen.getByText('No requests match this filter.')).toBeInTheDocument();
   });
 });
+
+// T2-H (answer 2741): Me › Attendance on a phone with the same month and calls.
+describe('Me › Attendance phone (live)', () => {
+  it('my month, the next month at the limit says why; a day opens its live day card and Fix this day opens the request', async () => {
+    const l = live();
+    render(<AttendanceCalendarPhone live={l} />);
+    await ue.click(screen.getByRole('button', { name: 'Next month' }));
+    expect((await screen.findAllByText('November 2026 has not started yet.')).length).toBeGreaterThan(0);
+    expect(l.onMonth).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: /6 Oct 2026: Missing check-out/ }));
+    expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-06');
+    await ue.click(await screen.findByRole('button', { name: 'Fix this day' }));
+    expect(await screen.findByRole('dialog', { name: 'New attendance request' })).toBeInTheDocument();
+  });
+
+  it('DayCardPhone opens the given day at once; a failed load offers a retry', async () => {
+    const l = live();
+    const { unmount } = render(<DayCardPhone live={l} on="2026-10-06" />);
+    await waitFor(() => expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-06'));
+    unmount();
+    const onRetry = vi.fn();
+    render(<AttendanceCalendarPhone live={live({ state: 'error', data: null, onRetry })} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+});
+

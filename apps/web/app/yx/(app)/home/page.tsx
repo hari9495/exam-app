@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
-import { HomeReminderCards, RoleHomeScreen, dismissForToday, dismissedToday, type HomeLayout, type HomeReminder, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
+import { HomeReminderCards, MobileHomeScreen, RoleHomeScreen, dismissForToday, dismissedToday, type HomeLayout, type HomeReminder, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
 import { useToast } from '@yukthix/ui';
 import { NudgeCard } from '@yukthix/ui/console';
 import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
@@ -20,7 +20,8 @@ import { useOrg, useYxPermissions } from '../../../../lib/yx-org';
 import type { CompanyModule } from '../../../../lib/yx-modules';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
-import { useScope } from '../../../../lib/yx-shell';
+import { YxNavContext, useScope } from '../../../../lib/yx-shell';
+import { homeQuickActions, homeTodos, navHref, usePhone } from '../../../../lib/yx-phone';
 import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, inboxActions, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets, type TeamTodayResponse } from '../../../../lib/yx-home';
 import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
@@ -52,6 +53,8 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 // the note uses policy limits, no per-approver money limit until customers ask (162).
 export default function YxHomePage() {
   const router = useRouter();
+  const phone = usePhone();
+  const { nav } = useContext(YxNavContext);
   const qc = useQueryClient();
   const { accessToken, actingSuperAdmin } = useAuth();
   const me = useCurrentUser();
@@ -235,6 +238,24 @@ export default function YxHomePage() {
         ]
       : [],
   };
+  // T2-H (answer 2741): on a phone, the designed phone Home with the same data and calls.
+  if (phone)
+    return (
+      <MobileHomeScreen
+        state={inbox.isLoading || widgets.isLoading ? 'loading' : 'ready'}
+        live={{
+          firstName: live.firstName,
+          clock: live.clock,
+          todos: homeTodos(actions, live.tasks, new Date()),
+          celebrations: (live.coming ?? []).filter((c) => c.kind === 'person').map((c) => ({ id: c.id, name: c.name, text: c.text })),
+          kudosHref: navHref(nav, 'engage-recognition'),
+          quickActions: employee ? homeQuickActions(nav) : [],
+          team: live.team,
+          onNudge: live.onNudge,
+          onNavigate: (href) => router.push(href),
+        }}
+      />
+    );
   return (
     <>
       <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading || widgets.isLoading} live={live} />

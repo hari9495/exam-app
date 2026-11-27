@@ -20,7 +20,7 @@ import { Icon } from '../../components/foundations';
 import { useMinWidth, useNarrow } from '../../components/stepper';
 import type { TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
-import { dayLabel } from '../../components/notify';
+import { dayLabel, useToast } from '../../components/notify';
 import { timeOf } from '../../lib/dates';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { HOLIDAYS_2026, ME, TODAY } from '../_kit/data';
@@ -1153,8 +1153,8 @@ function ApprovalCardMobile({ r, onApprove, onOpen }: { r: ApprovalRow; onApprov
   );
 }
 
-function ApprovalSheet({ row, defaultDecision, onDone, onClose }: { row: ApprovalRow; defaultDecision: Decision; onDone: (t: string) => void; onClose: () => void }) {
-  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, true);
+function ApprovalSheet({ row, defaultDecision, onDone, onClose, live }: { row: ApprovalRow; defaultDecision: Decision; onDone: (t: string) => void; onClose: () => void; live?: LiveDecision }) {
+  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, true, live);
   return (
     <BottomSheet open onOpenChange={(o) => !o && onClose()} title={`${row.summary} · ${row.requester}`} description={row.ref} footer={footer}>
       {body}
@@ -1163,33 +1163,66 @@ function ApprovalSheet({ row, defaultDecision, onDone, onClose }: { row: Approva
 }
 
 // PLT-04 · Approvals inbox (phone: Requests › Approvals cards).
-export function ApprovalsInboxPhone({ waiting, openId, defaultDecision }: { waiting: ApprovalRow[]; openId?: string; defaultDecision?: Decision }) {
-  const [items, setItems] = useState(() => byUrgency(waiting));
+export function ApprovalsInboxPhone({ waiting, openId, defaultDecision, state = 'ready', live: liveApprovals }: { waiting: ApprovalRow[]; openId?: string; defaultDecision?: Decision; state?: 'ready' | 'loading' | 'error'; /** T2-H: the approvals engine (the desk inbox's own calls); the list is the server's. */ live?: LiveApprovals }) {
+  const [own, setItems] = useState(() => byUrgency(waiting));
+  const items = liveApprovals ? byUrgency(waiting) : own;
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [live, setLive] = useState('');
+  const { toast } = useToast();
   const current = items.find((r) => r.id === open);
   const approve = (id: string, text = 'Approved') => {
-    setItems((xs) => xs.filter((x) => x.id !== id));
+    if (!liveApprovals) setItems((xs) => xs.filter((x) => x.id !== id));
     setOpen(null);
     setLive(text);
+    liveApprovals?.onDone(text);
+  };
+  // Live: one click calls the decide API; a refusal stays on the card's list and says why.
+  const approveOne = async (r: ApprovalRow) => {
+    if (!liveApprovals) return approve(r.id);
+    try {
+      await liveApprovals.onDecide(r, 'approve', '');
+      approve(r.id, `Approved: ${r.summary}`);
+    } catch (e) {
+      toast({ tone: 'error', title: 'Not approved', description: e instanceof Error ? e.message : 'Try again in a moment.' });
+    }
   };
   const lowRiskLeave = items.filter((i) => i.lowRisk && i.type === 'Leave');
+  const approveAll = async () => {
+    if (!liveApprovals) return lowRiskLeave.forEach((i) => approve(i.id));
+    const refused = await liveApprovals.onBulkApprove(lowRiskLeave);
+    const ok = lowRiskLeave.length - refused.length;
+    if (ok) approve('', `${ok} leave ${ok === 1 ? 'request' : 'requests'} approved`);
+    if (refused.length) toast({ tone: 'error', title: `${refused.length} not approved`, description: refused[0].message });
+  };
   return (
     <PhoneFrame tab="requests" title="Approvals">
       <span className="yx-visually-hidden" aria-live="polite">
         {live}
       </span>
       {lowRiskLeave.length > 1 && (
-        <Button variant="approve" fullWidth onClick={() => lowRiskLeave.forEach((i) => approve(i.id))}>
+        <Button variant="approve" fullWidth onClick={() => void approveAll()}>
           Approve {lowRiskLeave.length} leave requests
         </Button>
       )}
-      {items.length === 0 ? (
+      {state === 'loading' ? (
+        <Skeleton height={160} />
+      ) : state === 'error' ? (
+        <ErrorState title="We couldn't load your approvals." description="Try again in a moment." onRetry={liveApprovals?.onRetry} />
+      ) : items.length === 0 ? (
         <EmptyState compact title="Nothing is waiting for you." />
       ) : (
-        items.map((r) => <ApprovalCardMobile key={r.id} r={r} onApprove={() => approve(r.id)} onOpen={() => setOpen(r.id)} />)
+        items.map((r) => <ApprovalCardMobile key={r.id} r={r} onApprove={() => void approveOne(r)} onOpen={() => setOpen(r.id)} />)
       )}
-      {current && <ApprovalSheet key={current.id} row={current} defaultDecision={current.id === openId ? defaultDecision ?? null : null} onDone={(t) => approve(current.id, t)} onClose={() => setOpen(null)} />}
+      {current && (
+        <ApprovalSheet
+          key={current.id}
+          row={current}
+          defaultDecision={current.id === openId ? defaultDecision ?? null : null}
+          onDone={(t) => approve(current.id, t)}
+          onClose={() => setOpen(null)}
+          live={liveApprovals ? { decide: (d, reason) => liveApprovals.onDecide(current, d, reason), today: liveApprovals.today, reassign: liveApprovals.reassign } : undefined}
+        />
+      )}
     </PhoneFrame>
   );
 }
@@ -1842,15 +1875,30 @@ export function MyRequestsScreen({ rows, state = 'ready', withdrawId, live }: { 
 }
 
 // PLT-06 · My requests (phone): tap a row to see where it is and act on it.
-export function MyRequestsPhone({ rows }: { rows: MyRequest[] }) {
-  const [items, setItems] = useState(() => byNeed(rows));
+/** T2-H: My requests on a phone with the desk page's call; like the desk page it only shows where each one is. */
+export interface LiveMyRequestsPhone {
+  state: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  /** New request (the phone's type picker), when the person can raise one. */
+  newHref?: string;
+  onNavigate: (href: string) => void;
+}
+
+export function MyRequestsPhone({ rows, live }: { rows: MyRequest[]; live?: LiveMyRequestsPhone }) {
+  const [own, setItems] = useState(() => byNeed(rows));
+  const items = live ? byNeed(rows) : own;
   const [openId, setOpenId] = useState<string | null>(null);
   const [action, setAction] = useState<MyAction>(null);
   const current = items.find((r) => r.id === openId);
+  const newRequest = live ? (live.newHref ? () => live.onNavigate(live.newHref!) : undefined) : () => {};
   return (
-    <PhoneFrame tab="requests" title="My requests" actions={<IconButton icon={Plus} label="New request" />}>
-      {items.length === 0 ? (
-        <EmptyState compact title="You haven't raised any requests yet." action={<Button variant="primary">New request</Button>} />
+    <PhoneFrame tab="requests" title="My requests" actions={newRequest && <IconButton icon={Plus} label="New request" onClick={newRequest} />}>
+      {live?.state === 'loading' ? (
+        <Skeleton height={120} />
+      ) : live?.state === 'error' ? (
+        <ErrorState title="We couldn't load your requests." description="Try again in a moment." onRetry={live.onRetry} />
+      ) : items.length === 0 ? (
+        <EmptyState compact title="You haven't raised any requests yet." action={newRequest && <Button variant="primary" onClick={newRequest}>New request</Button>} />
       ) : (
         <ul className="yx-plt-myreq">
           {items.map((r) => (
@@ -1873,7 +1921,7 @@ export function MyRequestsPhone({ rows }: { rows: MyRequest[] }) {
           onOpenChange={(o) => !o && setOpenId(null)}
           title={current.summary}
           description={`${current.ref} · ${current.type} · submitted ${shortDate(current.submitted)}`}
-          footer={myButton(current, setAction) ?? undefined}
+          footer={live ? undefined : (myButton(current, setAction) ?? undefined)}
         >
           <div className="yx-plt-stack" data-gap="sm">
             <span>
@@ -2180,8 +2228,9 @@ export function DelegationScreen(props: DelegationProps) {
 export function DelegationPhone(props: DelegationProps) {
   return (
     <PhoneFrame tab="me" title="Delegation" back={<IconButton icon={ArrowLeft} label="Back to Me" />}>
-      <DelegationForm {...props} />
-      <DelegatedToYou />
+      {/* T2-H: live, the same form and list as the desk page (the approvals engine's delegations). */}
+      <DelegationForm key={props.live?.current?.id ?? 'new'} {...props} />
+      <DelegatedToYou live={props.live} />
     </PhoneFrame>
   );
 }

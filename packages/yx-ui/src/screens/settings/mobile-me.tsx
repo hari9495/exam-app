@@ -1,6 +1,6 @@
 // Mobile tab map (APX-D §5): Requests tab and Me tab flows, Me › More, and MOB-03 settings & security.
 // Request sheet (PLT-05), My requests (PLT-06), approvals inbox (PLT-04) and delegation (PLT-07) are PLT screens, linked only.
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Award,
   BookOpen,
@@ -29,10 +29,11 @@ import {
   Users,
   Ambulance,
 } from 'lucide-react';
-import { Avatar, Badge, PersonLabel } from '../../components/display';
+import { Avatar, Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { Button } from '../../components/button';
 import { Checkbox, RadioGroup } from '../../components/choice';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { useToast } from '../../components/notify';
 import { FormField } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -46,8 +47,59 @@ import './settings.css';
 
 /* ============================== Requests tab ============================== */
 
-export function MobileRequestsTabScreen({ defaultSegment = 'mine', manager = true }: { defaultSegment?: 'mine' | 'team'; manager?: boolean }) {
+/** T2-H: the Requests tab with My requests and the approvals waiting for the person (the same calls as their pages). */
+export interface LiveMobileRequests {
+  mine: { id: string; title: string; sub: string; status: string; tone: BadgeTone; href: string }[];
+  /** Waiting for the person to decide; null when they approve nothing. */
+  team: { id: string; title: string; sub: string; due?: string; dueSoon?: boolean; href: string }[] | null;
+  /** New request (the request type picker), when the person can raise one. */
+  newHref?: string;
+  state?: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  onNavigate: (href: string) => void;
+}
+
+export function MobileRequestsTabScreen({ defaultSegment = 'mine', manager = true, live }: { defaultSegment?: 'mine' | 'team'; manager?: boolean; live?: LiveMobileRequests }) {
   const [seg, setSeg] = useState(defaultSegment);
+  if (live) {
+    const go = (href: string) => () => live.onNavigate(href);
+    const list = seg === 'mine' || !live.team ? live.mine : null;
+    return (
+      <PhoneFrame tab="requests" title="Requests">
+        {live.newHref && (
+          <MPin>
+            <Button variant="primary" fullWidth onClick={go(live.newHref)}>
+              New request
+            </Button>
+          </MPin>
+        )}
+        {live.team && <Segment label="Show" value={seg} onChange={setSeg} options={[{ value: 'mine', label: 'Mine' }, { value: 'team', label: `Team · ${live.team.length}` }]} />}
+        {live.state === 'loading' ? (
+          <Skeleton height={120} />
+        ) : live.state === 'error' ? (
+          <ErrorState title="We couldn't load your requests." description="Try again in a moment." onRetry={live.onRetry} />
+        ) : list ? (
+          list.length ? (
+            <MList label="My requests">
+              {list.map((r) => (
+                <MRow key={r.id} title={r.title} sub={r.sub} onClick={go(r.href)} end={<Badge tone={r.tone}>{r.status}</Badge>} />
+              ))}
+            </MList>
+          ) : (
+            <EmptyState compact title="No requests yet." description="Leave, attendance fixes, claims and letters you ask for show here." />
+          )
+        ) : live.team!.length ? (
+          <MList label="Waiting for you">
+            {live.team!.map((r) => (
+              <MRow key={r.id} title={r.title} sub={r.sub} onClick={go(r.href)} end={r.due ? <Badge tone={r.dueSoon ? 'warning' : 'neutral'}>{r.due}</Badge> : undefined} />
+            ))}
+          </MList>
+        ) : (
+          <EmptyState compact title="Nothing waiting for you." description="Requests from your team that need your decision show here." />
+        )}
+      </PhoneFrame>
+    );
+  }
   return (
     <PhoneFrame tab="requests" title="Requests">
       <MPin>
@@ -74,8 +126,34 @@ export function MobileRequestsTabScreen({ defaultSegment = 'mine', manager = tru
   );
 }
 
+/** T2-H: the request types the person may raise, each opening the page that takes it (the same as "+ New"). */
+export interface LiveRequestTypePicker {
+  rows: { section: 'Common' | 'Money and help'; id: 'leave' | 'regularise' | 'letter' | 'expense' | 'loan' | 'ticket' | 'resign'; title: string; href: string }[];
+  onNavigate: (href: string) => void;
+}
+
+const PICK_ICON = { leave: CalendarDays, regularise: ClipboardCheck, letter: FileText, expense: FileText, loan: FileText, ticket: LifeBuoy, resign: DoorOpen };
+
 /** Requests › New request › type picker with company-defined (custom) types (P18, B20). */
-export function MobileRequestTypePickerScreen() {
+export function MobileRequestTypePickerScreen({ live }: { live?: LiveRequestTypePicker } = {}) {
+  if (live)
+    return (
+      <PhoneFrame tab="requests" title="New request" back={<BackButton />}>
+        {live.rows.length === 0 && <EmptyState compact title="No requests you can raise here." description="Ask HR if you need something that is not listed." />}
+        {(['Common', 'Money and help'] as const).map((section) => {
+          const rows = live.rows.filter((r) => r.section === section);
+          return rows.length ? (
+            <MSection key={section} title={section}>
+              <MList>
+                {rows.map((r) => (
+                  <MRow key={r.id} icon={PICK_ICON[r.id]} title={r.title} onClick={() => live.onNavigate(r.href)} />
+                ))}
+              </MList>
+            </MSection>
+          ) : null;
+        })}
+      </PhoneFrame>
+    );
   return (
     <PhoneFrame tab="requests" title="New request" back={<BackButton />}>
       <MSection title="Common">
@@ -205,7 +283,58 @@ export function MobileTimesheetApprovalsScreen({ empty }: { empty?: boolean }) {
 
 /* ============================== Me tab ============================== */
 
-export function MobileMeTabScreen({ servingNotice, hasVisitors = true }: { servingNotice?: boolean; hasVisitors?: boolean }) {
+/** T2-H: the Me tab; each row is a live page the person may open (the others are left out). */
+export interface LiveMobileMe {
+  name: string;
+  secondary: string;
+  /** Serving notice: the person's own exit page. */
+  exit?: { title: string; href: string };
+  groups: { label: 'About me' | 'Growth' | 'Help' | 'Settings'; rows: { id: string; title: string; sub?: string; badge?: string; href: string }[] }[];
+  onNavigate: (href: string) => void;
+}
+
+const ME_ICON: Record<string, typeof UserRound> = {
+  profile: UserRound,
+  documents: FileText,
+  policies: ScrollText,
+  goals: Target,
+  learning: BookOpen,
+  jobs: Briefcase,
+  help: LifeBuoy,
+  speakup: ShieldAlert,
+  accident: Ambulance,
+  visitors: DoorOpen,
+  delegation: Users,
+  privacy: Eye,
+  settings: KeyRound,
+  more: FolderKanban,
+};
+
+export function MobileMeTabScreen({ servingNotice, hasVisitors = true, live }: { servingNotice?: boolean; hasVisitors?: boolean; live?: LiveMobileMe }) {
+  if (live) {
+    const go = (href: string) => () => live.onNavigate(href);
+    return (
+      <PhoneFrame tab="me" title="Me">
+        <PersonLabel name={live.name} secondary={live.secondary} size={40} />
+        {live.exit && (
+          <MCard title={live.exit.title}>
+            <Button fullWidth onClick={go(live.exit.href)}>
+              Open my exit
+            </Button>
+          </MCard>
+        )}
+        {live.groups
+          .filter((g) => g.rows.length)
+          .map((g) => (
+            <MList key={g.label} label={g.label}>
+              {g.rows.map((r) => (
+                <MRow key={r.id} icon={ME_ICON[r.id]} title={r.title} sub={r.sub} onClick={go(r.href)} end={r.badge ? <Badge tone="warning">{r.badge}</Badge> : undefined} />
+              ))}
+            </MList>
+          ))}
+      </PhoneFrame>
+    );
+  }
   return (
     <PhoneFrame tab="me" title="Me">
       <PersonLabel name={ME.name} secondary={`${ME.code} · ${ME.role} · ${ME.location}`} size={40} />
@@ -243,8 +372,31 @@ export function MobileMeTabScreen({ servingNotice, hasVisitors = true }: { servi
   );
 }
 
+/** T2-H: the areas of the person's own menu that have no tab, each opening its first page. */
+export interface LiveMobileMore {
+  areas: { id: string; title: string; sub?: string; href: string }[];
+  onNavigate: (href: string) => void;
+}
+
+const MORE_ICON: Record<string, typeof Users> = { people: Users, engage: MessagesSquare, helpdesk: Headphones, performance: Target, learning: BookOpen, projects: FolderKanban };
+
 /** Me › More: rail areas that have no tab, filtered to the person's grants. */
-export function MobileMoreScreen() {
+export function MobileMoreScreen({ live }: { live?: LiveMobileMore } = {}) {
+  if (live)
+    return (
+      <PhoneFrame tab="me" title="More" back={<BackButton />}>
+        {live.areas.length ? (
+          <MList label="Areas">
+            {live.areas.map((a) => (
+              <MRow key={a.id} icon={MORE_ICON[a.id] ?? FolderKanban} title={a.title} sub={a.sub} onClick={() => live.onNavigate(a.href)} />
+            ))}
+          </MList>
+        ) : (
+          <EmptyState compact title="No other areas for your role." />
+        )}
+        <p className="yx-m-muted">Only areas your role can open are listed.</p>
+      </PhoneFrame>
+    );
   return (
     <PhoneFrame tab="me" title="More" back={<BackButton />}>
       <MList label="Areas">
@@ -574,7 +726,147 @@ export function MobilePrivacyScreen() {
 
 /* ============================== MOB-03 · Settings & security ============================== */
 
-export function MobileSettingsScreen({ confirmSignOut }: { confirmSignOut?: boolean }) {
+/** T2-H: Settings and security on a phone, with the calls of Me › Language, Notification preferences and My security. */
+export interface LiveMobileSettings {
+  /** The person's language; left out when the company has one language. */
+  language?: { value: string; choices: { value: string; label: string }[]; onChange: (value: string) => Promise<void> };
+  /** Each kind of notification: app (push, when the company has push) and email; a change saves at once. */
+  types: { type: string; label: string; app?: boolean; email: boolean }[];
+  onToggle: (type: string, channel: 'app' | 'email', on: boolean) => Promise<void>;
+  quietHours?: { text: string; href: string };
+  devices: { id: string; title: string; sub: string; current: boolean }[];
+  onSignOutDevice: (id: string) => Promise<void>;
+  /** Signs out every other device (this one stays signed in). */
+  onSignOutOthers: () => Promise<void>;
+  securityHref: string;
+  state?: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  onNavigate: (href: string) => void;
+}
+
+export function MobileSettingsScreen({ confirmSignOut, live }: { confirmSignOut?: boolean; live?: LiveMobileSettings }) {
+  if (live) return <LiveSettingsBody live={live} />;
+  return <DesignSettings confirmSignOut={confirmSignOut} />;
+}
+
+/** The notification channels table (one per screen; the cells are its checkboxes). */
+function ChannelMatrix({ columns, rows }: { columns: string[]; rows: { key: string; label: string; cells: ReactNode[] }[] }) {
+  return (
+    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Notification channels, scrolls sideways on small screens">
+      <table className="yx-m-matrix">
+        <caption className="yx-visually-hidden">Notification channels</caption>
+        <thead>
+          <tr>
+            <th scope="col">Type</th>
+            {columns.map((c) => (
+              <th key={c} scope="col">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key}>
+              <th scope="row">{r.label}</th>
+              {r.cells.map((c, i) => (
+                <td key={i}>{c}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LiveSettingsBody({ live }: { live: LiveMobileSettings }) {
+  const { toast } = useToast();
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const run = async (key: string, fn: () => Promise<void>, done: string) => {
+    setBusy(key);
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+    } catch (e) {
+      toast({ tone: 'error', title: 'Not saved', description: e instanceof Error ? e.message : 'Try again in a moment.' });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const app = live.types.some((t) => t.app !== undefined);
+  let body: ReactNode;
+  if (live.state === 'loading') body = <Skeleton height={160} />;
+  else if (live.state === 'error') body = <ErrorState title="We couldn't load your settings." description="Try again in a moment." onRetry={live.onRetry} />;
+  else
+    body = (
+      <>
+        {live.language && (
+          <FormField label="Language">
+            <Select value={live.language.value} onChange={(v) => v && void run('lang', () => live.language!.onChange(v), 'Language saved')} options={live.language.choices} />
+          </FormField>
+        )}
+        <MSection title="Notifications">
+          <ChannelMatrix
+            columns={app ? ['App', 'Email'] : ['Email']}
+            rows={live.types.map((t) => ({
+              key: t.type,
+              label: t.label,
+              cells: [
+                ...(app ? [t.app === undefined ? null : <Checkbox key="app" checked={t.app} disabled={busy === `${t.type}:app`} onChange={(on) => void run(`${t.type}:app`, () => live.onToggle(t.type, 'app', on), 'Saved')} aria-label={`${t.label} in app`} />] : []),
+                <Checkbox key="email" checked={t.email} disabled={busy === `${t.type}:email`} onChange={(on) => void run(`${t.type}:email`, () => live.onToggle(t.type, 'email', on), 'Saved')} aria-label={`${t.label} by email`} />,
+              ],
+            }))}
+          />
+          {live.quietHours && <MRow title="Quiet hours" sub={live.quietHours.text} onClick={() => live.onNavigate(live.quietHours!.href)} />}
+        </MSection>
+        <MSection title="Devices">
+          <MList>
+            {live.devices.map((d) => (
+              <MRow
+                key={d.id}
+                icon={/mobile|android|iphone/i.test(d.title) ? Smartphone : Monitor}
+                nav={false}
+                title={d.current ? `This device · ${d.title}` : d.title}
+                sub={d.sub}
+                end={d.current ? undefined : <Button size="sm" loading={busy === `dev:${d.id}`} onClick={() => void run(`dev:${d.id}`, () => live.onSignOutDevice(d.id), `Signed out ${d.title}`)}>Sign out</Button>}
+              />
+            ))}
+          </MList>
+        </MSection>
+        <MList label="Security">
+          <MRow icon={KeyRound} title="Sign-in and security" sub="Passkeys, codes and sign-in history" onClick={() => live.onNavigate(live.securityHref)} />
+        </MList>
+        {live.devices.some((d) => !d.current) && (
+          <MPin>
+            <Button variant="danger" fullWidth icon={LogOut} onClick={() => setConfirm(true)}>
+              Sign out of all other devices
+            </Button>
+          </MPin>
+        )}
+      </>
+    );
+  return (
+    <PhoneFrame tab="me" title="Settings and security" back={<BackButton />}>
+      {body}
+      <ConfirmDialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title="Sign out of all other devices?"
+        consequence="You'll need to sign in again on each of them. This phone stays signed in."
+        confirmLabel="Sign out everywhere else"
+        destructive
+        onConfirm={async () => {
+          await live.onSignOutOthers();
+          toast({ tone: 'success', title: 'Signed out of your other devices' });
+        }}
+      />
+    </PhoneFrame>
+  );
+}
+
+function DesignSettings({ confirmSignOut }: { confirmSignOut?: boolean }) {
   const [lang, setLang] = useState<string | null>('English');
   const rows: [string, boolean, boolean, boolean][] = [
     ['Approvals', true, true, false],
@@ -588,29 +880,7 @@ export function MobileSettingsScreen({ confirmSignOut }: { confirmSignOut?: bool
         <Select value={lang} onChange={setLang} options={['English', 'हिन्दी', 'தமிழ்', 'తెలుగు'].map((l) => ({ value: l, label: l }))} />
       </FormField>
       <MSection title="Notifications">
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Notification channels, scrolls sideways on small screens">
-        <table className="yx-m-matrix">
-          <caption className="yx-visually-hidden">Notification channels</caption>
-          <thead>
-            <tr>
-              <th scope="col">Type</th>
-              <th scope="col">App</th>
-              <th scope="col">Email</th>
-              <th scope="col">WhatsApp</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(([t, a, e, w]) => (
-              <tr key={t}>
-                <th scope="row">{t}</th>
-                <td><Checkbox defaultChecked={a} aria-label={`${t} in app`} /></td>
-                <td><Checkbox defaultChecked={e} aria-label={`${t} by email`} /></td>
-                <td><Checkbox defaultChecked={w} aria-label={`${t} on WhatsApp`} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        <ChannelMatrix columns={['App', 'Email', 'WhatsApp']} rows={rows.map(([t, a, e, w]) => ({ key: t, label: t, cells: [<Checkbox key="a" defaultChecked={a} aria-label={`${t} in app`} />, <Checkbox key="e" defaultChecked={e} aria-label={`${t} by email`} />, <Checkbox key="w" defaultChecked={w} aria-label={`${t} on WhatsApp`} />] }))} />
         <MRow title="Quiet hours" sub="10:00 pm – 7:00 am" />
       </MSection>
       <MSection title="Devices">

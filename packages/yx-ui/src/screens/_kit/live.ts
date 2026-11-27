@@ -4,7 +4,7 @@ export { DirectoryPhone, DirectoryScreen, type DirectoryMe, type DirectorySavedV
 export type { WorkforceRow } from '../people/people-data';
 export { PALETTE_PLACEHOLDER, RoleHomeScreen, type HomeLayout, type LiveHome, type RoleHomeScreenProps, layoutIds, nextLayout } from '../platform-a/shell-home';
 // The Home panel's pages (design audit step 2): notifications, search, my requests, delegation, notification preferences.
-export { NotificationsInboxScreen, MyRequestsScreen, DelegationScreen, ApprovalsInboxScreen, RequestSheetScreen, type LiveRequestSheet, type RequestTypeId, type LiveInbox, type LiveMyRequests, type LiveDelegation, type LiveApprovals, type NotificationsInboxProps } from '../platform-a/inbox';
+export { NotificationsInboxScreen, ApprovalsInboxPhone, MyRequestsPhone, MyRequestsScreen, DelegationPhone, DelegationScreen, type LiveMyRequestsPhone, ApprovalsInboxScreen, RequestSheetScreen, type LiveRequestSheet, type RequestTypeId, type LiveInbox, type LiveMyRequests, type LiveDelegation, type LiveApprovals, type NotificationsInboxProps } from '../platform-a/inbox';
 export type { ApprovalRow } from '../platform-a/platform-data';
 export type { ApprovalStep } from '../../components/timeline';
 export { SearchResultsScreen, type LiveSearchResults, type SearchHit } from '../platform-a/shell-home';
@@ -159,3 +159,7 @@ export type { LiveExportRow, LiveImportRow, LiveReportSchedules, LiveScheduleRow
 export { HomeReminderCards, dismissedToday, dismissForToday, type HomeReminder } from '../platform-a/home-reminders';
 // T2-F 82 (answer 2887): the stub an in-app moved page shows for 6 months.
 export { AccessDeniedState, AvailabilityState, MovedPageState, NotFoundState } from '../settings/help';
+// T2-H (answer 2741): the designed phone screens, live at phone width (the tab landings, Home, search, settings).
+export { MobileHomeScreen, MobilePayTabScreen, MobileTimeTabScreen, type LiveMobileHome, type LiveMobilePay, type LiveMobileTime } from '../settings/mobile-home';
+export { MobileMeTabScreen, MobileMoreScreen, MobileRequestTypePickerScreen, MobileRequestsTabScreen, MobileSettingsScreen, type LiveRequestTypePicker, type LiveMobileMe, type LiveMobileMore, type LiveMobileRequests, type LiveMobileSettings } from '../settings/mobile-me';
+export { MobileSearchScreen, type LiveMobileSearch } from '../platform-a/shell-home';

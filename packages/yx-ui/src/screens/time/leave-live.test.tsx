@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { LeaveCardScreen, LeaveHomeScreen, TeamLeaveCalendarScreen, type LiveLeaveCard, type LiveLeaveHome, type LiveTeamLeave } from './leave';
+import { LeaveCardScreen, LeaveHomePhone, LeaveHomeScreen, TeamLeaveCalendarScreen, type LiveLeaveCard, type LiveLeaveHome, type LiveTeamLeave } from './leave';
 import type { HrBalances, LeavePlan, MyLeave, TeamCalendar } from './live/types';
 
 // The designed leave screens (TIM-17 … TIM-23) with the live app's data: what /yx/time/leave, /team and /balances do.
@@ -315,3 +315,31 @@ describe('answer 2760: peers away (live)', () => {
     expect(screen.queryByText('Peers away')).not.toBeInTheDocument();
   });
 });
+
+// T2-H (answer 2741): My leave on a phone with the same data, sheets and calls.
+describe('My leave phone (live)', () => {
+  it('balances, my requests with their actions and holidays; Apply leave opens the live sheet', async () => {
+    render(<LeaveHomePhone live={home()} />);
+    expect(screen.getByText('19')).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'My leave requests' });
+    expect(within(list).getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+    expect(screen.getByText('Balipadyami')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Apply leave' })[0]);
+    expect(screen.getByRole('dialog', { name: 'Apply leave' })).toBeInTheDocument();
+  });
+
+  it('Send too early shows what to fix and sends nothing; error offers a retry', async () => {
+    const l = home({ startApplying: true });
+    const { unmount } = render(<LeaveHomePhone live={l} />);
+    const sheet = screen.getByRole('dialog', { name: 'Apply leave' });
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    expect(within(sheet).getAllByText('Choose the first day.').length).toBeGreaterThan(0);
+    expect(l.onApply).not.toHaveBeenCalled();
+    unmount();
+    const onRetry = vi.fn();
+    render(<LeaveHomePhone live={home({ state: 'error', data: null, onRetry })} />);
+    await ue.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+});
+

@@ -887,7 +887,12 @@ function SampleAttendanceCalendar({ persona = 'emp', defaultMonth = 'sep', openD
 }
 
 /** Phone: Time tab › attendance calendar with markers and day-grouped punches (M04 YX-MOB-12). */
-export function AttendanceCalendarPhone({ openDay, defaultMonth = 'sep' }: { openDay?: number; defaultMonth?: 'aug' | 'sep' }) {
+export function AttendanceCalendarPhone({ openDay, defaultMonth = 'sep', live, openOn }: { openDay?: number; defaultMonth?: 'aug' | 'sep'; /** T2-H: Me › Attendance on a phone with the person's own month and calls. */ live?: LiveMyAttendance; /** Live: the day whose card opens first ("2026-11-03"). */ openOn?: string }) {
+  if (live) return <LiveAttendanceCalendarPhone live={live} openOn={openOn} />;
+  return <SampleAttendanceCalendarPhone openDay={openDay} defaultMonth={defaultMonth} />;
+}
+
+function SampleAttendanceCalendarPhone({ openDay, defaultMonth }: { openDay?: number; defaultMonth: 'aug' | 'sep' }) {
   const [month, setMonth] = useState(defaultMonth);
   const locked = month === 'aug';
   const days = asPaid(month === 'sep' ? SEPTEMBER : AUGUST, locked);
@@ -1206,7 +1211,8 @@ export interface LiveTodayBoard {
 
 const LIVE_BOARD: Record<TodayBoard['people'][number]['status'], TeamPerson['status']> = { in: 'in', late: 'late', missing: 'missing', not_in: 'not_in', leave: 'leave', wfh: 'wfh', od: 'od', off: 'off', rest: 'off' };
 
-function LiveTodayBoardScreen({ live }: { live: LiveTodayBoard }) {
+/** The live board's people, who was nudged today, and Nudge (one call per person; a refusal says why). Shared by the desk board and the phone. */
+function useLiveBoard(live: LiveTodayBoard) {
   const d = live.data;
   const say = useSay();
   const [sent, setSent] = useState<string[]>([]);
@@ -1242,6 +1248,11 @@ function LiveTodayBoardScreen({ live }: { live: LiveTodayBoard }) {
     if (ok) say(`${ok} ${ok === 1 ? 'nudge' : 'nudges'} sent`);
     if (refused.length) say(refused[0], 'default');
   };
+  return { d, people, nudged, nudge };
+}
+
+function LiveTodayBoardScreen({ live }: { live: LiveTodayBoard }) {
+  const { d, people, nudged, nudge } = useLiveBoard(live);
   const at = d ? new Date(d.at) : new Date();
   // House rule 8: the weekday is its own small label (DayDate), the date reads "29 Oct 2026", then the time.
   const nowText = <span style={{ whiteSpace: 'nowrap' }}><DayDate date={isoDay(d?.today ?? isoOf(at))} /> · {fmt12(at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }))}</span>;
@@ -1365,15 +1376,39 @@ const actionRank = (p: TeamPerson) => {
   return i < 0 ? ACTION_ORDER.length : i;
 };
 
-export function TeamTodayPhone() {
-  const people = [...myReports()].sort((a, b) => actionRank(a) - actionRank(b));
-  const [sent, setSent] = useState<string[]>([]);
+export function TeamTodayPhone({ live }: { live?: LiveTodayBoard } = {}) {
+  if (live) return <LiveTeamTodayPhone live={live} />;
+  return <TeamTodayPhoneView />;
+}
+
+/** T2-H: the phone board with the live board's people and Nudge (the same calls as the desk board). */
+function LiveTeamTodayPhone({ live }: { live: LiveTodayBoard }) {
+  const { d, people, nudged, nudge } = useLiveBoard(live);
+  if (live.state === 'no-access') return <PhoneFrame tab="home" title="Team today"><NoAccessState grantedBy="HR" what="today's board" /></PhoneFrame>;
+  if (live.state !== 'ready') return <PhoneFrame tab="home" title="Team today">{live.state === 'loading' ? <Skeleton height={160} /> : <ErrorState title="We couldn't load today's board." description="Try again in a moment." onRetry={live.onRetry} />}</PhoneFrame>;
+  return (
+    <TeamTodayPhoneView
+      live={{
+        people,
+        sent: nudged,
+        nudge: (ids) => void nudge(ids),
+        blocking: d && d.blocking > 0 ? { count: d.blocking, month: MONTH_LONG[Number(d.month.slice(5, 7)) - 1], cutoff: isoDay(d.lockableFrom), href: live.links.exceptions } : null,
+      }}
+    />
+  );
+}
+
+function TeamTodayPhoneView({ live }: { live?: { people: BoardPerson[]; sent: string[]; nudge: (ids: string[]) => void; blocking: { count: number; month: string; cutoff: Date; href?: string | null } | null } } = {}) {
+  const people = [...(live ? live.people : myReports())].sort((a, b) => actionRank(a) - actionRank(b));
+  const [ownSent, setSent] = useState<string[]>([]);
+  const sent = live ? live.sent : ownSent;
   const setNotice = useSay();
   const count = (keys: BoardStatus[]) => countOf(people, keys);
-  const blocking = timeCounts(ME).Exceptions;
+  const blocking = live ? (live.blocking?.count ?? 0) : timeCounts(ME).Exceptions;
   const toNudge = people.filter((p) => needsNudge(p) && !sent.includes(p.id));
   // Same label and confirmation as the desktop board.
   const nudge = (ids: string[]) => {
+    if (live) return live.nudge(ids);
     setSent([...sent, ...ids]);
     setNotice(`${ids.length} ${ids.length === 1 ? 'nudge' : 'nudges'} sent`);
   };
@@ -1393,8 +1428,8 @@ export function TeamTodayPhone() {
       {blocking > 0 && (
         <InlineAlert
           tone="danger"
-          title={<span className="yx-tim-row">{blocking} open exceptions block September payroll <DueBadge date={SEP_CUTOFF} /></span>}
-          actions={<LinkButton size="sm" to={STORY.exceptionsMgr}>Open exceptions</LinkButton>}
+          title={<span className="yx-tim-row">{blocking} open exceptions block {live?.blocking ? live.blocking.month : 'September'} payroll <DueBadge date={live?.blocking ? live.blocking.cutoff : SEP_CUTOFF} /></span>}
+          actions={<LinkButton size="sm" to={STORY.exceptionsMgr} href={live?.blocking?.href ?? undefined}>Open exceptions</LinkButton>}
         />
       )}
       <Button icon={Bell} fullWidth onClick={() => (toNudge.length ? nudge(toNudge.map((p) => p.id)) : setNotice('Everyone who is not in yet has been nudged today.', 'default'))}>
@@ -1896,7 +1931,8 @@ function SampleDayCard({ persona = 'emp', day = 22, person, punchNote }: DayCard
   );
 }
 
-export function DayCardPhone({ day = 10 }: { day?: number }) {
+export function DayCardPhone({ day = 10, live, on }: { day?: number; /** T2-H: the phone calendar with this day's live card open. */ live?: LiveMyAttendance; on?: string }) {
+  if (live) return <AttendanceCalendarPhone live={live} openOn={on} />;
   const d = SEPTEMBER[day - 1];
   const reg = useRegularise();
   return (
@@ -2898,6 +2934,83 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
       )}
       {reqs.node}
     </TimePage>
+  );
+}
+
+/** T2-H: the phone calendar with the desk calendar's live data and calls (fixes, requests, day cards, withdrawals). */
+function LiveAttendanceCalendarPhone({ live, openOn: first }: { live: LiveMyAttendance; openOn?: string }) {
+  const d = live.data;
+  const say = useSay();
+  const [openOn, setOpenOn] = useState<string | null>(first ?? null);
+  const reqs = useLiveRequests(live);
+  const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && !NOT_FIX.has(r.kind)).map((r) => r.on));
+  const wfhDays = new Set((d?.requests ?? []).filter((r) => r.status === 'approved' && r.kind === 'wfh').map((r) => r.on));
+  const days = d ? liveMonth(live.month, d.days, d.today, pendingFix, wfhDays, onDutyDays(d.requests)) : [];
+  const toFix = d?.mode === 'punch' ? days.filter((x) => fixable(x.code)) : [];
+  const waiting = (d?.requests ?? []).filter((r) => r.status === 'pending');
+  const open = openOn ? days.find((x) => isoOf(x.date) === openOn) ?? null : null;
+  const openReq = openOn ? waiting.find((r) => r.on === openOn && !NOT_FIX.has(r.kind)) : undefined;
+  const nowMin = d ? zoneTime(live.now ?? new Date(), d.zone).minute : undefined;
+  const goMonth = (n: number) => {
+    if (!d) return;
+    if (n > 0 && live.month >= d.today.slice(0, 7)) return say(`${monthLong(shiftMonth(live.month, 1))} has not started yet.`, 'default');
+    setOpenOn(null);
+    live.onMonth(shiftMonth(live.month, n));
+  };
+  return (
+    <PhoneFrame tab="time" title="My attendance">
+      {live.state === 'ready' && d && (
+        <div className="yx-tim-row yx-tim-monthnav">
+          <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth(-1)} />
+          <h2 className="yx-tim-h2" aria-live="polite">{monthLong(live.month)}</h2>
+          <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth(1)} />
+        </div>
+      )}
+      {live.state === 'ready' && <FixAlert days={toFix} onFix={(on) => reqs.open('regularise', on)} />}
+      <LiveStates state={live.state} onRetry={live.onRetry} what="your attendance">
+        {d && (
+          <>
+            <AttendanceMonth month={isoDay(`${live.month}-01`)} days={days} compact selected={open?.date} onDayClick={(x) => setOpenOn(isoOf(x.date))} />
+            <AttendanceLegend days={days} />
+            {waiting.length > 0 && (
+              <Card title="Waiting for approval">
+                <ul className="yx-tim-list" aria-label="Waiting for approval">
+                  {waiting.map((r) => (
+                    <li key={r.id}>
+                      <span className="yx-tim-list__main"><strong>{shortIso(r.on)} · {requestWord(r)}</strong><span className="yx-tim-muted">With your manager</span></span>
+                      <span className="yx-tim-row">
+                        {!NOT_FIX.has(r.kind) && r.on.startsWith(live.month) && <Button size="sm" onClick={() => setOpenOn(r.on)}>View</Button>}
+                        <Button size="sm" onClick={() => reqs.withdraw(r)}>Withdraw</Button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+          </>
+        )}
+      </LiveStates>
+      <BottomSheet open={!!open && !!d} onOpenChange={(o) => !o && setOpenOn(null)} title={open ? formatDate(open.date) : ''}>
+        {open && d && openOn && (
+          <DayPanel
+            key={openOn}
+            live={{
+              load: () => live.onOpenDay(openOn),
+              day: open,
+              viewer: 'emp',
+              person: d.employee.name,
+              approver: 'your manager',
+              monthDays: days,
+              now: nowMin,
+              fallbackShift: liveShift(d.shift),
+              onFix: d.mode === 'punch' ? () => { setOpenOn(null); reqs.open('regularise', openOn); } : undefined,
+              onWithdraw: openReq ? () => reqs.withdraw(openReq) : undefined,
+            }}
+          />
+        )}
+      </BottomSheet>
+      {reqs.node}
+    </PhoneFrame>
   );
 }
 
