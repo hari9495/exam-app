@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { YxI18nProvider } from '../../i18n';
 import { AttendanceCalendarScreen, DayCardScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
 import type { DayCard, MyAttendance, Muster, PersonAttendance } from './live/types';
 
@@ -520,5 +521,20 @@ describe('batch A items 5 and 18: the month as a list or table, and my requests 
     await ue.click(screen.getByRole('tab', { name: 'Requests (1)' }));
     await ue.click(screen.getByRole('radio', { name: 'Approved' }));
     expect(screen.getByText('No requests match this filter.')).toBeInTheDocument();
+  });
+});
+
+// T2-G 84b (answer 2743): My attendance in Hindi for a Hindi reader; English otherwise.
+describe('T2-G 84b: My attendance in Hindi', () => {
+  it('a Hindi reader sees the page words in Hindi', () => {
+    render(<YxI18nProvider locale="hi"><MyAttendanceTodayScreen live={live()} /></YxI18nProvider>);
+    expect(screen.getByRole('heading', { name: 'आज की मेरी हाज़िरी', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('यह हफ़्ता')).toBeInTheDocument();
+    expect(screen.getByText('आपके नियम')).toBeInTheDocument();
+  });
+  it('negative: English without the provider', () => {
+    render(<MyAttendanceTodayScreen live={live()} />);
+    expect(screen.getByRole('heading', { name: 'My attendance today', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('Your rules')).toBeInTheDocument();
   });
 });
