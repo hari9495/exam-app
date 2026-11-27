@@ -2,7 +2,7 @@
 // Request access, availability states. The Help drawer is desk/help.tsx; irreversible actions are the kit's
 // IrreversibleSheet; empty states are the kit's EmptyState (H-1, answers 941 and 945: never a second version).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Construction, FileQuestion, Lock, Wrench } from 'lucide-react';
+import { ArrowRight, Construction, FileQuestion, Lock, Wrench } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { AccessRequestContext, EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton, type AccessRequestSent } from '../../components/feedback';
@@ -305,6 +305,30 @@ export function NotFoundState({ reference, actions }: { reference?: string | nul
       <p className="yx-state__text">This page or record doesn't exist, or the link is out of date. Check the link, or search for what you need.</p>
       <div className="yx-state__actions">{actions ?? <Button>Go to Home</Button>}</div>
       {reference && <span className="yx-state__ref">Reference {reference}</span>}
+    </div>
+  );
+}
+
+/** T2-F 82 (answer 2887): an in-app page that moved. For 6 months the old address shows this stub with the link and
+ * opens the new page after `seconds`; `paused` (stories) never leaves. */
+export function MovedPageState({ title, href, onOpen, seconds = 5, paused = false }: { title: string; href: string; onOpen: () => void; seconds?: number; paused?: boolean }) {
+  const open = useRef(onOpen);
+  open.current = onOpen;
+  useEffect(() => {
+    if (paused) return;
+    const t = setTimeout(() => open.current(), seconds * 1000);
+    return () => clearTimeout(t);
+  }, [paused, seconds]);
+  return (
+    <div className="yx-state" role="status">
+      <Icon icon={ArrowRight} size="md" />
+      <h1 className="yx-state__title">This page has moved</h1>
+      <p className="yx-state__text">
+        It is now {title} ({href}). We open it in {seconds} seconds. Update your bookmark.
+      </p>
+      <div className="yx-state__actions">
+        <Button variant="primary" onClick={onOpen}>Open {title} now</Button>
+      </div>
     </div>
   );
 }

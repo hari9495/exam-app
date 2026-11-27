@@ -74,16 +74,11 @@ describe('hiring pages moved to YukthiX', () => {
   });
 });
 
-// PPL-30 (founder 26 Oct 2026): old My letters links and bookmarks open Me › Documents and letters.
-it('/yx/me/letters goes to Documents and letters', async () => {
-  expect(await config.redirects()).toContainEqual({ source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false });
-});
-
-// Founder answer 345: the scorecard templates stand-in is gone; its old address opens Settings 6.1 Hiring.
-describe('scorecard templates moved to Settings 6.1', () => {
-  it('/yx/hiring/scorecards goes to /yx/settings/hiring for good', async () => {
-    expect(await config.redirects()).toContainEqual({ source: '/yx/hiring/scorecards', destination: '/yx/settings/hiring', permanent: true });
-  });
+// T2-F 82 (answer 2887): YukthiX's own moved pages are pages with a stub for 6 months, never silent redirects here.
+it('/yx/me/letters and /yx/hiring/scorecards are not redirected here (their pages show the moved-page stub)', async () => {
+  const redirects: Redirect[] = await config.redirects();
+  expect(redirects.some((r) => r.source === '/yx/me/letters' || r.source === '/yx/hiring/scorecards')).toBe(false);
+  expect(redirects.filter((r) => r.source.startsWith('/yx/'))).toEqual([]);
 });
 
 // Decision 2398 (answers 2420-2438): /v2 pages with a YukthiX equivalent redirect there; gap pages stay until built.

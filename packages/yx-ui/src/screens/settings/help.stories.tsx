@@ -7,7 +7,7 @@ import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
 import { EmptyState, NotFoundReferenceContext } from '../../components/feedback';
 import { DesktopFrame, PhoneFrame, type AreaId } from '../_kit/frames';
-import { AccessDeniedState, AvailabilityBanner, AvailabilityState, NotFoundState, TOURS, TourCard, ToursPanel, type LiveTours } from './help';
+import { AccessDeniedState, AvailabilityBanner, AvailabilityState, MovedPageState, NotFoundState, TOURS, TourCard, ToursPanel, type LiveTours } from './help';
 import { WhatsNewPanel, type LiveWhatsNew } from '../platform-b/growth-screens';
 // Answers 941 and 945: the one Help drawer is the live desk drawer; irreversible actions are the kit's
 // IrreversibleSheet; bulk approve is the Approvals inbox; empty states are the kit's EmptyState.
@@ -285,6 +285,17 @@ export const NotFoundRecord: S = {
   ),
 };
 export const NotFoundPhone: S = { name: '6.3 Not found · phone', ...phone, render: () => <PhoneFrame tab="home" title="Not found"><NotFoundState reference="NF-7KQ2MP" /></PhoneFrame> };
+
+// T2-F 82 (answer 2887): an in-app page that moved shows this for 6 months, then opens the new page after 5 seconds.
+export const MovedPage: S = {
+  name: '6.3 Moved page (opens the new page after 5 seconds)',
+  render: () => (
+    <Desk area="settings" title="Settings">
+      <MovedPageState title="Settings › Payroll › Loans and advances" href="/yx/settings/payroll/loans-and-advances" onOpen={() => undefined} paused />
+    </Desk>
+  ),
+};
+export const MovedPagePhone: S = { name: '6.3 Moved page · phone', ...phone, render: () => <PhoneFrame tab="me" title="Moved"><MovedPageState title="Me › Documents and letters" href="/yx/me/documents" onOpen={() => undefined} paused /></PhoneFrame> };
 
 /* 6.4 irreversible */
 const PUBLISH = {

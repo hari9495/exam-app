@@ -152,3 +152,5 @@ export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } fro
 // G4 (2690-2692): scheduled report emails and the export log (ANL-08).
 export { SchedulesScreen } from '../proctoring/analytics';
 export type { LiveExportRow, LiveReportSchedules, LiveScheduleRow, ScheduleFrequency } from '../proctoring/report-schedules-live';
+// T2-F 82 (answer 2887): the stub an in-app moved page shows for 6 months.
+export { MovedPageState } from '../settings/help';

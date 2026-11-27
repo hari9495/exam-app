@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { SETTINGS_GROUPS } from './settings-groups';
 import {
@@ -25,7 +25,7 @@ import {
   validateSetting,
 } from './settings-logic';
 import { SettingsHomeScreen, SettingsPageScreen } from './settings-screens';
-import { AccessDeniedState, TOURS, TourCard, accessVerdict, shouldShowTour } from './help';
+import { AccessDeniedState, MovedPageState, TOURS, TourCard, accessVerdict, shouldShowTour } from './help';
 import type { SettingDef } from './settings-types';
 
 const G = SETTINGS_GROUPS;
@@ -294,5 +294,30 @@ describe('billing', () => {
       { label: 'Storage', ok: false, text: '90 % used, nearly at the allowance' },
       { label: 'AI', ok: false, text: '120 % used, over the allowance' },
     ]);
+  });
+});
+
+describe('6.3 Moved page (T2-F 82)', () => {
+  it('names the new page with its address and opens it after 5 seconds, not before; Open now goes at once', async () => {
+    vi.useFakeTimers();
+    try {
+      const onOpen = vi.fn();
+      const { unmount } = render(<MovedPageState title="Settings › Hiring" href="/yx/settings/hiring" onOpen={onOpen} />);
+      expect(screen.getByRole('heading', { name: 'This page has moved' })).toBeInTheDocument();
+      expect(screen.getByText(/It is now Settings › Hiring \(\/yx\/settings\/hiring\)/)).toBeInTheDocument();
+      vi.advanceTimersByTime(4999);
+      expect(onOpen).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+      unmount();
+      const paused = vi.fn();
+      render(<MovedPageState title="Settings" href="/yx/settings" onOpen={paused} paused />);
+      vi.advanceTimersByTime(60_000);
+      expect(paused).not.toHaveBeenCalled();
+      screen.getByRole('button', { name: 'Open Settings now' }).click();
+      expect(paused).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -181,10 +181,17 @@ describe('PRF-01 … 03 live (performance builder 1)', () => {
     expect(seen).toEqual([]);
   });
 
-  it('the old reviews list sends people to the home', async () => {
-    const replace = jest.fn();
-    (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace });
-    wrap(<YxReviewsPage />);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/yx/performance'));
+  it('the old reviews list sends people to the home (T2-F 82: through the moved-page stub)', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-27T06:00:00Z'), doNotFake: ['queueMicrotask'] });
+    try {
+      const replace = jest.fn();
+      (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace });
+      wrap(<YxReviewsPage />);
+      expect(screen.getByText('This page has moved')).toBeInTheDocument();
+      act(() => jest.advanceTimersByTime(5000));
+      expect(replace).toHaveBeenCalledWith('/yx/performance');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

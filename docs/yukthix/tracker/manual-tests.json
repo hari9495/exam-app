@@ -29637,5 +29637,24 @@
                               "Screens/Helpdesk/HLP-02 · Agent desk (filter bar: Satisfaction)"
                     ],
                     "note": "Positive and negative (service-desk-hlp02 e2e 9: low / neutral / high / two bands / not rated / not rated + neutral, bad band 400, other company none, employee 403, saved view keeps it; kit helpdesk-desk-live 17; web yx-desk 1). No migration; GET desk/tickets?satisfaction=low,neutral,high,none on top of the visibility filter (export follows the same filter)."
+          },
+          {
+                    "id": "MT-T2F-82",
+                    "area": "Platform (T2-F item 82, answer 2887): moved-page stubs",
+                    "screen": "Any old YukthiX address of a page that moved (Settings 6.3 Moved page)",
+                    "url": "http://localhost:3000/yx/settings/payroll-rules",
+                    "account": "HR Admin (demo org), signed in.",
+                    "steps": [
+                              "Open /yx/settings/payroll-rules and wait without pressing anything.",
+                              "Open /yx/me/letters and press 'Open Me › Documents and letters now' at once.",
+                              "Open each of /yx/settings/company-rules, /yx/settings/access-settings, /yx/settings/performance, /yx/hiring/scorecards, /yx/hiring/duplicates, /yx/performance/cycles, /yx/performance/reviews.",
+                              "Open an old /v2 address, e.g. /v2/users, and an outside old link, e.g. /login.",
+                              "Open a /yx address that never existed, e.g. /yx/settings/nothing-here."
+                    ],
+                    "expected": "Step 1: 'This page has moved' with 'It is now Settings › Loans and advances (/yx/settings/payroll/loans-and-advances). We open it in 5 seconds.'; after 5 seconds the new page opens (the old address is replaced in history, so Back does not loop). Step 2: the new page opens at once. Step 3: each shows the stub naming its new page, then opens it. Step 4: these redirect at once, no stub. Step 5: the not-found page, not a stub. From 6 months after each move (e.g. 12 May 2027 for payroll rules) the old address opens the new page at once. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Help (6.3 Moved page, 6.3 Moved page · phone)"
+                    ],
+                    "note": "Positive and negative (web lib/yx-moved 4: last stub day vs the day after, no double hop, 4.9 s not yet / 5 s opens, Open now, after 6 months straight through; org pages S-7 and performance reviews through the stub; next.config: no /yx redirects left; kit settings 36). The two /yx redirects in next.config (/yx/me/letters, /yx/hiring/scorecards) became stub pages; the list with the move dates is apps/web/lib/yx-moved.ts."
           }
 ]

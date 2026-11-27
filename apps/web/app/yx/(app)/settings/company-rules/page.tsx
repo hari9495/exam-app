@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation';
+import { MovedPage } from '../../moved-page';
 
-// Settings S-7 (answer 1321): Company rules is retired; each of its settings is on its drawn settings page now (search
-// finds any of them). The old address opens Settings.
+// Settings S-7 (answer 1321): company rules are spread over the Settings areas.
+// T2-F 82 (answer 2887): the old address shows the moved-page stub for 6 months, then opens the new page.
 export default function YxCompanyRulesPage() {
-  redirect('/yx/settings');
+  return <MovedPage from="/yx/settings/company-rules" />;
 }
