@@ -30087,5 +30087,25 @@
                               "Screens/Access (rule groups with Tags)"
                     ],
                     "note": "Positive and negative (t2g-company-control e2e '2903 tags': master by the settings key only (plain 403), another company 404, person/plain 403, other company's person 404, other company's tag 400, bad id 400, in use delete 409, archived tag not added anew 400 but kept, Tags rule group members, sweep drops untagged; kit record-dialogs and access tests). Migration 907 (person_tags, employee_tags with RLS; both in rls-isolation). Routes GET/PUT people/employees/:id/tags; masters kind 'tags'."
+          },
+          {
+                    "id": "MT-T2G-2905-HR-GROUPS",
+                    "area": "T2-G 2905: HR's Groups page (Settings › People & Access › Groups) for people.group.manage holders",
+                    "screen": "Settings › People & Access › Groups (the same groups panel as Roles & access › Groups)",
+                    "url": "http://localhost:3000/yx/settings/groups",
+                    "account": "An HR person who holds people.group.manage but not access.role.manage (give the HR Admin template without System Admin); the System Admin; an employee (Arjun).",
+                    "steps": [
+                              "As that HR person open Settings: the menu under People & Access shows Groups; the Settings home shows the Groups card in People & Access.",
+                              "Open Groups: press New group, name it Hosur floor, choose Worked out from rules, pick Hosur plant under Locations and press Make group.",
+                              "As the System Admin open Settings › Roles & access › Groups and find Hosur floor; then open Settings › Groups.",
+                              "Negative: as Arjun open /yx/settings/groups.",
+                              "Negative: as the HR person open /yx/settings/access (Roles & access)."
+                    ],
+                    "expected": "Step 1: Groups is in the menu and on the Settings home (page 2.12). Step 2: toast for the new group; its row reads '<n> people today · from rules: Hosur plant'. Step 3: the same group shows in both places (one list, not a copy). Step 4: no Settings menu; the page says you don't have access to groups and who gives it (HR Admin or System Admin); the API answers 403. Step 5: no Roles & access for the HR person. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Access (Settings › Groups · HR (2905); Settings › Groups · no access)",
+                              "Screens/Settings/Group 2 (2.12 Groups)"
+                    ],
+                    "note": "Positive and negative (yx-nav test: people.group.manage alone shows All settings and Groups; access key alone, settings key alone and a support session do not; settings home test: every page with a front door; kit access test: the panel and no access). No new route: the page uses the user-groups API (people.group.manage, checked per company)."
           }
 ]

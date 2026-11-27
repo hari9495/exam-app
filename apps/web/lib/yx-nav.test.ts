@@ -293,6 +293,15 @@ describe('buildNav: Time, Pay, Compliance', () => {
 });
 
 describe('buildNav: Settings', () => {
+  it('answer 2905: the HR groups key opens Settings › People & Access › Groups (and the Settings home) without the access key', () => {
+    expect(labels(nav(['people.group.manage']), 'settings')).toEqual(['All settings', 'Groups']);
+    expect(labels(nav(['users:manage_groups']), 'settings')).toContain('Groups');
+    // Negative: the access key alone, the settings key alone and a support session do not.
+    expect(labels(nav(['access.role.manage']), 'settings')).not.toContain('Groups');
+    expect(labels(nav(['org.settings.manage']), 'settings')).not.toContain('Groups');
+    expect(labels(nav(['people.group.manage'], { support: true }), 'settings')).not.toContain('Groups');
+  });
+
   it('a Payroll Admin profile on a non-admin role sees the organisation pages; pay-range access alone does too', () => {
     expect(labels(nav(['org.structure.view', 'pay.range.view']), 'settings')).toEqual(['All settings', 'Legal entities', 'Locations', 'Structure']);
     expect(labels(nav(['pay.range.view']), 'settings')).toEqual(['All settings', 'Legal entities', 'Locations', 'Structure']);
