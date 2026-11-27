@@ -1036,3 +1036,7 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2925: T2-G 45 Google Drive needs a service account and a shared-drive folder (a service account cannot store files in a personal My Drive). Suggested answer: keep it, and say so in the drawer's help text.
 - Also on merge (27 Nov 2026, lead): attrition splits never leave exactly one group hidden (secondary suppression); a company under 5 people still sees its whole-company total (its HR sees every record anyway).
 - Founder answers (27 Nov 2026, "ok for all"): 2903-2905 and 2923-2925 approved exactly as suggested; 2903 and 2905 go into the next builder pass, 2925's help text is checked there too.
+- 2926: T2-H ExceptionsPhone "Remind" needs an API the desk exceptions page does not have. Suggested answer: yes, a new endpoint for attendance view key holders, at most one reminder a day per person, in the next phone part.
+- 2927: T2-H MobileCheckInSheet as the phone check-in page (`/yx/time/attendance?view=today`). Suggested answer: yes, reusing the live clock card's punch logic (location, WFH, on duty), in the next phone part.
+- 2928: T2-H first-run steps on a phone (language, notifications, add to Home Screen). Suggested answer: yes, shown once after the first phone sign-in; skip the code sign-in and phone-linking steps (phone linking waits on the native-app decision).
+- 2929: T2-H "Sign out of all devices" on a phone signs out the other devices only; this phone stays signed in. Suggested answer: keep it that way.
