@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { TimesheetApprovalsScreen, type LiveTimesheetApprovals } from './projects';
+import { TimesheetApprovalsPhone, TimesheetApprovalsScreen, type LiveTimesheetApprovals } from './projects';
 import { LIVE_LINE_APPROVALS } from './projects-live-fixtures';
 
 // Projects P-2 (PRJ-02, answers 1406, 1407, 1442): the designed timesheet approvals with `live`, positive and negative.
@@ -137,5 +137,33 @@ describe('PRJ-02 Timesheet approvals (live)', () => {
     show(<TimesheetApprovalsScreen live={live({ data })} />);
     expect(screen.queryByRole('button', { name: /Week by day/ })).toBeNull();
     expect(screen.getAllByRole('article').length).toBe(4);
+  });
+});
+
+// T2-H (items 95): the phone cards, one week at a time, with the desk page's decide call.
+describe('PRJ-02 Timesheet approvals phone (live)', () => {
+  it('approves every line of the shown week with its version; Next moves on', async () => {
+    const l = live();
+    show(<TimesheetApprovalsPhone groups={[]} live={l} />);
+    expect(screen.getByText(/1 of \d+/)).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Approve all' })[0]!);
+    expect(l.onDecide).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ status: 'approved', version: expect.any(Number) })]));
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText(/2 of \d+/)).toBeInTheDocument();
+  });
+
+  it('a refused decision says why; nothing waiting says so; a failed load retries', async () => {
+    const l = live({ onDecide: vi.fn().mockRejectedValue(new Error('Someone changed this week. Open it again.')) });
+    const { unmount } = show(<TimesheetApprovalsPhone groups={[]} live={l} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Approve all' })[0]!);
+    expect(await screen.findByText('Someone changed this week. Open it again.')).toBeInTheDocument();
+    unmount();
+    const { unmount: u2 } = show(<TimesheetApprovalsPhone groups={[]} live={live({ data: { withinAllocation: true, groups: [] } })} />);
+    expect(screen.getByText("You're all caught up.")).toBeInTheDocument();
+    u2();
+    const onRetry = vi.fn();
+    show(<TimesheetApprovalsPhone groups={[]} live={live({ state: 'error', data: null, onRetry })} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
   });
 });

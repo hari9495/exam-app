@@ -12,7 +12,7 @@ import { NotificationCentre, useToast, type NotificationItem } from '../../compo
 import { Select } from '../../components/select';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { DashboardGrid, NeedsActionList, type ActionItem, type DashboardWidget, type WidgetSize } from '../../components/dashboard';
 import { LineChart, StatCard } from '../../components/charts';
 import { Dialog } from '../../components/overlay';
@@ -804,7 +804,7 @@ const SAMPLE_TEAM_TODAY: TeamToday = {
 };
 
 /** Nudge on Team today (PLT-02): once sent it says so and stays done; a refusal says why in a toast. */
-function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boolean; onNudge: () => Promise<void> }) {
+export function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boolean; onNudge: () => Promise<void> }) {
   const { toast } = useToast();
   const [state, setState] = useState<'idle' | 'busy' | 'done'>(reminded ? 'done' : 'idle');
   const send = async () => {
@@ -828,7 +828,7 @@ function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boo
 }
 
 const QUICK_ICON = { leave: CalendarPlus, wfh: House, payslip: Download };
-const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 17 ? 'afternoon' : 'evening');
+export const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 17 ? 'afternoon' : 'evening');
 
 /** Widths that fill each row: n cards share it evenly (live data decides how many cards there are). */
 const SHARE: Record<number, WidgetSize> = { 1: 12, 2: 6, 3: 4 };
@@ -1691,18 +1691,37 @@ const MOBILE_SUGGESTED = [
 ];
 const MOBILE_RECENT = ['Arjun Mehta', 'LV-26-01842', 'Form 16'];
 
-export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }: { query: string; hits: SearchHit[]; persona?: Persona }) {
-  const hits = searchableFor(persona, allHits);
-  const [q, setQ] = useState(query);
+/** T2-H: phone search with the workspace search the desk uses; the hits are only what the person may open. */
+export interface LiveMobileSearch {
+  /** The page searches as the person types (two characters or more). */
+  onQueryChange: (q: string) => void;
+  loading?: boolean;
+  onOpen: (hit: SearchHit) => void;
+  /** Suggested actions: pages the person may open. */
+  suggested: { label: string; href: string; kind: 'leave' | 'expense' | 'payslip' }[];
+  onNavigate: (href: string) => void;
+}
+
+const SUGGESTED_ICON = { leave: CalendarPlus, expense: Receipt, payslip: FileText };
+
+export function MobileSearchScreen({ query, hits: allHits, persona = 'manager', live }: { query: string; hits: SearchHit[]; persona?: Persona; live?: LiveMobileSearch }) {
+  const hits = live ? allHits : searchableFor(persona, allHits);
+  const [q, setQState] = useState(query);
+  const setQ = (v: string) => {
+    setQState(v);
+    live?.onQueryChange(v);
+  };
   const [scope, setScope] = useState<string | null>(null);
-  const [recent, setRecent] = useState(MOBILE_RECENT);
+  const [recent, setRecent] = useState(live ? [] : MOBILE_RECENT);
   const term = q.trim().toLowerCase();
   const sc = MOBILE_SCOPES.find((x) => x.key === scope);
   const shown = useMemo(
     () => explainedHits(hits, term).filter((h) => !sc || sc.sources.includes(h.source)),
     [hits, term, sc],
   );
-  const actions = MOBILE_SUGGESTED.filter((a) => !term || a.label.toLowerCase().includes(term));
+  const suggested = live ? live.suggested.map((s) => ({ label: s.label, icon: SUGGESTED_ICON[s.kind], href: s.href })) : MOBILE_SUGGESTED.map((s) => ({ ...s, href: undefined as string | undefined }));
+  const actions = suggested.filter((a) => !term || a.label.toLowerCase().includes(term));
+  const act = (href?: string) => (href && live ? () => live.onNavigate(href) : undefined);
   return (
     <PhoneFrame tab="home" title="Search" hideTabs back={<IconButton icon={ArrowLeft} label="Back to Home" />}>
       <FormField label="Search" hideLabel>
@@ -1733,9 +1752,9 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
           )}
           <Card title="Suggested for you">
             <ul className="yx-plt-list">
-              {MOBILE_SUGGESTED.map((a) => (
+              {suggested.map((a) => (
                 <li key={a.label}>
-                  <button type="button" className="yx-plt-myreq__row">
+                  <button type="button" className="yx-plt-myreq__row" onClick={act(a.href)}>
                     <Icon icon={a.icon} />
                     <span className="yx-plt-list__main">{a.label}</span>
                   </button>
@@ -1748,7 +1767,7 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
         <ul className="yx-plt-list" aria-live="polite">
           {actions.map((a) => (
             <li key={a.label}>
-              <button type="button" className="yx-plt-myreq__row">
+              <button type="button" className="yx-plt-myreq__row" onClick={act(a.href)}>
                 <Icon icon={a.icon} />
                 <span className="yx-plt-list__main">{a.label}</span>
               </button>
@@ -1760,7 +1779,18 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
           {shown.map((h) => (
             <li key={h.id}>
               <Icon icon={h.source === 'People' || h.source === 'Candidates' ? UserRound : h.source === 'Tickets' ? Ticket : FileText} />
-              <a href="#" className="yx-plt-list__main yx-plt-hit">
+              <a
+                href={live ? (h.href ?? '#') : '#'}
+                className="yx-plt-list__main yx-plt-hit"
+                onClick={
+                  live
+                    ? (e) => {
+                        e.preventDefault();
+                        live.onOpen(h);
+                      }
+                    : undefined
+                }
+              >
                 <span className="yx-plt-hit__title">
                   <Highlight text={h.title} query={q} />
                 </span>
@@ -1773,7 +1803,11 @@ export function MobileSearchScreen({ query, hits: allHits, persona = 'manager' }
           ))}
         </ul>
       ) : (
-        <EmptyState compact title={`No results for “${q.trim()}”.`} description="Try a name or request reference." action={<Button icon={MessageCircleQuestionMark}>Ask AI</Button>} />
+        live?.loading ? (
+          <Skeleton height={64} />
+        ) : (
+          <EmptyState compact title={`No results for “${q.trim()}”.`} description="Try a name or request reference." action={live ? undefined : <Button icon={MessageCircleQuestionMark}>Ask AI</Button>} />
+        )
       )}
     </PhoneFrame>
   );

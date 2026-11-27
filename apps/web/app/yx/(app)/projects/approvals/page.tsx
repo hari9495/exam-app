@@ -1,7 +1,8 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { TimesheetApprovalsScreen, type LiveApprovalsData, type NotSentPerson } from '@yukthix/ui/hiring';
+import { TimesheetApprovalsPhone, TimesheetApprovalsScreen, type LiveApprovalsData, type LiveTimesheetApprovals, type NotSentPerson } from '@yukthix/ui/hiring';
+import { usePhone } from '../../../../../lib/yx-phone';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { loadState } from '../../../../../lib/yx-org';
@@ -23,16 +24,15 @@ export default function YxTimesheetApprovalsPage() {
     }
   };
   const state = loadState(data);
-  return (
-    <TimesheetApprovalsScreen
-      live={{
-        state: state === 'no-access' ? 'no-access' : state === 'error' ? 'error' : state === 'loading' ? 'loading' : 'ready',
-        onRetry: () => void data.refetch(),
-        data: data.data ?? null,
-        onDecide: (decisions) => post('decide', { decisions }),
-        onBulk: (items) => post('bulk', { items }),
-        notSent: { state: notSent.isError ? 'error' : notSent.data ? 'ready' : 'loading', data: notSent.data ?? null, onRetry: () => void notSent.refetch(), onRemind: (employeeId) => post(`not-sent/${encodeURIComponent(employeeId)}/remind`, {}) },
-      }}
-    />
-  );
+  const phone = usePhone();
+  const live: LiveTimesheetApprovals = {
+    state: state === 'no-access' ? 'no-access' : state === 'error' ? 'error' : state === 'loading' ? 'loading' : 'ready',
+    onRetry: () => void data.refetch(),
+    data: data.data ?? null,
+    onDecide: (decisions) => post('decide', { decisions }),
+    onBulk: (items) => post('bulk', { items }),
+    notSent: { state: notSent.isError ? 'error' : notSent.data ? 'ready' : 'loading', data: notSent.data ?? null, onRetry: () => void notSent.refetch(), onRemind: (employeeId) => post(`not-sent/${encodeURIComponent(employeeId)}/remind`, {}) },
+  };
+  // T2-H (items 95): on a phone, the designed one-week-at-a-time cards with the same decide call.
+  return phone ? <TimesheetApprovalsPhone groups={[]} live={live} /> : <TimesheetApprovalsScreen live={live} />;
 }

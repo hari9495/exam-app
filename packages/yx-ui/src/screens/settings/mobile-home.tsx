@@ -1,6 +1,6 @@
 // Mobile tab map (APX-D §5): first run (MOB-01), Home tab (MOB-02 + Home flows), Time and Pay tab landings, expenses.
 // Flows that are TIM / PAY / PLT screen IDs are only linked from here (built by those areas).
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Bell,
   CalendarDays,
@@ -35,6 +35,7 @@ import { COMPANY, ME } from '../_kit/data';
 import { PhoneFrame } from '../_kit/frames';
 import { EWA_INPUT } from '../pay/pay-data';
 import { EWA_STARTER, ewaAvailable } from '../pay/pay-logic';
+import { NudgeButton, partOfDay, type TeamToday } from '../platform-a/shell-home';
 import { BackButton, MCard, MList, MPin, MRow, MSection, Segment } from './mobile-kit';
 import './settings.css';
 
@@ -167,16 +168,40 @@ export const TEAM_TODAY = [
   { name: 'Kavya Reddy', status: 'Work from home', tone: 'info' as const },
 ];
 
+/** T2-H (answer 2741): Home on a phone with the desk Home's own data and calls (one source, the same API). */
+export interface LiveMobileHome {
+  firstName: string;
+  /** "Today": the live Attendance today card (check in and out with all its checks); left out without an attendance record. */
+  clock?: ReactNode;
+  /** Needs your action and my tasks, each opening the page that handles it. */
+  todos: { id: string; title: string; sub?: string; due?: string; dueToday?: boolean; href: string }[];
+  /** Birthdays and work anniversaries this week in the person's circle. */
+  celebrations?: { id: string; name: string; text: string }[];
+  /** Give kudos and the pulse survey, where those pages are open to the person. */
+  kudosHref?: string;
+  surveyHref?: string;
+  quickActions: { label: string; href: string; kind: 'leave' | 'expense' | 'payslip' | 'fix' }[];
+  /** Managers: the Team segment, from "My team today". */
+  team?: TeamToday;
+  onNudge?: (row: { id: string; name: string }) => Promise<void>;
+  onRetry?: () => void;
+  onNavigate: (href: string) => void;
+}
+
 export interface MobileHomeProps {
   manager?: boolean;
   defaultSegment?: 'me' | 'team';
   todos?: TodoItem[];
   checkedIn?: boolean;
   state?: 'ready' | 'loading' | 'error' | 'offline';
+  live?: LiveMobileHome;
 }
 
-export function MobileHomeScreen({ manager, defaultSegment = 'me', todos = TODOS, checkedIn, state = 'ready' }: MobileHomeProps) {
+const QUICK_ICON = { leave: CalendarDays, expense: Receipt, payslip: WalletCards, fix: Clock };
+
+export function MobileHomeScreen({ manager, defaultSegment = 'me', todos = TODOS, checkedIn, state = 'ready', live }: MobileHomeProps) {
   const [seg, setSeg] = useState<'me' | 'team'>(defaultSegment);
+  if (live) return <LiveMobileHomeBody live={live} state={state} seg={seg} setSeg={setSeg} />;
   return (
     <PhoneFrame tab="home" title={`Good morning, ${ME.name.split(' ')[0]}`} actions={<IconButton icon={Search} label="Search records and actions" />}>
       {state === 'offline' && <PageBanner tone="warning">You're offline. Check-in and requests are saved and sent when you reconnect.</PageBanner>}
@@ -250,7 +275,121 @@ export function MobileHomeScreen({ manager, defaultSegment = 'me', todos = TODOS
   );
 }
 
-function TeamSegment() {
+function LiveMobileHomeBody({ live, state, seg, setSeg }: { live: LiveMobileHome; state: NonNullable<MobileHomeProps['state']>; seg: 'me' | 'team'; setSeg: (s: 'me' | 'team') => void }) {
+  const go = (href: string) => () => live.onNavigate(href);
+  const ready = state === 'ready' || state === 'offline';
+  return (
+    <PhoneFrame tab="home" title={`Good ${partOfDay(new Date())}, ${live.firstName}`}>
+      {state === 'offline' && <PageBanner tone="warning">You're offline. Check-in and requests are saved and sent when you reconnect.</PageBanner>}
+      {live.team && <Segment label="Show" value={seg} onChange={setSeg} options={[{ value: 'me', label: 'Me' }, { value: 'team', label: 'Team' }]} />}
+      {state === 'loading' && (
+        <div role="status" aria-busy="true" aria-label="Loading home" className="yx-m-actions">
+          <Skeleton height={120} />
+          <Skeleton height={64} />
+        </div>
+      )}
+      {state === 'error' && <ErrorState title="We couldn't load your home." description="Try again in a moment. Your check-in still works." onRetry={live.onRetry} />}
+      {ready && seg === 'me' && (
+        <>
+          {live.clock}
+          <MSection title={`To do (${live.todos.length})`}>
+            {live.todos.length ? (
+              <MList label="To do">
+                {live.todos.map((t) => (
+                  <MRow key={t.id} title={t.title} sub={t.sub} onClick={go(t.href)} end={t.due && <Badge tone={t.dueToday ? 'warning' : 'neutral'}>{t.due}</Badge>} />
+                ))}
+              </MList>
+            ) : (
+              <EmptyState compact title="Nothing to do right now." description="Approvals, proofs and acknowledgements appear here when they are due." />
+            )}
+          </MSection>
+          {(live.celebrations?.length ?? 0) > 0 && (
+            <MSection title="Celebrations">
+              <div className="yx-m-strip">
+                {live.celebrations!.map((c) => (
+                  <div key={c.id}>
+                    <Avatar name={c.name} size={40} />
+                    <span>{c.name.split(' ')[0]}</span>
+                    <span className="yx-m-muted">{c.text}</span>
+                  </div>
+                ))}
+              </div>
+              {(live.kudosHref || live.surveyHref) && (
+                <div className="yx-m-grid2">
+                  {live.kudosHref && (
+                    <Button icon={Gift} onClick={go(live.kudosHref)}>
+                      Give kudos
+                    </Button>
+                  )}
+                  {live.surveyHref && <Button onClick={go(live.surveyHref)}>Take pulse survey</Button>}
+                </div>
+              )}
+            </MSection>
+          )}
+          {live.quickActions.length > 0 && (
+            <MSection title="Quick actions">
+              <div className="yx-m-grid2">
+                {live.quickActions.map((a) => (
+                  <Button key={a.href} icon={QUICK_ICON[a.kind]} onClick={go(a.href)}>
+                    {a.label}
+                  </Button>
+                ))}
+              </div>
+            </MSection>
+          )}
+        </>
+      )}
+      {ready && seg === 'team' && live.team && <TeamSegment live={{ team: live.team, onNudge: live.onNudge, onNavigate: live.onNavigate }} />}
+    </PhoneFrame>
+  );
+}
+
+const TEAM_TONE = { leave: 'neutral', not_in: 'danger', late: 'warning', away: 'info' } as const;
+
+/** The Team segment with "My team today": counts, the late and not-in people (with Nudge), then everyone counted. */
+function TeamTodaySegment({ team, onNudge, onNavigate }: { team: TeamToday; onNudge?: (row: { id: string; name: string }) => Promise<void>; onNavigate: (href: string) => void }) {
+  const exceptions = team.groups.filter((g) => g.key === 'late' || g.key === 'not_in').flatMap((g) => g.people.map((p) => ({ ...p, group: g })));
+  const everyone = team.groups.flatMap((g) => g.people.map((p) => ({ ...p, group: g })));
+  return (
+    <>
+      <MCard title={`Team today · ${team.total} ${team.total === 1 ? 'person' : 'people'}`}>
+        <div className="yx-m-grid2">
+          {team.groups.map((g) => (
+            <p key={g.key} className="yx-m-muted">
+              {g.label} · {g.people.length}
+            </p>
+          ))}
+        </div>
+      </MCard>
+      <MSection title="Exceptions">
+        {exceptions.length ? (
+          <MList label="Team exceptions">
+            {exceptions.map((p) => (
+              <MRow key={p.id} lead={<Avatar name={p.name} size={32} />} title={p.name} sub={p.secondary ?? p.group.label} nav={false} end={p.nudge && onNudge ? <NudgeButton name={p.name} reminded={p.reminded} onNudge={() => onNudge(p)} /> : undefined} />
+            ))}
+          </MList>
+        ) : (
+          <EmptyState compact title="No late or missing check-ins today." />
+        )}
+      </MSection>
+      {everyone.length > 0 && (
+        <MSection title="Everyone">
+          <MList label="Team">
+            {everyone.map((p) => (
+              <MRow key={`${p.group.key}-${p.id}`} lead={<Avatar name={p.name} size={32} />} title={p.name} nav={false} end={<Badge tone={TEAM_TONE[p.group.key]}>{p.group.label}</Badge>} />
+            ))}
+          </MList>
+        </MSection>
+      )}
+      <Button fullWidth icon={CalendarDays} onClick={() => onNavigate(team.href)}>
+        Team today
+      </Button>
+    </>
+  );
+}
+
+function TeamSegment({ live }: { live?: { team: TeamToday; onNudge?: (row: { id: string; name: string }) => Promise<void>; onNavigate: (href: string) => void } } = {}) {
+  if (live) return <TeamTodaySegment {...live} />;
   return (
     <>
       <MCard title="Team today · 5 people">
@@ -385,8 +524,73 @@ export function MobileKudosScreen({ sent }: { sent?: boolean }) {
 
 /* ============================== Time tab landing ============================== */
 
+/** T2-H: the Time tab with live data; each row is a live page the person may open (the others are left out). */
+export interface LiveMobileTime {
+  /** "Today": the live Attendance today card; left out without an attendance record. */
+  clock?: ReactNode;
+  attendance: { id: 'attendance' | 'requests' | 'shifts' | 'timesheet' | 'field' | 'open-shifts'; title: string; sub?: string; fix?: number; href: string }[];
+  /** Leave balances (the first four types that keep one). */
+  balances: { name: string; value: number }[];
+  applyLeaveHref?: string;
+  leave: { id: 'leave' | 'holidays'; title: string; sub?: string; href: string }[];
+  state?: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  onNavigate: (href: string) => void;
+}
+
+const TIME_ICON = { attendance: CalendarDays, requests: Repeat, shifts: Clock, timesheet: Timer, field: MapPin, 'open-shifts': Users, leave: Sun, holidays: Gift };
+
 /** Time tab: every flow lives in a TIM screen; this landing only routes to them. */
-export function MobileTimeTabScreen({ longLeave }: { longLeave?: boolean }) {
+export function MobileTimeTabScreen({ longLeave, live }: { longLeave?: boolean; live?: LiveMobileTime }) {
+  if (live) {
+    const go = (href: string) => () => live.onNavigate(href);
+    return (
+      <PhoneFrame tab="time" title="Time">
+        {live.state === 'loading' && <Skeleton height={120} />}
+        {live.state === 'error' && <ErrorState title="We couldn't load your time." description="Try again in a moment." onRetry={live.onRetry} />}
+        {live.clock}
+        {live.attendance.length > 0 && (
+          <MSection title="Attendance">
+            <MList label="Attendance">
+              {live.attendance.map((r) => (
+                <MRow key={r.id} icon={TIME_ICON[r.id]} title={r.title} sub={r.sub} onClick={go(r.href)} end={r.fix ? <Badge tone="danger">{`Fix ${r.fix}`}</Badge> : undefined} />
+              ))}
+            </MList>
+          </MSection>
+        )}
+        {(live.balances.length > 0 || live.applyLeaveHref || live.leave.length > 0) && (
+          <MSection title="Leave">
+            {(live.balances.length > 0 || live.applyLeaveHref) && (
+              <MCard>
+                {live.balances.length > 0 && (
+                  <div className="yx-m-grid2">
+                    {live.balances.map((b) => (
+                      <div key={b.name}>
+                        <span className="yx-m-big">{b.value}</span>
+                        <p className="yx-m-muted">{b.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {live.applyLeaveHref && (
+                  <Button variant="secondary" fullWidth icon={CalendarDays} onClick={go(live.applyLeaveHref)}>
+                    Apply leave
+                  </Button>
+                )}
+              </MCard>
+            )}
+            {live.leave.length > 0 && (
+              <MList label="Leave">
+                {live.leave.map((r) => (
+                  <MRow key={r.id} icon={TIME_ICON[r.id]} title={r.title} sub={r.sub} onClick={go(r.href)} />
+                ))}
+              </MList>
+            )}
+          </MSection>
+        )}
+      </PhoneFrame>
+    );
+  }
   return (
     <PhoneFrame tab="time" title="Time">
       {longLeave && (
@@ -445,7 +649,47 @@ export function MobileTimeTabScreen({ longLeave }: { longLeave?: boolean }) {
 
 /* ============================== Pay tab landing + expenses ============================== */
 
-export function MobilePayTabScreen({ ewa = true }: { ewa?: boolean }) {
+/** T2-H: the Pay tab with the person's own payslips; each row is a live page the person may open. */
+export interface LiveMobilePay {
+  /** The latest published payslip; null when none is published yet. */
+  latest: { month: string; net: number; status: string; href: string } | null;
+  rows: { id: 'payslips' | 'tax' | 'loans' | 'expenses' | 'ewa'; title: string; sub?: string; href: string }[];
+  state?: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  onNavigate: (href: string) => void;
+}
+
+const PAY_ICON = { payslips: FileText, tax: Landmark, loans: HandCoins, expenses: Receipt, ewa: WalletCards };
+
+export function MobilePayTabScreen({ ewa = true, live }: { ewa?: boolean; live?: LiveMobilePay }) {
+  if (live) {
+    const go = (href: string) => () => live.onNavigate(href);
+    return (
+      <PhoneFrame tab="pay" title="Pay">
+        {live.state === 'loading' && <Skeleton height={120} />}
+        {live.state === 'error' && <ErrorState title="We couldn't load your pay." description="Try again in a moment." onRetry={live.onRetry} />}
+        {live.state !== 'loading' && live.state !== 'error' &&
+          (live.latest ? (
+            <MCard title={`${live.latest.month} payslip`} end={<Badge tone="success">{live.latest.status}</Badge>}>
+              <span className="yx-m-big">{formatINR(live.latest.net)}</span>
+              <p className="yx-m-muted">Net pay</p>
+              <Button fullWidth onClick={go(live.latest.href)}>
+                View payslip
+              </Button>
+            </MCard>
+          ) : (
+            <EmptyState compact title="No payslip yet." description="Your payslip shows here once payroll publishes it." />
+          ))}
+        {live.rows.length > 0 && (
+          <MList label="Pay">
+            {live.rows.map((r) => (
+              <MRow key={r.id} icon={PAY_ICON[r.id]} title={r.title} sub={r.sub} onClick={go(r.href)} />
+            ))}
+          </MList>
+        )}
+      </PhoneFrame>
+    );
+  }
   return (
     <PhoneFrame tab="pay" title="Pay">
       <MCard title="September 2026 payslip" end={<Badge tone="success">Published</Badge>}>

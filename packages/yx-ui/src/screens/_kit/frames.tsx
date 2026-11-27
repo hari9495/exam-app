@@ -119,6 +119,9 @@ export interface LiveFrame {
   onPanelCollapsedChange?: (collapsed: boolean) => void;
   /** Phone tabs and where each goes; tabs without a page are left out. */
   tabs?: Partial<Record<'home' | 'time' | 'requests' | 'pay' | 'me', string>>;
+  /** T2-H: the phone tab the page belongs to (the area decides when left out), and the counts on the tabs. */
+  tab?: 'home' | 'time' | 'requests' | 'pay' | 'me';
+  tabBadges?: Partial<Record<'home' | 'time' | 'requests' | 'pay' | 'me', number>>;
   /** Dialogs and drawers the frame opens: the search palette, help. */
   overlays?: ReactNode;
   /** T2-F 81: "+ New" in the top bar (render the RequestSheetScreen live picker in `overlays`). */
@@ -186,7 +189,7 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
   const go = (href: string | undefined) => href && live.onNavigate(href);
   const tabs = live.tabs ?? {};
   const mobileTabs = MOBILE_TABS.filter((t) => tabs[t.id as keyof typeof tabs]);
-  const mobileActive = area === 'time' || area === 'pay' || area === 'home' ? area : undefined;
+  const mobileActive = live.tab ?? (area === 'time' || area === 'pay' || area === 'home' ? area : undefined);
   return (
     // One click handler for the frame and the page: same-site links move without a reload (Next's own <Link>s handle theirs).
     <div
@@ -214,7 +217,7 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
           </SidePanel>
         }
         topBar={<TopBar onNew={live.onNew} onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} helpUnread={live.helpUnread} profile={live.profile} accessibility={live.accessibility} />}
-        mobileTabBar={mobileTabs.length ? <MobileTabBar items={mobileTabs} activeId={mobileActive} onSelect={(id) => go(tabs[id as keyof typeof tabs])} /> : undefined}
+        mobileTabBar={mobileTabs.length ? <MobileTabBar items={mobileTabs} activeId={mobileActive} badges={live.tabBadges} onSelect={(id) => go(tabs[id as keyof typeof tabs])} /> : undefined}
         panelCollapsed={live.panelCollapsed}
         onPanelCollapsedChange={live.onPanelCollapsedChange}
       >

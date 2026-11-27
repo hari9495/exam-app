@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ExceptionsScreen, MusterScreen, TodayBoardScreen, type LiveExceptions, type LiveMusterData, type LiveTodayBoard } from './attendance';
+import { ExceptionsScreen, MusterScreen, TeamTodayPhone, TodayBoardScreen, type LiveExceptions, type LiveMusterData, type LiveTodayBoard } from './attendance';
 import { AttendanceRequestSheet, DeviceBackfillWizard, IndustrialActionScreen, OtReviewScreen, PeriodsScreen, type LiveDeviceBackfill, type LiveIndustrialAction, type LiveOtReview, type LivePeriods } from './requests';
 import { AttendanceReportsScreen } from './ops';
 import { PresenceDayScreen } from './field';
@@ -546,3 +546,45 @@ describe('TIM-16 Attendance reports (live)', () => {
     expect(screen.getByText('None on file')).toBeInTheDocument();
   });
 });
+
+// T2-H (answer 2741): Team today on a phone with the same board and Nudge.
+describe('TIM-01 Team today phone (live)', () => {
+  const data: TodayBoard = {
+    today: '2026-10-28',
+    at: '2026-10-28T04:15:00Z',
+    scope: 'team',
+    month: '2026-10',
+    lockableFrom: '2026-11-02',
+    blocking: 2,
+    people: [
+      { id: 'a', name: 'Arun Prakash', code: 'K1', role: 'QA', dept: 'Quality', location: 'Chennai office', status: 'in', inAt: '09:20', onSite: true, site: 'Chennai office', mode: 'Punch', source: 'web', detail: null, missedOutOn: null, nudged: false, shiftStarted: true, today: null },
+      { id: 'm', name: 'Meera Krishnan', code: 'K2', role: 'QA', dept: 'Quality', location: 'Chennai office', status: 'not_in', inAt: null, onSite: false, site: 'Chennai office', mode: 'Punch', source: null, detail: 'Shift 09:30–18:30', missedOutOn: null, nudged: false, shiftStarted: true, today: null },
+    ],
+  };
+  const board = (o: Partial<LiveTodayBoard> = {}): LiveTodayBoard => ({ state: 'ready', data, onNudge: ok(), links: { exceptions: '/yx/time/exceptions', muster: '/m', roster: '/r', fieldMap: null }, ...o });
+
+  it('people not in first, the blocking alert with the live month and link, Nudge calls the board API once', async () => {
+    const live = board();
+    render(<TeamTodayPhone live={live} />);
+    expect(screen.getByText(/2 open exceptions block October payroll/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open exceptions' })).toHaveAttribute('href', '/yx/time/exceptions');
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Meera Krishnan');
+    await ue.click(screen.getByRole('button', { name: 'Nudge 1 person' }));
+    await waitFor(() => expect(live.onNudge).toHaveBeenCalledWith('m'));
+    expect(await screen.findByRole('button', { name: 'Everyone nudged' })).toBeInTheDocument();
+  });
+
+  it('a refused nudge says why; error and no access are the design states', async () => {
+    const onNudge = vi.fn(async () => {
+      throw new Error('Already reminded today.');
+    });
+    const { rerender } = render(<TeamTodayPhone live={board({ onNudge })} />);
+    await ue.click(screen.getByRole('button', { name: 'Nudge 1 person' }));
+    expect((await screen.findAllByText('Already reminded today.')).length).toBeGreaterThan(0);
+    rerender(<TeamTodayPhone live={board({ state: 'error', data: null })} />);
+    expect(screen.getByText("We couldn't load today's board.")).toBeInTheDocument();
+    rerender(<TeamTodayPhone live={board({ state: 'no-access', data: null })} />);
+    expect(screen.getByText(/You don't have access/)).toBeInTheDocument();
+  });
+});
+

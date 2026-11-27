@@ -30064,5 +30064,74 @@
                               "Screens/Compliance/CMP-09 › Committee member · annual report with Download PDF (2621)"
                     ],
                     "note": "Positive and negative: API e2e service-desk-hlp06 (404 for five outsiders, 400 for years, PDF text and audit); unit posh-report-pdf.spec (2); kit posh-live.test (2). PDFKit with writeText as the other printable PDFs. The format is the Act's Rule 14 list; a state-specific form is question 2904."
+          },
+          {
+                    "id": "MT-T2H-PHONE-FRAME",
+                    "area": "T2-H phone, part 1 (answer 2741): the phone frame, its tab landings, Home, search and settings",
+                    "screen": "At phone width (390 x 844): bottom tabs Home · Time · Requests · Pay · Me; Home (MOB-02), Time tab, Pay tab, Requests tab, Me tab, Me › More, Me › Settings and security (MOB-03), Search",
+                    "url": "http://localhost:3000/yx/home (phone width 390 x 844; DevTools device mode or an installed phone)",
+                    "account": "Employee arjun@demo-org.test; manager panel@demo-org.test (Divya, 7 reports); HR hr-tester@demo-org.test.",
+                    "steps": [
+                              "As Arjun at 390 x 844 open /yx/home. Look at the greeting, Attendance today card, To do, Celebrations and Quick actions. Press Apply leave.",
+                              "Press each bottom tab in turn: Time, Requests, Pay, Me. On Time press My attendance; on Pay press View payslip; on Me press Settings and security, then More.",
+                              "On Settings and security tick Email for one kind of notification; untick it again. Sign out a second browser you signed in from beforehand.",
+                              "Press the search button in the top bar, type 'ar', open a person.",
+                              "As Divya (manager) open Home, choose Team, press Nudge for someone not in yet; press Nudge again on a second person after the first was reminded today.",
+                              "As Divya open Requests, choose Team · N and open a row.",
+                              "Widen the window past 768 px on /yx/time, /yx/me, /yx/me/pay, /yx/requests and /yx/me/settings.",
+                              "As HR (no employee Time or Pay tab) look at the tab bar; open /yx/me/pay at phone width."
+                    ],
+                    "expected": "Step 1: 'Good morning/afternoon/evening, Arjun'; the clock card checks in with the same checks as the desk Home; To do lists what waits with due badges; Apply leave opens My leave with the apply sheet. Step 2: each tab lights its own icon; rows exist only for pages in Arjun's menu (no Field visits or Open shifts unless his menu has them); My attendance shows 'N late marks · M missing punches this month' and a 'Fix M' badge; Pay shows the latest published payslip with net pay or 'No payslip yet.'. Step 3: toast 'Saved'; Notification preferences on the desk shows the same choice; the other browser's row leaves the list; the current device has no Sign out. Step 4: the full-screen phone search lists only results Arjun may open and opens the record. Step 5: toast 'Reminder sent to <name>'; a second nudge for someone already reminded says 'Reminder not sent' with the reason. Step 6: Team · N lists what waits for Divya, soonest due first; the row opens Approvals. Step 7: each moves on to the desk page (My attendance, Profile, Payslips, Approvals, Notification preferences). Step 8: HR's tabs are Home, Requests and Me; /yx/me/pay shows 'No payslip yet.' or the payslip API's refusal, nothing else. The tab bar stays fixed while the page scrolls; every row and button is at least 44 px tall.",
+                    "stories": [
+                              "Screens/Mobile/Home tab, first run, Time and Pay (MOB-02 Home, Time tab, Pay tab)",
+                              "Screens/Mobile/Requests and Me tabs (Requests tab, Me tab, More, MOB-03 Settings and security)",
+                              "Screens/Platform A/Search (Mobile search)"
+                    ],
+                    "note": "No new API routes: Home uses the desk Home's calls; Time tab /time/me/attendance and /time/me/leave and POST /time/me/punch; Pay tab /payroll/me/payslips; Requests tab /workflow/approvals/mine and /inbox; Me tab /users/me and /lifecycle/me/resignation; Settings /notifications/preferences (PATCH), /notifications/push, /auth/sessions (DELETE one, POST revoke-others), /global/me/language (PUT). New web routes (phone landings, desk redirect): /yx/time, /yx/requests, /yx/me, /yx/me/pay, /yx/me/more, /yx/me/settings. WhatsApp column left out until 2742. Tests: kit mobile-live 12, web yx-phone 19 and yx-phone-tabs 9 (positive and negative)."
+          },
+          {
+                    "id": "MT-T2H-PHONE-TIME",
+                    "area": "T2-H phone, part 2 (answer 2741): leave and attendance phone screens",
+                    "screen": "At phone width (390 x 844): My leave (TIM-17 phone, LeaveHomePhone), My attendance (AttendanceCalendarPhone, DayCardPhone with ?day=), Team today (TeamTodayPhone)",
+                    "url": "http://localhost:3000/yx/time/leave, /yx/time/attendance, /yx/time/attendance?day=<a date this month>, /yx/time/today (phone width 390 x 844)",
+                    "account": "Employee arjun@demo-org.test; manager panel@demo-org.test (Divya, 7 reports).",
+                    "steps": [
+                              "As Arjun at 390 x 844 open Time › Apply leave (or /yx/time/leave). Press Send request with nothing filled; then pick two working days next week and send.",
+                              "On My leave press Withdraw on that pending request and confirm.",
+                              "Open /yx/time/attendance. Press Next month at the current month; press Previous month; press a day with a missing punch, then Fix this day and send a regularisation with a reason.",
+                              "Open /yx/time/attendance?day=<a date of this month>; then ?day=not-a-date.",
+                              "As Divya open /yx/time/today; press Nudge for someone not checked in; press Nudge again for the same person.",
+                              "Widen past 768 px on each page."
+                    ],
+                    "expected": "Step 1: 'Choose the first day.' under the field and nothing sent; then the request shows under My requests as Pending with its start badge (same as the desk page). Step 2: it leaves Pending and the balance returns. Step 3: 'December 2026 has not started yet.' (the next month) and no move; the previous month loads; the day card opens in a bottom sheet with every punch; the request shows under Waiting for approval with Withdraw. Step 4: that day's card opens at once; a bad date opens the plain month. Step 5: toast '1 nudge sent', the button then says 'Everyone nudged'; a second nudge for someone already reminded says why it was not sent. Step 6: the desk pages (TIM-17, the calendar, the board) with the same data. The tab bar stays fixed; rows and buttons are at least 44 px.",
+                    "stories": [
+                              "Screens/Time/TIM-17 Leave (phone)",
+                              "Screens/Time/TIM-03 Attendance calendar (phone, day card phone)",
+                              "Screens/Time/TIM-01 Today board (phone)"
+                    ],
+                    "note": "No new API: the phone screens take the desk pages' live props (useMyLeaveLive; /time/me/attendance and its fixes, requests and day cards; /time/today and POST /time/people/:id/nudge). Kit tests: time-ops-live +2, attendance-live +2, leave-live +2 (positive and negative). Not built: ExceptionsPhone (its Remind needs an endpoint the desk page lacks, question 2926), MobileCheckInSheet (2927), TeamLeaveCalendarPhone, MyShiftsPhone and OpenShiftsPhone (left for part 2, see report)."
+          },
+          {
+                    "id": "MT-T2H-PHONE-REQUESTS",
+                    "area": "T2-H phone, part 3 (answer 2741, items 95): requests and approvals on a phone",
+                    "screen": "At phone width (390 x 844): Requests › New request (MobileRequestTypePickerScreen), My requests (MyRequestsPhone), Approvals (ApprovalsInboxPhone), Delegation (DelegationPhone), Timesheets to approve (TimesheetApprovalsPhone)",
+                    "url": "http://localhost:3000/yx/requests/new, /yx/me/requests, /yx/approvals, /yx/me/delegation, /yx/projects/approvals (phone width 390 x 844)",
+                    "account": "Employee arjun@demo-org.test; manager panel@demo-org.test (Divya, 7 reports; a project manager with timesheet lines waiting, if the demo has one).",
+                    "steps": [
+                              "As Arjun on the Requests tab press New request; press Leave; go back and press Ask HR (helpdesk).",
+                              "Open My requests: press a pending request to see where it is.",
+                              "As Divya open the Requests tab › Team, open a row; on Approvals press Approve on a leave card; open another with Details, press Do not approve with no reason, then with a reason.",
+                              "Approve a request that someone else already decided (open the page in two browsers, decide in one first).",
+                              "Open Delegation: choose a colleague and dates, save; then end it.",
+                              "Open Projects › Timesheet approvals at phone width: approve one week; reduce a line with no reason; press Next.",
+                              "Widen past 768 px on each page; open /yx/requests/new on a desk."
+                    ],
+                    "expected": "Step 1: only the types Arjun may raise (Leave, Attendance fix, Letter or certificate, Expense or trip, Loans, Ask HR, Resignation, each only if his menu has it); Leave opens My leave with the apply sheet, Ask HR opens a new helpdesk ticket. Step 2: a bottom sheet with its status and who it waits on, no Withdraw (as on the desk page). Step 3: the row opens Approvals; toast 'Approved: <summary>' and the card leaves; 'Say why, so the person who asked knows.' and nothing sent; with a reason it is sent and the toast says Not approved. Step 4: a toast 'Not approved' with the server's reason; the card stays until the list refreshes. Step 5: toast and the delegation shows as running; ending it removes it (the desk page shows the same). Step 6: toast '<name>: decided'; a reduction without a reason shows the field error; Next shows the next week (n of N). Step 7: the desk pages; /yx/requests/new moves on to My requests. Touch targets at least 44 px; the tab bar stays fixed.",
+                    "stories": [
+                              "Screens/Mobile/Requests and Me tabs (New request type picker)",
+                              "Screens/Platform A/PLT-04 Approvals inbox (phone), PLT-06 My requests (phone), PLT-07 Delegation (phone)",
+                              "Screens/Hiring/PRJ-02 Timesheet approvals (phone)"
+                    ],
+                    "note": "No new API: the phone screens take the desk pages' live props (/workflow/approvals/inbox, tasks/:id/decide, tasks/decide bulk, reassign; /workflow/approvals/mine; the delegation calls; /time/line-approvals and decide). Kit tests: mobile-live (picker 2, my requests 2), inbox +3, prj-02-live +2; web yx-phone (pickerRows) and yx-phone-tabs (picker page). MobileTimesheetApprovalsScreen is a duplicate of TimesheetApprovalsPhone and RequestSheetPhone of the picker (not built); MobileCustomRequestScreen waits on custom request types (form builder, 2750)."
           }
 ]

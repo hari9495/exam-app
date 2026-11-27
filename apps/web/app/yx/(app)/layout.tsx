@@ -34,6 +34,7 @@ import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
 import { inCompanyOrder, moduleOfHref, pageOff, type CompanyModule } from '../../../lib/yx-modules';
 import { lastAreaKey, readLastArea, writeLastArea, type LastArea } from '../../../lib/yx-recent';
+import { PHONE_TABS, phoneTab, usePhone } from '../../../lib/yx-phone';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
 const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/engage', 'engage'], ['/yx/learning', 'learning'], ['/yx/analytics', 'analytics'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
@@ -103,6 +104,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const modulesOff = useMemo(() => companyModules.data?.modules?.filter((m) => !m.on).map((m) => m.id) ?? [], [companyModules.data]);
   const moduleOrder = useMemo(() => companyModules.data?.modules?.map((m) => m.id), [companyModules.data]);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const phone = usePhone();
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const bell = useBellItems(!actingSuperAdmin);
@@ -320,7 +322,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         onNavigate: go,
         ...(newTypes.length ? { onNew: () => setNewOpen(true) } : {}),
         lastUsed: lastArea && !rail.some((r) => r.id === lastArea.area) ? { ...SCREEN_RAIL.find((r) => r.id === lastArea.area)!, href: lastArea.href } : null,
-        onSearch: () => setPaletteOpen(true),
+        // T2-H: on a phone, Search opens the designed full-screen phone search.
+        onSearch: () => (phone ? go('/yx/search') : setPaletteOpen(true)),
         onHelp: support ? undefined : () => setHelpOpen(true),
         helpUnread: !support && (news?.unread ?? 0) > 0,
         scope: scopePicker,
@@ -353,7 +356,10 @@ function Frame({ children }: { children: React.ReactNode }) {
         breadcrumbs: crumbs,
         panelCollapsed: collapsed,
         onPanelCollapsedChange: setCollapsed,
-        tabs: { home: '/yx/home', ...(support ? {} : { requests: '/yx/approvals' }), ...(employee && !support ? { time: '/yx/time/attendance', pay: '/yx/me/payslips' } : {}), me: profileHref },
+        // T2-H (answer 2741): the phone tabs open the designed tab landings; on a desk those move on to the menu's page.
+        tabs: { home: PHONE_TABS.home, ...(support ? {} : { requests: PHONE_TABS.requests }), ...(employee && !support ? { time: PHONE_TABS.time, pay: PHONE_TABS.pay } : {}), me: support ? profileHref : PHONE_TABS.me },
+        tab: phoneTab(pathname),
+        tabBadges: { requests: counts.data?.approvals ?? 0 },
         overlays: (
           <>
             {newTypes.length > 0 && <RequestSheetScreen live={{ open: newOpen, onOpenChange: setNewOpen, types: newTypes, onPick: go }} />}
